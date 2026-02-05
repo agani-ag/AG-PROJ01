@@ -1,7 +1,10 @@
 # objectbank/urls.py
 from django.urls import path
-from .views import api_root
+from .views import (
+    public_api, items_api
+)
 
 urlpatterns = [
-    path('', api_root, name='api-root'),
+    path('', public_api, name='public-api'),
+    path('items/', items_api, name='items-api'),
 ]
