@@ -1,8 +1,10 @@
-from rest_framework import serializers
 from .models import LinkRegistry
+from rest_framework import serializers
+from django.contrib.auth.models import User
 
 class LinkRegistrySerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField(read_only=True)
+    user = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    username = serializers.CharField(source='user.username', read_only=True)
 
     class Meta:
         model = LinkRegistry

@@ -22,16 +22,53 @@
 {% endblock %}
 {% block script %}
 <script>
-let gridApi, columnApi;
+// --- Variables ---
+let gridApi;
+let gridColumnApi;
+let users = [];
 
+// --- Fetch Users ---
+fetch('/api/users/')
+    .then(res => res.json())
+    .then(data => { users = data; });
+
+// --- Column Definitions ---
 const columnDefs = [
-    { headerName: "Name", field: "link_name", flex: 1, editable: true },
+    { 
+        headerName: "Name", 
+        field: "link_name", 
+        flex: 1, 
+        editable: true 
+    },
     { 
         headerName: "URL", 
         field: "link_url", 
         flex: 2, 
         editable: true,
-        cellRenderer: params => params.value ? `<a href="${params.value}" target="_blank">Open</a>` : ''
+        cellStyle: { 'white-space': 'normal', 'word-break': 'break-word' } // text wrap
+    },
+    {
+        headerName: "User",
+        field: "user", // this is now the integer ID
+        flex: 1,
+        editable: true,
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: () => ({
+            values: users.map(u => u.id) // ID list for dropdown
+        }),
+        valueFormatter: params => {
+            if (!params.value) return '';
+            const u = users.find(u => u.id === params.value);
+            return u ? u.username : '';
+        }
+    },
+    {
+        headerName: "Active",
+        field: "active",
+        flex: 0.5,
+        editable: true,
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: { values: [0, 1] }
     },
     {
         headerName: "Actions",
@@ -39,39 +76,27 @@ const columnDefs = [
         flex: 0.5,
         minWidth: 100,
         cellRenderer: params => `<button class="btn btn-sm btn-danger">Delete</button>`
-    },
-    { headerName: "Created", field: "created_at", hide: true }
+    }
 ];
 
+// --- Grid Options ---
 const gridOptions = {
-    columnDefs: columnDefs,
+    columnDefs,
     rowData: [],
     pagination: true,
     paginationPageSize: 10,
-    paginationPageSizeSelector: false,
+    paginationPageSizeSelector: [10, 25, 50, 100],
     domLayout: 'autoHeight',
-    defaultColDef: {
-        sortable: true,
-        filter: true,
-        resizable: true
-    },
+    defaultColDef: { sortable: true, filter: true, resizable: true },
 
     onGridReady: params => {
         gridApi = params.api;
-        columnApi = params.columnApi;
+        gridColumnApi = params.columnApi;
 
-        // Load initial data (updated method)
+        // Load initial data
         fetch('/api/links/')
             .then(res => res.json())
             .then(data => gridApi.updateGridOptions({ rowData: data }));
-
-        // Responsive column handling (new API)
-        const handleResize = () => {
-            const isMobile = window.innerWidth < 768;
-            gridApi.setColumnsVisible(['created_at'], !isMobile); // ✅ updated
-        };
-        window.addEventListener('resize', handleResize);
-        handleResize();
     },
 
     onCellValueChanged: params => {
@@ -81,7 +106,7 @@ const gridOptions = {
 
         fetch(url, {
             method,
-            headers: { 
+            headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrftoken
             },
@@ -89,9 +114,7 @@ const gridOptions = {
         })
         .then(res => res.json())
         .then(data => {
-            if (!row.id && data.id) {
-                params.node.setData(data); // new row → update ID
-            }
+            if (!row.id && data.id) params.node.setData(data);
         })
         .catch(() => alert(`${method} failed!`));
     },
@@ -104,28 +127,28 @@ const gridOptions = {
                 return;
             }
             if (confirm("Delete this link?")) {
-                fetch(`/api/links/${row.id}/`, { 
+                fetch(`/api/links/${row.id}/`, {
                     method: 'DELETE',
-                    headers: {
-                        'X-CSRFToken': csrftoken
-                    }
+                    headers: { 'X-CSRFToken': csrftoken }
                 })
-                    .then(res => {
-                        if (res.ok) gridApi.applyTransaction({ remove: [row] });
-                        else alert("Delete failed!");
-                    });
+                .then(res => {
+                    if (res.ok) gridApi.applyTransaction({ remove: [row] });
+                    else alert("Delete failed!");
+                });
             }
         }
     }
 };
 
+// --- Initialize Grid ---
 document.addEventListener('DOMContentLoaded', () => {
     const gridDiv = document.querySelector('#linkRegistryGrid');
     agGrid.createGrid(gridDiv, gridOptions);
 
+    // Add new blank row
     document.getElementById('addRowBtn').addEventListener('click', () => {
         if (!gridApi) return;
-        gridApi.applyTransaction({ add: [{ link_name: '', link_url: '' }] });
+        gridApi.applyTransaction({ add: [{ link_name: '', link_url: '', user: null, active: 1 }] });
     });
 });
 </script>

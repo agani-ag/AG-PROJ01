@@ -64,3 +64,11 @@ def signup_view(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
+
+from django.contrib.auth.models import User
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+@api_view(['GET'])
+def user_list(request):
+    users = User.objects.all().values('id', 'username')
+    return Response(list(users))

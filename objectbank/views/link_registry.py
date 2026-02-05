@@ -6,12 +6,12 @@ from ..permissions import IsAdminOrReadOnly
 from django.shortcuts import render
 
 class LinkRegistryViewSet(ModelViewSet):
-    queryset = LinkRegistry.objects.filter(active=True)
+    queryset = LinkRegistry.objects.all()
     serializer_class = LinkRegistrySerializer
     permission_classes = [IsAdminOrReadOnly]
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        serializer.save()
 
 def link_registry_view(request):
     return render(request, 'link_registry/link_registry.html')
