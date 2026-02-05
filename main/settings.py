@@ -134,5 +134,6 @@ STATIC_URL = '/static/'
 # Tell Django where your project-level static folder is
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
-# Default primary key field type
+# Varibles
 LOGIN_URL = "/login"
+PROJ02_URL = os.getenv('PROJ02_URL')
