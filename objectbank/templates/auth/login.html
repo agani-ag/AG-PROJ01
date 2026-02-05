@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Login{% endblock %}
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<div class="container min-vh-100 d-flex align-items-center justify-content-center">
+    <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+
+        <div class="card shadow-lg border-0">
+            <div class="card-body p-4 p-md-5">
+
+                <!-- Header -->
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold" style="text-transform: uppercase;">
+                        <span style="text-decoration: underline; 
+                            text-decoration-color: #E53935; text-decoration-thickness: 2px;
+                                text-underline-offset: 3px;">bank </span>
+                        <span style="text-decoration: underline;
+                            text-decoration-color: #1E88E5; text-decoration-thickness: 2px;
+                                text-underline-offset: 3px;">object</span>
+                    </h2>
+                    <p class="text-muted mb-0">
+                        Enter your credentials to access your account
+                    </p>
+                </div>
+
+                <form method="POST" novalidate>
+                    {% csrf_token %}
+
+                    <!-- Username -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Username</label>
+                        {{ auth_form.username }}
+                        {% if auth_form.username.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ auth_form.username.errors }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Password -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Password</label>
+                        {{ auth_form.password }}
+                        {% if auth_form.password.errors %}
+                            <div class="text-danger small mt-1">
+                                {{ auth_form.password.errors }}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Forgot Password -->
+                    <div class="mb-4 text-end">
+                        <a href="/" class="text-decoration-none">
+                            Forgot Password?
+                        </a>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-sign-in-alt me-2"></i>
+                            Login
+                        </button>
+
+                        <!-- <a href="{% url 'signup' %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-user-plus me-2"></i>
+                            Create Account
+                        </a>
+
+                        <a href="/" class="btn btn-outline-secondary">
+                            <i class="fas fa-house me-2"></i>
+                            Back to Home
+                        </a> -->
+                    </div>
+                </form>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

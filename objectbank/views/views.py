@@ -4,7 +4,7 @@ from django.contrib import messages
 
 def home(request):
     messages.success(request, "Welcome to AG-PROJ01! 🎉")
-    return render(request, 'base.html')
+    return render(request, 'home.html')
 
 # objectbank/views.py
 from rest_framework.decorators import api_view, permission_classes
