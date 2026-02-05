@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Login{% endblock %}
+{% block head %}
+<style>
+    .ag-row {
+        min-height: 52px;
+    }
+    .ag-cell {
+        font-size: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <h2 class="mb-4">Link Registry</h2>
+    <!-- <div id="linkRegistryGrid" class="ag-theme-alpine" style="height: 70vh; width: 100%;"></div> -->
+    <div id="linkRegistryGrid" class="ag-theme-alpine" style="height: 500px; width: 100%;"></div>
+    <button id="addRowBtn" class="btn btn-success mt-2">Add Link</button>
+{% endblock %}
+{% block script %}
+<script>
+let gridApi, columnApi;
+
+const columnDefs = [
+    { headerName: "Name", field: "link_name", flex: 1, editable: true },
+    { 
+        headerName: "URL", 
+        field: "link_url", 
+        flex: 2, 
+        editable: true,
+        cellRenderer: params => params.value ? `<a href="${params.value}" target="_blank">Open</a>` : ''
+    },
+    {
+        headerName: "Actions",
+        field: "id",
+        flex: 0.5,
+        minWidth: 100,
+        cellRenderer: params => `<button class="btn btn-sm btn-danger">Delete</button>`
+    },
+    { headerName: "Created", field: "created_at", hide: true }
+];
+
+const gridOptions = {
+    columnDefs: columnDefs,
+    rowData: [],
+    pagination: true,
+    paginationPageSize: 10,
+    paginationPageSizeSelector: false,
+    domLayout: 'autoHeight',
+    defaultColDef: {
+        sortable: true,
+        filter: true,
+        resizable: true
+    },
+
+    onGridReady: params => {
+        gridApi = params.api;
+        columnApi = params.columnApi;
+
+        // Load initial data (updated method)
+        fetch('/api/links/')
+            .then(res => res.json())
+            .then(data => gridApi.updateGridOptions({ rowData: data }));
+
+        // Responsive column handling (new API)
+        const handleResize = () => {
+            const isMobile = window.innerWidth < 768;
+            gridApi.setColumnsVisible(['created_at'], !isMobile); // ✅ updated
+        };
+        window.addEventListener('resize', handleResize);
+        handleResize();
+    },
+
+    onCellValueChanged: params => {
+        const row = params.data;
+        const method = row.id ? 'PATCH' : 'POST';
+        const url = row.id ? `/api/links/${row.id}/` : '/api/links/';
+
+        fetch(url, {
+            method,
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify(row)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!row.id && data.id) {
+                params.node.setData(data); // new row → update ID
+            }
+        })
+        .catch(() => alert(`${method} failed!`));
+    },
+
+    onCellClicked: params => {
+        if (params.colDef.headerName === "Actions") {
+            const row = params.data;
+            if (!row.id) {
+                gridApi.applyTransaction({ remove: [row] });
+                return;
+            }
+            if (confirm("Delete this link?")) {
+                fetch(`/api/links/${row.id}/`, { 
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                })
+                    .then(res => {
+                        if (res.ok) gridApi.applyTransaction({ remove: [row] });
+                        else alert("Delete failed!");
+                    });
+            }
+        }
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const gridDiv = document.querySelector('#linkRegistryGrid');
+    agGrid.createGrid(gridDiv, gridOptions);
+
+    document.getElementById('addRowBtn').addEventListener('click', () => {
+        if (!gridApi) return;
+        gridApi.applyTransaction({ add: [{ link_name: '', link_url: '' }] });
+    });
+});
+</script>
+{% endblock %}

@@ -35,3 +35,22 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.name or self.user.username
+    
+# =============== Link Registry ===============
+class LinkRegistry(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    link_name = models.CharField(max_length=100)
+    link_url = models.URLField(max_length=300)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    active = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if self.link_name:
+            self.link_name = self.link_name.strip().upper()
+        if self.link_url:
+            self.link_url = self.link_url.strip()
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.link_name} - {self.user.username}"
