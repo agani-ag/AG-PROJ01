@@ -1,5 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse
+from django.contrib import messages
 
 def home(request):
-    return HttpResponse("AG-PROJ01 is running successfully!")
+    messages.success(request, "Welcome to AG-PROJ01! 🎉")
+    return render(request, 'base.html')
