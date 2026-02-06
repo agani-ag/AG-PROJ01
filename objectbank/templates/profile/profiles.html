@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}All Profiles{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-4">
+        <h2 class="fw-bold">All Profiles</h2>
+        <p class="text-muted">Browse and manage user profiles</p>
+    </div>
+
+    <!-- Add New Profile Button -->
+    <div class="mb-4 text-end">
+        <a href="{% url 'signup' %}?admin=true" class="btn btn-success btn-lg">
+            <i class="fas fa-plus-circle me-2"></i> Add New Profile
+        </a>
+    </div>
+
+    <!-- Profiles Grid -->
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4">
+        {% for profile in user_profiles %}
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title">{{ profile.name }}</h5>
+                    <p class="card-text">
+                        <strong>Email:</strong> {{ profile.email }} <br>
+                        <strong>Phone:</strong> {{ profile.phone }} <br>
+                        <strong>DOB:</strong> {{ profile.dob|date:"d M, Y" }} <br>
+                        <strong>Location:</strong> {{ profile.address }}
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <a href="{% url 'profile-admin-edit' profile.id %}" class="btn btn-primary btn-sm">Edit</a>
+                        {% if user.is_superuser %}
+                        <form action="{% url 'profile-delete' profile.id %}" method="POST" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

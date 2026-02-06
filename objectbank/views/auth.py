@@ -32,7 +32,8 @@ def login_view(request):
     return render(request, 'auth/login.html', context)
 
 def signup_view(request):
-    if request.user.is_authenticated:
+    admin = request.GET.get("admin", None)
+    if request.user.is_authenticated and not admin:
         return redirect("home")
     context = {}
     signup_form = SignupForm()
@@ -55,6 +56,9 @@ def signup_view(request):
             userprofile = profile_form.save(commit=False)
             userprofile.user = user
             userprofile.save()
+            if request.user.is_authenticated:
+                messages.success(request, "User created successfully!")
+                return redirect("profiles")
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             return redirect("home")
         else:

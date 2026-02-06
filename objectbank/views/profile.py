@@ -15,6 +15,12 @@ from ..models import (
 )
 
 # =============== AUTH VIEWS ===============
+def profiles(request):
+    context = {}
+    user_profiles = UserProfile.objects.all()
+    context["user_profiles"] = user_profiles
+    return render(request, 'profile/profiles.html', context)
+
 def profile_edit(request):
     context = {}
     user_profile = get_object_or_404(UserProfile, user=request.user)
@@ -29,11 +35,11 @@ def profile_edit(request):
     context["profile_form"] = profile_form
     return render(request, 'profile/profile_edit.html', context)
 
-def admin_profile_edit(request):
+def admin_profile_edit(request, user_id):
     context = {}
-    user_profile = get_object_or_404(UserProfile, user=request.user)
+    user_profile = get_object_or_404(UserProfile, user__id=user_id)
     profile_form = UserProfileEditForm(instance=user_profile)
-    auth_user = User.objects.get(id=request.user.id)
+    auth_user = User.objects.get(id=user_id)
     if request.method == "POST":
         profile_form = UserProfileEditForm(request.POST, instance=user_profile)
         if profile_form.is_valid():
@@ -47,3 +53,10 @@ def admin_profile_edit(request):
     context["profile_form"] = profile_form
     context["auth_user"] = auth_user
     return render(request, 'profile/profile_edit.html', context)
+
+def profile_delete(request, user_id):
+    if request.method == "POST":
+        user = get_object_or_404(User, id=user_id)
+        user.delete()
+        messages.success(request, "User deleted successfully!")
+    return redirect('profiles')
