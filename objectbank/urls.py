@@ -1,6 +1,8 @@
 from django.urls import path
 from .views import (
-    auth, views, link_registry
+    auth, views, link_registry,
+    profile
+    
 )
 
 urlpatterns = [
@@ -11,6 +13,10 @@ urlpatterns = [
     path('login', auth.login_view, name='login'),
     path('signup', auth.signup_view, name='signup'),
     path('logout', auth.logout_view, name='logout'),
+
+    # Profile URL
+    path('profile/edit/', profile.profile_edit, name='profile-edit'),
+    path('profile/admin/edit/', profile.admin_profile_edit, name='profile-admin-edit'),
 
     # Link Registry URL
     path('link-registry/', link_registry.link_registry_view, name='link-registry'),

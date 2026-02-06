@@ -43,3 +43,17 @@ class UserProfileForm(ModelForm):
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
+
+class UserProfileEditForm(ModelForm):
+    class Meta:
+        model = UserProfile
+        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }

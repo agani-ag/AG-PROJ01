@@ -1,22 +1,42 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
-        <a class="navbar-brand" href="{% url 'logout' %}">
+        <a class="navbar-brand" 
             {% if user.is_authenticated %}
-            {{ user.username|capfirst }}
+                href="{% url 'profile-edit' %}">{{ user.username|capfirst }}
             {% else %}
-            Object Bank
+                href="#">Object Bank
             {% endif %}
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
-                aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                data-bs-target="#navbarContent"
+                aria-controls="navbarContent" aria-expanded="false"
+                aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
+
         <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link" href="{% url 'home' %}">Home</a></li>
-                <li class="nav-item"><a class="nav-link" href="#">Customers</a></li>
-                <li class="nav-item"><a class="nav-link" href="{% url 'link-registry' %}">Link Registry</a></li>
-                <li class="nav-item"><a class="nav-link" href="#">Forms</a></li>
+
+                <!-- Home -->
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'login' %}">Login</a>
+                </li>
+                
+                {% if user.is_superuser %}
+                <!-- Customers Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="adminDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Admin
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                        <li><a class="dropdown-item" href="#">Users</a></li>
+                        <li><a class="dropdown-item" href="{% url 'link-registry' %}">Link Registry</a></li>
+                    </ul>
+                </li>
+                {% endif %}
+
             </ul>
         </div>
     </div>
