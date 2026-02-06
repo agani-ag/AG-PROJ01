@@ -137,3 +137,7 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # Varibles
 LOGIN_URL = "/login"
 PROJ02_URL = os.getenv('PROJ02_URL')
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_GROUPS = [
+    int(x) for x in os.getenv("TELEGRAM_GROUPS", "").split(",") if x
+]
