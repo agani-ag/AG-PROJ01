@@ -53,10 +53,10 @@ def calculate_remaining_opportunity(project):
 
     remaining = 0
     for stage in stages:
-        stage_remaining = stage.estimated_stage_value - stage.captured_stage_revenue
+        stage_remaining = float(stage.estimated_stage_value) - float(stage.captured_stage_revenue)
         remaining += max(stage_remaining, 0)  # Don't count negative
 
-    return remaining
+    return round(remaining, 2)
 
 
 def calculate_remaining_opportunity_with_decay(project):
@@ -69,7 +69,7 @@ def calculate_remaining_opportunity_with_decay(project):
     
     remaining = 0
     for ps in stages:
-        stage_remaining = ps.estimated_stage_value - ps.captured_stage_revenue
+        stage_remaining = float(ps.estimated_stage_value) - float(ps.captured_stage_revenue)
         
         # Apply decay factor based on stage position
         if ps.stage.sequence_order == current_stage_seq:
@@ -95,7 +95,7 @@ def calculate_capture_ratio(project):
     Measure how much of estimated value has been captured
     Returns: Percentage (0-100+)
     """
-    total_estimated = project.estimated_total_value
+    total_estimated = float(project.estimated_total_value)
     
     if total_estimated == 0:
         return 0
@@ -104,7 +104,7 @@ def calculate_capture_ratio(project):
         project=project
     ).aggregate(total=Sum('revenue_amount'))['total'] or 0
     
-    return round((total_captured / total_estimated) * 100, 2)
+    return round((float(total_captured) / total_estimated) * 100, 2)
 
 
 def calculate_stage_capture_ratio(project_stage):
@@ -113,7 +113,7 @@ def calculate_stage_capture_ratio(project_stage):
         return 0
     
     return round(
-        (project_stage.captured_stage_revenue / project_stage.estimated_stage_value) * 100,
+        (float(project_stage.captured_stage_revenue) / float(project_stage.estimated_stage_value)) * 100,
         2
     )
 
@@ -149,13 +149,13 @@ def calculate_stage_priority_score(project, stage):
         return 0
     
     # Component 1: Revenue Potential (40%)
-    revenue_potential_score = min(ps.estimated_stage_value / 10000, 100)
+    revenue_potential_score = min(float(ps.estimated_stage_value) / 10000, 100)
     
     # Component 2: Margin Percentage (30%)
     margin_score = float(ps.expected_margin_percentage) if ps.expected_margin_percentage else 0
     
     # Component 3: Master Margin Priority (20%)
-    margin_priority_score = (stage.default_margin_priority / 10) * 100
+    margin_priority_score = (float(stage.default_margin_priority) / 10) * 100
     
     # Component 4: Capture Status (10%) - Higher score if uncaptured
     capture_ratio = calculate_stage_capture_ratio(ps)

@@ -64,7 +64,6 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = [
-            "project_code",
             "name",
             "client_name",
             "phone",
@@ -79,7 +78,6 @@ class ProjectForm(forms.ModelForm):
             "expected_completion_date"
         ]
         widgets = {
-            'project_code': forms.TextInput(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'client_name': forms.TextInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
@@ -99,7 +97,6 @@ class WorkerForm(forms.ModelForm):
     class Meta:
         model = Worker
         fields = [
-            "worker_code",
             "name",
             "role",
             "phone",
@@ -107,22 +104,11 @@ class WorkerForm(forms.ModelForm):
             "joined_date"
         ]
         widgets = {
-            'worker_code': forms.TextInput(attrs={'class': 'form-control'}),
-            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Enter worker name'}),
             'role': forms.Select(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
-            'primary_pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '10-digit mobile number'}),
+            'primary_pincode': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '6-digit pincode'}),
             'joined_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-        }
-        widgets = {
-            'project': forms.Select(attrs={'class': 'form-control'}),
-            'stage': forms.Select(attrs={'class': 'form-control'}),
-            'worker': forms.Select(attrs={'class': 'form-control'}),
-            'invoice_number': forms.TextInput(attrs={'class': 'form-control'}),
-            'revenue_amount': forms.NumberInput(attrs={'class': 'form-control'}),
-            'cost_amount': forms.NumberInput(attrs={'class': 'form-control'}),
-            'margin_amount': forms.NumberInput(attrs={'class': 'form-control'}),
-            'transaction_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
 
@@ -139,15 +125,18 @@ class RevenueForm(forms.ModelForm):
             "margin_amount",
             "transaction_date"
         ]
-
-
         widgets = {
             'project': forms.Select(attrs={'class': 'form-control'}),
-            'role': forms.Select(attrs={'class': 'form-control'}),
-            'required_from_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-            'urgency': forms.Select(attrs={'class': 'form-control'}),
-            'status': forms.Select(attrs={'class': 'form-control'}),
+            'stage': forms.Select(attrs={'class': 'form-control'}),
+            'worker': forms.Select(attrs={'class': 'form-control'}),
+            'invoice_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'revenue_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'cost_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'margin_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'transaction_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
+
+
 class RequirementForm(forms.ModelForm):
     class Meta:
         model = ProjectWorkerRequirement
@@ -158,3 +147,10 @@ class RequirementForm(forms.ModelForm):
             "urgency",
             "status"
         ]
+        widgets = {
+            'project': forms.Select(attrs={'class': 'form-control'}),
+            'role': forms.Select(attrs={'class': 'form-control'}),
+            'required_from_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'urgency': forms.Select(attrs={'class': 'form-control'}),
+            'status': forms.Select(attrs={'class': 'form-control'}),
+        }

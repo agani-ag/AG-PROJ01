@@ -34,7 +34,7 @@ def calculate_influence_score(worker):
     
     # Component 2: Revenue Generation Score (30%)
     total_revenue = calculate_worker_revenue(worker)
-    revenue_generation_score = min(total_revenue / 10000, 100)
+    revenue_generation_score = min(float(total_revenue) / 10000, 100)
     
     # Component 3: Network Expansion Score (20%)
     network_size = WorkerProject.objects.filter(
@@ -256,7 +256,7 @@ def calculate_collaboration_strength(worker_a, worker_b):
     # Strength = frequency + success
     collaboration_strength = (
         min(projects_together * 15, 60) +
-        min(joint_revenue / 10000, 40)
+        min(float(joint_revenue) / 10000, 40)
     )
     
     return round(min(collaboration_strength, 100), 2)

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Add Worker{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-12 col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Add New Worker
+                </div>
+                <div class="card-body">
+
+                    {% if form.errors %}
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0 mt-2">
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li>{{ field.label }}: {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        {% csrf_token %}
+
+                        <div class="row g-3">
+
+                            <div class="col-12">
+                                <label class="form-label">Name <span class="text-danger">*</span></label>
+                                {{ form.name }}
+                                {% if form.name.errors %}
+                                    <div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Role <span class="text-danger">*</span></label>
+                                {{ form.role }}
+                                {% if form.role.errors %}
+                                    <div class="text-danger small mt-1">{{ form.role.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Phone <span class="text-danger">*</span></label>
+                                {{ form.phone }}
+                                {% if form.phone.errors %}
+                                    <div class="text-danger small mt-1">{{ form.phone.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Primary Pincode <span class="text-danger">*</span></label>
+                                {{ form.primary_pincode }}
+                                {% if form.primary_pincode.errors %}
+                                    <div class="text-danger small mt-1">{{ form.primary_pincode.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Joined Date <span class="text-danger">*</span></label>
+                                {{ form.joined_date }}
+                                {% if form.joined_date.errors %}
+                                    <div class="text-danger small mt-1">{{ form.joined_date.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">Select the date when this worker joined</div>
+                            </div>
+
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <a href="{% url 'worker_list' %}" class="btn btn-secondary me-2">
+                                Cancel
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                Save Worker
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -63,7 +63,7 @@ def get_revenue_summary(days=30):
         total=Sum('margin_amount')
     )['total'] or 0
     
-    avg_margin_percent = (total_margin / total_revenue * 100) if total_revenue > 0 else 0
+    avg_margin_percent = (float(total_margin) / float(total_revenue) * 100) if total_revenue > 0 else 0
     
     return {
         'total_revenue': total_revenue,
@@ -189,14 +189,14 @@ def perform_pareto_analysis():
     worker_revenue.sort(key=lambda x: x['revenue'], reverse=True)
     
     # Calculate cumulative revenue
-    total_revenue = sum(wr['revenue'] for wr in worker_revenue)
+    total_revenue = sum(float(wr['revenue']) for wr in worker_revenue)
     target_revenue = total_revenue * 0.80
     
     cumulative = 0
     top_workers = []
     
     for wr in worker_revenue:
-        cumulative += wr['revenue']
+        cumulative += float(wr['revenue'])
         top_workers.append(wr)
         
         if cumulative >= target_revenue:

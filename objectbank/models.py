@@ -134,7 +134,7 @@ class CreditTransactionType(models.Model):
 # =====================================================
 
 class Project(models.Model):
-    project_code = models.CharField(max_length=20, unique=True)
+    project_code = models.CharField(max_length=20, unique=True, blank=True)
 
     name = models.CharField(max_length=150)
     client_name = models.CharField(max_length=100)
@@ -178,6 +178,28 @@ class Project(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        if not self.project_code:
+            # Auto-generate project code: PROJ-YYYY-####
+            from datetime import date
+            year = date.today().year
+            
+            # Get last project code for this year
+            last_project = Project.objects.filter(
+                project_code__startswith=f"PROJ-{year}-"
+            ).order_by('project_code').last()
+            
+            if last_project:
+                # Extract sequence number and increment
+                last_seq = int(last_project.project_code.split('-')[-1])
+                new_seq = last_seq + 1
+            else:
+                new_seq = 1
+            
+            self.project_code = f"PROJ-{year}-{new_seq:04d}"
+        
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.project_code} - {self.name}"
 
@@ -216,7 +238,7 @@ class ProjectStage(models.Model):
 # =====================================================
 
 class Worker(models.Model):
-    worker_code = models.CharField(max_length=20, unique=True)
+    worker_code = models.CharField(max_length=20, unique=True, blank=True)
 
     name = models.CharField(max_length=100)
 
@@ -234,6 +256,28 @@ class Worker(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.worker_code:
+            # Auto-generate worker code: WKR-YYYY-####
+            from datetime import date
+            year = date.today().year
+            
+            # Get last worker code for this year
+            last_worker = Worker.objects.filter(
+                worker_code__startswith=f"WKR-{year}-"
+            ).order_by('worker_code').last()
+            
+            if last_worker:
+                # Extract sequence number and increment
+                last_seq = int(last_worker.worker_code.split('-')[-1])
+                new_seq = last_seq + 1
+            else:
+                new_seq = 1
+            
+            self.worker_code = f"WKR-{year}-{new_seq:04d}"
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
