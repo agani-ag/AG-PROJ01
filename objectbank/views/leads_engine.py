@@ -694,3 +694,56 @@ def project_timeline_view(request, project_pk):
     }
     
     return render(request, "leads_engine/project_timeline.html", context)
+
+
+# Calendar Views
+from django.http import JsonResponse
+from ..services.calendar_service import get_calendar_events, get_project_summary_for_calendar
+
+
+def calendar_view(request):
+    """
+    Interactive calendar view showing all project activities, milestones, and events.
+    
+    Business Features:
+    - All projects or filter by specific project
+    - Multiple event types (stage changes, revenue, notes, deadlines)
+    - Color-coded by event type
+    - Click event for details
+    - Month/Week/Day views
+    """
+    projects = Project.objects.filter(is_active=True).order_by('-created_at')
+    summary = get_project_summary_for_calendar()
+    
+    context = {
+        'projects': projects,
+        'summary': summary,
+    }
+    
+    return render(request, "leads_engine/calendar.html", context)
+
+
+def calendar_events_api(request):
+    """
+    API endpoint returning calendar events as JSON for FullCalendar.
+    
+    Query Parameters:
+    - start: Start date (ISO format)
+    - end: End date (ISO format)
+    - project_id: Filter by specific project (optional)
+    """
+    start_date = request.GET.get('start')
+    end_date = request.GET.get('end')
+    project_id = request.GET.get('project_id')
+    
+    # Convert to datetime if provided
+    if start_date:
+        from datetime import datetime
+        start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    if end_date:
+        from datetime import datetime
+        end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
+    events = get_calendar_events(start_date, end_date, project_id)
+    
+    return JsonResponse(events, safe=False)

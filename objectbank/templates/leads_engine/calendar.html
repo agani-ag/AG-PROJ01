@@ -1,0 +1,358 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Project Calendar - Timeline{% endblock %}
+
+{% block head %}
+<style>
+    .fc-event {
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .fc-event:hover {
+        opacity: 0.85;
+    }
+    .stats-card {
+        border-left: 4px solid;
+        transition: transform 0.2s;
+    }
+    .stats-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .event-detail-popover {
+        max-width: 400px;
+    }
+    #calendar {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .legend-item {
+        display: inline-block;
+        margin-right: 15px;
+        margin-bottom: 5px;
+    }
+    .legend-color {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 3px;
+        margin-right: 5px;
+        vertical-align: middle;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+    
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2>
+                <i class="fas fa-calendar-alt text-primary"></i> Project Calendar
+            </h2>
+            <p class="text-muted mb-0">
+                <i class="fas fa-info-circle"></i> 
+                Visual timeline of all project activities, milestones, revenue, and deadlines
+            </p>
+        </div>
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="card stats-card" style="border-left-color: #0d6efd;">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Total Projects</h6>
+                    <h3 class="mb-0">{{ summary.total_projects }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stats-card" style="border-left-color: #198754;">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Active Projects</h6>
+                    <h3 class="mb-0 text-success">{{ summary.active_projects }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card" style="border-left-color: #0dcaf0;">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Upcoming Deadlines (30d)</h6>
+                    <h3 class="mb-0 text-info">{{ summary.upcoming_deadlines }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card stats-card" style="border-left-color: #dc3545;">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Overdue</h6>
+                    <h3 class="mb-0 text-danger">{{ summary.overdue_projects }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stats-card" style="border-left-color: #6610f2;">
+                <div class="card-body">
+                    <h6 class="text-muted mb-1">Activities (7 days)</h6>
+                    <h3 class="mb-0 text-primary">{{ summary.recent_activities }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-filter"></i> Filter by Project
+                    </label>
+                    <select id="projectFilter" class="form-select">
+                        <option value="">All Projects</option>
+                        {% for project in projects %}
+                        <option value="{{ project.id }}" {% if request.GET.project_id == project.id|stringformat:"s" %}selected{% endif %}>
+                            {{ project.project_code }} - {{ project.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-palette"></i> Event Legend
+                    </label>
+                    <div>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #0d6efd;"></span>
+                            <small>Stage Changes</small>
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #198754;"></span>
+                            <small>Revenue</small>
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #ffc107;"></span>
+                            <small>Notes</small>
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #6f42c1;"></span>
+                            <small>Project Created</small>
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #0dcaf0;"></span>
+                            <small>Upcoming Deadline</small>
+                        </span>
+                        <span class="legend-item">
+                            <span class="legend-color" style="background: #dc3545;"></span>
+                            <small>Overdue</small>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="card">
+        <div class="card-body">
+            <div id="calendar"></div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Event Detail Modal -->
+<div class="modal fade" id="eventDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="eventModalTitle">
+                    <i id="eventIcon" class="fas fa-circle"></i> 
+                    <span id="eventTitleText">Event Details</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="eventModalBody">
+                <!-- Dynamic content -->
+            </div>
+            <div class="modal-footer">
+                <a id="viewProjectBtn" href="#" class="btn btn-primary">
+                    <i class="fas fa-eye"></i> View Project
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<!-- FullCalendar JS -->
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Calendar page loaded');
+    
+    var calendarEl = document.getElementById('calendar');
+    if (!calendarEl) {
+        console.error('Calendar element not found!');
+        return;
+    }
+    
+    var projectFilter = document.getElementById('projectFilter');
+    var eventModal = new bootstrap.Modal(document.getElementById('eventDetailModal'));
+    
+    // Check if project_id is in URL parameters
+    var urlParams = new URLSearchParams(window.location.search);
+    var projectIdParam = urlParams.get('project_id');
+    if (projectIdParam) {
+        projectFilter.value = projectIdParam;
+    }
+    
+    console.log('Initializing FullCalendar...');
+    
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth'
+        },
+        buttonText: {
+            today: 'Today',
+            month: 'Month',
+            week: 'Week',
+            day: 'Day',
+            list: 'List'
+        },
+        height: 'auto',
+        navLinks: true,
+        editable: false,
+        dayMaxEvents: true,
+        events: function(info, successCallback, failureCallback) {
+            var url = '{% url "calendar_events_api" %}?start=' + info.startStr + '&end=' + info.endStr;
+            
+            // Add project filter if selected
+            var selectedProject = projectFilter.value;
+            if (selectedProject) {
+                url += '&project_id=' + selectedProject;
+            }
+            
+            console.log('Fetching events from:', url);
+            
+            fetch(url)
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received events:', data.length);
+                    successCallback(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching events:', error);
+                    failureCallback(error);
+                });
+        },
+        eventClick: function(info) {
+            showEventDetails(info.event);
+        },
+        eventDidMount: function(info) {
+            // Add icon to event
+            var icon = info.event.extendedProps.icon || 'fa-circle';
+            var iconEl = document.createElement('i');
+            iconEl.className = 'fas ' + icon + ' me-1';
+            info.el.querySelector('.fc-event-title').prepend(iconEl);
+        }
+    });
+    
+    console.log('Rendering calendar...');
+    calendar.render();
+    console.log('Calendar rendered successfully');
+    
+    // Project filter change handler
+    projectFilter.addEventListener('change', function() {
+        console.log('Project filter changed to:', projectFilter.value);
+        calendar.refetchEvents();
+    });
+    
+    // Show event details in modal
+    function showEventDetails(event) {
+        var props = event.extendedProps;
+        var iconClass = 'fas ' + (props.icon || 'fa-circle');
+        
+        document.getElementById('eventIcon').className = iconClass;
+        document.getElementById('eventTitleText').textContent = event.title;
+        
+        var bodyHtml = '<div class="event-details">';
+        
+        // Common fields
+        bodyHtml += '<p><strong>Project:</strong> ' + props.project_code + ' - ' + props.project_name + '</p>';
+        bodyHtml += '<p><strong>Date:</strong> ' + new Date(event.start).toLocaleDateString('en-IN', {
+            year: 'numeric', month: 'long', day: 'numeric'
+        }) + '</p>';
+        
+        // Type-specific fields
+        if (props.type === 'activity') {
+            bodyHtml += '<p><strong>Activity Type:</strong> ' + event.title.split(':')[1] + '</p>';
+            bodyHtml += '<p><strong>Description:</strong> ' + props.description + '</p>';
+            bodyHtml += '<p><strong>Performed By:</strong> ' + props.performed_by + '</p>';
+        } 
+        else if (props.type === 'revenue') {
+            bodyHtml += '<p><strong>Amount:</strong> ₹' + props.amount.toLocaleString('en-IN') + '</p>';
+            bodyHtml += '<p><strong>Stage:</strong> ' + props.stage + '</p>';
+            bodyHtml += '<p><strong>Invoice:</strong> ' + props.invoice_number + '</p>';
+            if (props.worker) {
+                bodyHtml += '<p><strong>Attributed To:</strong> ' + props.worker + '</p>';
+            }
+        }
+        else if (props.type === 'note') {
+            if (props.is_important) {
+                bodyHtml += '<p><span class="badge bg-danger">⭐ Important</span></p>';
+            }
+            bodyHtml += '<p><strong>Note:</strong></p>';
+            bodyHtml += '<p class="bg-light p-2 rounded">' + props.note_content + '</p>';
+            bodyHtml += '<p><strong>Created By:</strong> ' + props.created_by + '</p>';
+        }
+        else if (props.type === 'project_created') {
+            bodyHtml += '<p><strong>Client:</strong> ' + props.client_name + '</p>';
+            bodyHtml += '<p><strong>Estimated Value:</strong> ₹' + props.estimated_value.toLocaleString('en-IN') + '</p>';
+            bodyHtml += '<p><strong>Current Stage:</strong> ' + props.current_stage + '</p>';
+        }
+        else if (props.type === 'deadline') {
+            bodyHtml += '<p><strong>Current Stage:</strong> ' + props.current_stage + '</p>';
+            if (props.is_overdue) {
+                bodyHtml += '<p class="text-danger"><i class="fas fa-exclamation-triangle"></i> <strong>Status:</strong> OVERDUE</p>';
+            } else {
+                bodyHtml += '<p class="text-info"><i class="fas fa-clock"></i> <strong>Status:</strong> Upcoming</p>';
+            }
+        }
+        
+        bodyHtml += '</div>';
+        
+        document.getElementById('eventModalBody').innerHTML = bodyHtml;
+        
+        // Set project link - use project_id from extendedProps
+        if (props.project_id) {
+            var projectUrl = '{% url "project_detail" pk=999999 %}'.replace('999999', props.project_id);
+            document.getElementById('viewProjectBtn').href = projectUrl;
+            document.getElementById('viewProjectBtn').style.display = 'inline-block';
+        } else {
+            document.getElementById('viewProjectBtn').style.display = 'none';
+        }
+        
+        eventModal.show();
+    }
+});
+</script>
+{% endblock %}

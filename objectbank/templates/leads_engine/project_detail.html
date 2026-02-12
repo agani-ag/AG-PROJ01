@@ -48,6 +48,9 @@
                         <a href="{% url 'project_timeline' project.pk %}" class="btn btn-sm btn-outline-dark">
                             <i class="fa fa-timeline"></i> View Timeline
                         </a>
+                        <a href="{% url 'calendar' %}?project_id={{ project.pk }}" class="btn btn-sm btn-outline-primary">
+                            <i class="fa fa-calendar-alt"></i> Project Calendar
+                        </a>
                     </div>
                     
                     <!-- Project Info -->

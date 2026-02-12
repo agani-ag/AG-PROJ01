@@ -64,4 +64,8 @@ urlpatterns = [
     # Assignment Intelligence URLs
     path("assignments/overview/", leads_engine.assignments_overview_view, name="assignments_overview"),
     path("assignments/intelligence/<int:requirement_id>/", leads_engine.assignment_intelligence_view, name="assignment_intelligence"),
+    
+    # Calendar URLs
+    path("calendar/", leads_engine.calendar_view, name="calendar"),
+    path("api/calendar/events/", leads_engine.calendar_events_api, name="calendar_events_api"),
 ]
