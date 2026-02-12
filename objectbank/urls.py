@@ -13,6 +13,8 @@ urlpatterns = [
     path('login', auth.login_view, name='login'),
     path('signup', auth.signup_view, name='signup'),
     path('logout', auth.logout_view, name='logout'),
+    # API endpoints for auth
+    path('api/login/', auth.login_api, name='api_login'),
 
     # Profile URL
     path('profiles', profile.profiles, name='profiles'),

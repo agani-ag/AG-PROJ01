@@ -7,7 +7,7 @@ from django.db import models
 from ..services.analytics_service import get_dashboard_summary, revenue_per_pincode
 from ..services.project_service import get_high_value_opportunities
 from ..services.credit_service import generate_credit_alerts
-from ..models import Project, ProjectActivity, Worker
+from ..models import Project, ProjectActivity, Worker, WorkerProject
 
 
 def dashboard_view(request):
@@ -35,14 +35,21 @@ def project_list_view(request):
     return render(request, "leads_engine/project_list.html", {"projects": projects})
 
 # Project Create
-from ..forms import ProjectForm, RequirementForm, RevenueForm, WorkerForm
+from ..forms import ProjectForm, RequirementForm, RevenueForm, WorkerForm, ProjectWorkerInlineForm
 from ..services.project_service import create_project
+from django.forms import formset_factory
 
 
 def project_create_view(request):
+    # Create formset for inline workers (max 5 workers during creation)
+    WorkerFormSet = formset_factory(ProjectWorkerInlineForm, extra=3, max_num=10)
+    
     if request.method == "POST":
         form = ProjectForm(request.POST)
-        if form.is_valid():
+        worker_formset = WorkerFormSet(request.POST, prefix='workers')
+        
+        if form.is_valid() and worker_formset.is_valid():
+            # Create the project
             project = create_project(form.cleaned_data)
             
             # Log project creation
@@ -53,12 +60,55 @@ def project_create_view(request):
                 performed_by=request.user
             )
             
-            messages.success(request, f"✓ Project '{project.name}' created successfully with code {project.project_code}!")
+            # Process workers if any were added
+            workers_added = 0
+            for worker_form in worker_formset:
+                if worker_form.cleaned_data.get('worker'):
+                    worker = worker_form.cleaned_data['worker']
+                    role = worker_form.cleaned_data['role']
+                    referred_by = worker_form.cleaned_data.get('referred_by_worker')
+                    
+                    # Check if worker already assigned to avoid duplicates
+                    if not WorkerProject.objects.filter(project=project, worker=worker).exists():
+                        WorkerProject.objects.create(
+                            project=project,
+                            worker=worker,
+                            role=role,
+                            referred_by_worker=referred_by
+                        )
+                        
+                        # Log worker assignment
+                        ProjectActivity.objects.create(
+                            project=project,
+                            activity_type='WORKER_ASSIGNED',
+                            related_worker=worker,
+                            performed_by=request.user,
+                            description=f"{worker.name} assigned as {role.name}"
+                        )
+                        
+                        workers_added += 1
+            
+            # Success message
+            if workers_added > 0:
+                messages.success(
+                    request, 
+                    f"✓ Project '{project.name}' created with {workers_added} worker(s) assigned!"
+                )
+            else:
+                messages.success(
+                    request, 
+                    f"✓ Project '{project.name}' created successfully! You can assign workers from the project detail page."
+                )
+            
             return redirect("project_detail", pk=project.pk)
     else:
         form = ProjectForm()
+        worker_formset = WorkerFormSet(prefix='workers')
 
-    return render(request, "leads_engine/project_create.html", {"form": form})
+    return render(request, "leads_engine/project_create.html", {
+        "form": form,
+        "worker_formset": worker_formset,
+    })
 
 # Project Detail
 from ..services.project_service import (

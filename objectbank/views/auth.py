@@ -1,10 +1,10 @@
 # Django imports
 from django.contrib import messages
-from django.contrib.auth import login, logout
 from django.shortcuts import render, redirect
 from django.contrib.auth.models import User
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.contrib.auth import login, logout, authenticate
 
 # Imports
 from ..forms import (
@@ -77,3 +77,17 @@ def logout_view(request):
 def user_list(request):
     users = User.objects.filter(is_active=True).values('id', 'username')
     return Response(list(users))
+
+# =============== AUTH VIEWS ===============
+@api_view(['GET'])
+def login_api(request):
+    username = request.GET.get("username", None)
+    password = request.GET.get("password", None)
+    if not username or not password:
+        return Response({"error": "Username and password are required"}, status=400)
+    user = authenticate(request, username=username, password=password)
+    if user is not None:
+        login(request, user)
+        return redirect("home")
+    else:
+        return Response({"error": "Invalid username or password"}, status=400)

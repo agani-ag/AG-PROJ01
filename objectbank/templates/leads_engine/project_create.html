@@ -6,104 +6,372 @@
 <div class="container-fluid">
 
     <div class="row">
-        <div class="col-12 col-lg-8 offset-lg-2">
-            <div class="card shadow-sm">
-                <div class="card-header fw-bold">
-                    Create New Project
-                </div>
+        <div class="col-12 col-lg-10 offset-lg-1">
+            
+            <!-- Header -->
+            <div class="card shadow-sm mb-3">
                 <div class="card-body">
+                    <h4 class="mb-1"><i class="fas fa-plus-circle text-success me-2"></i>Create New Project / Lead</h4>
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <strong>Two Ways to Create:</strong> (A) Project only → Assign workers later | (B) Project + Workers together
+                    </p>
+                </div>
+            </div>
 
-                    {% if form.errors %}
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        <strong>Please correct the following errors:</strong>
-                        <ul class="mb-0 mt-2">
-                            {% for field in form %}
-                                {% for error in field.errors %}
-                                    <li>{{ field.label }}: {{ error }}</li>
-                                {% endfor %}
-                            {% endfor %}
-                            {% for error in form.non_field_errors %}
-                                <li>{{ error }}</li>
-                            {% endfor %}
-                        </ul>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <form method="POST" id="projectCreateForm">
+                {% csrf_token %}
+
+                <!-- Project Details Card -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-primary text-white fw-bold">
+                        <i class="fas fa-project-diagram me-2"></i>Project Details
                     </div>
-                    {% endif %}
+                    <div class="card-body">
 
-                    <form method="POST">
-                        {% csrf_token %}
+                        {% if form.errors %}
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <strong>Please correct the following errors:</strong>
+                            <ul class="mb-0 mt-2">
+                                {% for field in form %}
+                                    {% for error in field.errors %}
+                                        <li>{{ field.label }}: {{ error }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                                {% for error in form.non_field_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                        {% endif %}
 
                         <div class="row g-3">
 
                             <div class="col-12">
-                                <label class="form-label">Project Name</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-building text-primary me-1"></i>Project Name *
+                                </label>
                                 {{ form.name }}
+                                <small class="form-text text-muted">E.g., "Sunrise Villa Construction"</small>
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label class="form-label">Client Name</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-user text-info me-1"></i>Client Name *
+                                </label>
                                 {{ form.client_name }}
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label class="form-label">Phone</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-phone text-success me-1"></i>Phone *
+                                </label>
                                 {{ form.phone }}
                             </div>
 
                             <div class="col-12">
-                                <label class="form-label">Address</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-map-marker-alt text-danger me-1"></i>Address
+                                </label>
                                 {{ form.full_address }}
                             </div>
 
                             <div class="col-12 col-md-4">
-                                <label class="form-label">Pincode</label>
+                                <label class="form-label fw-bold">Pincode</label>
                                 {{ form.pincode }}
                             </div>
 
                             <div class="col-12 col-md-4">
-                                <label class="form-label">City</label>
+                                <label class="form-label fw-bold">City</label>
                                 {{ form.city }}
                             </div>
 
                             <div class="col-12 col-md-4">
-                                <label class="form-label">Estimated Value</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-rupee-sign text-warning me-1"></i>Estimated Value *
+                                </label>
                                 {{ form.estimated_total_value }}
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label class="form-label">Current Stage</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-hard-hat text-secondary me-1"></i>Current Stage *
+                                </label>
                                 {{ form.current_stage }}
+                                <small class="form-text text-muted">Which construction stage is this project at?</small>
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label class="form-label">Lead Status <span class="text-danger">*</span></label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-flag text-primary me-1"></i>Lead Status *
+                                </label>
                                 {{ form.lead_status }}
+                                <small class="form-text text-muted">Current status of this lead</small>
                             </div>
 
                             <div class="col-12 col-md-6">
-                                <label class="form-label">Expected Completion Date</label>
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-calendar-alt text-info me-1"></i>Expected Completion Date
+                                </label>
                                 {{ form.expected_completion_date }}
-                                <div class="form-text">Optional: Expected project completion date</div>
+                                <small class="form-text text-muted">Optional: When do you expect to complete?</small>
                             </div>
 
                         </div>
 
-                        <div class="mt-4 text-end">
-                            <a href="{% url 'project_list' %}" class="btn btn-secondary me-2">
-                                Cancel
+                    </div>
+                </div>
+
+                <!-- Workers Section (Expandable) -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-users me-2"></i>
+                            <strong>Workers / Team Members</strong>
+                            <span class="badge bg-light text-dark ms-2">Optional</span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-light" id="toggleWorkersBtn">
+                            <i class="fas fa-chevron-down me-1"></i>Show Workers Section
+                        </button>
+                    </div>
+                    <div class="card-body" id="workersSection" style="display: none;">
+                        
+                        <div class="alert alert-info mb-3">
+                            <i class="fas fa-lightbulb me-2"></i>
+                            <strong>When to Add Workers Here:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li><strong>Lead Comes WITH Workers:</strong> If project/lead arrives with worker information already, add them here</li>
+                                <li><strong>Workers Will Be On Multiple Projects:</strong> Engineers, supervisors often work on 3-4 projects simultaneously</li>
+                                <li><strong>Skip If Unsure:</strong> You can always assign workers later from the project detail page</li>
+                            </ul>
+                        </div>
+
+                        {{ worker_formset.management_form }}
+                        
+                        <div id="workerFormsContainer">
+                            {% for worker_form in worker_formset %}
+                            <div class="worker-form-row border rounded p-3 mb-3 bg-light">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <h6 class="text-muted mb-2">
+                                            <i class="fas fa-user-plus me-2"></i>Worker #{{ forloop.counter }}
+                                            {% if forloop.counter > 1 %}
+                                            <button type="button" class="btn btn-sm btn-danger float-end remove-worker-btn">
+                                                <i class="fas fa-times"></i> Remove
+                                            </button>
+                                            {% endif %}
+                                        </h6>
+                                    </div>
+                                    
+                                    <div class="col-12 col-md-5">
+                                        <label class="form-label">
+                                            <i class="fas fa-user text-info me-1"></i>Select Worker
+                                        </label>
+                                        {{ worker_form.worker }}
+                                        {% if worker_form.worker.errors %}
+                                        <div class="text-danger small mt-1">{{ worker_form.worker.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="col-12 col-md-4">
+                                        <label class="form-label">
+                                            <i class="fas fa-briefcase text-warning me-1"></i>Role in Project
+                                        </label>
+                                        {{ worker_form.role }}
+                                        {% if worker_form.role.errors %}
+                                        <div class="text-danger small mt-1">{{ worker_form.role.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    <div class="col-12 col-md-3">
+                                        <label class="form-label">
+                                            <i class="fas fa-user-tag text-secondary me-1"></i>Referred By
+                                        </label>
+                                        {{ worker_form.referred_by_worker }}
+                                        {% if worker_form.referred_by_worker.errors %}
+                                        <div class="text-danger small mt-1">{{ worker_form.referred_by_worker.errors }}</div>
+                                        {% endif %}
+                                    </div>
+                                    
+                                    {% if worker_form.non_field_errors %}
+                                    <div class="col-12">
+                                        <div class="alert alert-danger mb-0">{{ worker_form.non_field_errors }}</div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <button type="button" class="btn btn-outline-success" id="addMoreWorkerBtn">
+                            <i class="fas fa-plus me-2"></i>Add Another Worker
+                        </button>
+                        
+                        <div class="alert alert-warning mt-3 mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> Workers can be assigned to multiple projects. The same engineer can work on 3-4 projects simultaneously.
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex gap-2 justify-content-end">
+                            <a href="{% url 'project_list' %}" class="btn btn-secondary btn-lg">
+                                <i class="fas fa-times me-2"></i>Cancel
                             </a>
-                            <button type="submit" class="btn btn-success">
-                                Save Project
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-save me-2"></i>Create Project
                             </button>
                         </div>
-
-                    </form>
-
+                        <small class="text-muted d-block mt-2">
+                            <i class="fas fa-check-circle text-success me-1"></i>
+                            You can always edit project details and assign/remove workers later
+                        </small>
+                    </div>
                 </div>
-            </div>
+
+            </form>
+
         </div>
     </div>
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle Workers Section
+    const toggleBtn = document.getElementById('toggleWorkersBtn');
+    const workersSection = document.getElementById('workersSection');
+    let isWorkersVisible = false;
+
+    toggleBtn.addEventListener('click', function() {
+        isWorkersVisible = !isWorkersVisible;
+        if (isWorkersVisible) {
+            workersSection.style.display = 'block';
+            toggleBtn.innerHTML = '<i class="fas fa-chevron-up me-1"></i>Hide Workers Section';
+        } else {
+            workersSection.style.display = 'none';
+            toggleBtn.innerHTML = '<i class="fas fa-chevron-down me-1"></i>Show Workers Section';
+        }
+    });
+
+    // Add More Worker functionality
+    const addMoreBtn = document.getElementById('addMoreWorkerBtn');
+    const container = document.getElementById('workerFormsContainer');
+    const totalForms = document.querySelector('input[name="workers-TOTAL_FORMS"]');
+    
+    addMoreBtn.addEventListener('click', function() {
+        const currentFormCount = parseInt(totalForms.value);
+        const maxForms = parseInt(document.querySelector('input[name="workers-MAX_NUM_FORMS"]').value);
+        
+        if (currentFormCount >= maxForms) {
+            alert(`Maximum ${maxForms} workers can be added during project creation. You can add more later from the project detail page.`);
+            return;
+        }
+        
+        // Clone the first worker form
+        const firstForm = container.querySelector('.worker-form-row');
+        const newForm = firstForm.cloneNode(true);
+        
+        // Update form number
+        const formNum = currentFormCount;
+        newForm.querySelectorAll('select').forEach(function(select) {
+            const name = select.name.replace(/workers-\d+-/, `workers-${formNum}-`);
+            const id = select.id.replace(/id_workers-\d+-/, `id_workers-${formNum}-`);
+            select.name = name;
+            select.id = id;
+            select.value = '';
+        });
+        
+        // Update header
+        newForm.querySelector('h6').innerHTML = `
+            <i class="fas fa-user-plus me-2"></i>Worker #${formNum + 1}
+            <button type="button" class="btn btn-sm btn-danger float-end remove-worker-btn">
+                <i class="fas fa-times"></i> Remove
+            </button>
+        `;
+        
+        // Clear errors
+        newForm.querySelectorAll('.text-danger').forEach(el => el.remove());
+        
+        // Append to container
+        container.appendChild(newForm);
+        
+        // Update total forms count
+        totalForms.value = formNum + 1;
+        
+        // Attach remove handler to new button
+        newForm.querySelector('.remove-worker-btn').addEventListener('click', function() {
+            newForm.remove();
+            totalForms.value = parseInt(totalForms.value) - 1;
+            // Renumber remaining forms
+            renumberForms();
+        });
+    });
+
+    // Remove Worker functionality for initial forms
+    container.querySelectorAll('.remove-worker-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (confirm('Remove this worker from the list?')) {
+                btn.closest('.worker-form-row').remove();
+                totalForms.value = parseInt(totalForms.value) - 1;
+                renumberForms();
+            }
+        });
+    });
+
+    // Renumber forms after removal
+    function renumberForms() {
+        container.querySelectorAll('.worker-form-row').forEach(function(form, index) {
+            form.querySelector('h6').innerHTML = `
+                <i class="fas fa-user-plus me-2"></i>Worker #${index + 1}
+                ${index > 0 ? '<button type="button" class="btn btn-sm btn-danger float-end remove-worker-btn"><i class="fas fa-times"></i> Remove</button>' : ''}
+            `;
+            
+            form.querySelectorAll('select').forEach(function(select) {
+                const nameBase = select.name.split('-').pop();
+                select.name = `workers-${index}-${nameBase}`;
+                select.id = `id_workers-${index}-${nameBase}`;
+            });
+            
+            // Reattach remove handler if button exists
+            const removeBtn = form.querySelector('.remove-worker-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function() {
+                    if (confirm('Remove this worker from the list?')) {
+                        form.remove();
+                        totalForms.value = parseInt(totalForms.value) - 1;
+                        renumberForms();
+                    }
+                });
+            }
+        });
+    }
+
+    // Form submission validation
+    const projectForm = document.getElementById('projectCreateForm');
+    projectForm.addEventListener('submit', function(e) {
+        // Check if any workers are partially filled
+        let hasPartialWorker = false;
+        container.querySelectorAll('.worker-form-row').forEach(function(form) {
+            const worker = form.querySelector('select[name*="-worker"]').value;
+            const role = form.querySelector('select[name*="-role"]').value;
+            
+            if ((worker && !role) || (!worker && role)) {
+                hasPartialWorker = true;
+            }
+        });
+        
+        if (hasPartialWorker) {
+            e.preventDefault();
+            alert('If you select a worker, you must also select their role. Please complete all worker entries or leave them empty.');
+        }
+    });
+});
+</script>
 
 {% endblock %}

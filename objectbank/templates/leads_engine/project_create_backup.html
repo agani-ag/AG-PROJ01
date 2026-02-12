@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Create Project{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-12 col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Create New Project
+                </div>
+                <div class="card-body">
+
+                    {% if form.errors %}
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0 mt-2">
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li>{{ field.label }}: {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        {% csrf_token %}
+
+                        <div class="row g-3">
+
+                            <div class="col-12">
+                                <label class="form-label">Project Name</label>
+                                {{ form.name }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Client Name</label>
+                                {{ form.client_name }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Phone</label>
+                                {{ form.phone }}
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Address</label>
+                                {{ form.full_address }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Pincode</label>
+                                {{ form.pincode }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">City</label>
+                                {{ form.city }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Estimated Value</label>
+                                {{ form.estimated_total_value }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Current Stage</label>
+                                {{ form.current_stage }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Lead Status <span class="text-danger">*</span></label>
+                                {{ form.lead_status }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Expected Completion Date</label>
+                                {{ form.expected_completion_date }}
+                                <div class="form-text">Optional: Expected project completion date</div>
+                            </div>
+
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <a href="{% url 'project_list' %}" class="btn btn-secondary me-2">
+                                Cancel
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                Save Project
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -5,7 +5,7 @@ from django.contrib.auth.forms import (
     UserCreationForm, AuthenticationForm
 )
 from .models import (
-    Project, UserProfile, Worker,
+    Project, UserProfile, Worker, WorkerRole,
     ProjectRevenueTransaction, ProjectWorkerRequirement,
     WorkerProject, ProjectNote, LeadStatus, ConstructionStage
 )
@@ -173,6 +173,40 @@ class AssignWorkerToProjectForm(forms.ModelForm):
             'role': 'Role in this Project',
             'referred_by_worker': 'Referred By (Optional)',
         }
+
+
+class ProjectWorkerInlineForm(forms.Form):
+    """Inline form for adding workers during project creation"""
+    worker = forms.ModelChoiceField(
+        queryset=Worker.objects.all(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control worker-select'}),
+        label='Worker'
+    )
+    role = forms.ModelChoiceField(
+        queryset=WorkerRole.objects.all(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control role-select'}),
+        label='Role'
+    )
+    referred_by_worker = forms.ModelChoiceField(
+        queryset=Worker.objects.all(),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control referrer-select'}),
+        label='Referred By (Optional)',
+        empty_label='-- No Referrer --'
+    )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        worker = cleaned_data.get('worker')
+        role = cleaned_data.get('role')
+        
+        # If worker is selected, role is required
+        if worker and not role:
+            raise forms.ValidationError('Role is required when worker is selected.')
+        
+        return cleaned_data
 
 
 class UpdateLeadStatusForm(forms.Form):
