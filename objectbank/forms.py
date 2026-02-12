@@ -59,6 +59,7 @@ class UserProfileEditForm(ModelForm):
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
 
+# Project Forms
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project

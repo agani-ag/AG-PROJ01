@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Analytics Overview</h4>
+        </div>
+    </div>
+
+    <!-- Revenue Per Stage -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Revenue Per Stage
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>Stage</th>
+                                    <th>Total Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in stage_data %}
+                                <tr>
+                                    <td>{{ row.stage__name }}</td>
+                                    <td>{{ row.total }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">
+                                        No Data
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

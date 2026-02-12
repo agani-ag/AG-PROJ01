@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Workers{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between">
+            <h4 class="fw-bold">Worker List</h4>
+            <a href="{% url 'worker_create' %}" class="btn btn-primary btn-sm">
+                Add Worker
+            </a>
+        </div>
+    </div>
+
+    <div class="row d-none d-md-block">
+        <div class="col-12">
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Pincode</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for worker in workers %}
+                        <tr>
+                            <td>{{ worker.worker_code }}</td>
+                            <td>{{ worker.name }}</td>
+                            <td>{{ worker.role.name }}</td>
+                            <td>{{ worker.primary_pincode }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted">
+                                No Workers
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

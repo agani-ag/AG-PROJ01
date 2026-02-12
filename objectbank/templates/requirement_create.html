@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Create Requirement{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-12 col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Create Worker Requirement
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                {{ form.project.label_tag }}
+                                {{ form.project }}
+                            </div>
+                            <div class="col-12 col-md-6">
+                                {{ form.role.label_tag }}
+                                {{ form.role }}
+                            </div>
+                            <div class="col-12 col-md-6">
+                                {{ form.required_from_date.label_tag }}
+                                {{ form.required_from_date }}
+                            </div>
+                            <div class="col-12 col-md-6">
+                                {{ form.urgency.label_tag }}
+                                {{ form.urgency }}
+                            </div>
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <button type="submit" class="btn btn-success">
+                                Create Requirement
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

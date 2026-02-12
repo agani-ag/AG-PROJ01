@@ -95,7 +95,7 @@ def worker_create_view(request):
     return render(request, "worker_create.html", {"form": form})
 
 #  Revenue Create
-from services.revenue_service import record_transaction
+from ..services.revenue_service import record_transaction
 
 
 def revenue_create_view(request):
