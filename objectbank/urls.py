@@ -47,6 +47,7 @@ urlpatterns = [
 
     # Revenue URLs
     path("revenue/create/", leads_engine.revenue_create_view, name="revenue_create"),
+    path("revenue/create/<int:project_id>/", leads_engine.revenue_create_view, name="revenue_create_for_project"),
 
     # Requirements URLs
     path("requirements/create/", leads_engine.requirement_create_view, name="requirement_create"),

@@ -1,12 +1,13 @@
 # Leads Management
 
 # Dashboard View
-from django.shortcuts import render
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.db import models
 from ..services.analytics_service import get_dashboard_summary, revenue_per_pincode
 from ..services.project_service import get_high_value_opportunities
 from ..services.credit_service import generate_credit_alerts
-from ..models import Project
+from ..models import Project, ProjectActivity, Worker
 
 
 def dashboard_view(request):
@@ -34,7 +35,6 @@ def project_list_view(request):
     return render(request, "leads_engine/project_list.html", {"projects": projects})
 
 # Project Create
-from django.shortcuts import redirect
 from ..forms import ProjectForm, RequirementForm, RevenueForm, WorkerForm
 from ..services.project_service import create_project
 
@@ -111,18 +111,83 @@ def worker_create_view(request):
 
 #  Revenue Create
 from ..services.revenue_service import record_transaction
+from datetime import date
 
 
-def revenue_create_view(request):
+def revenue_create_view(request, project_id=None):
+    project = None
+    assigned_workers = []
+    existing_transactions = []
+    next_invoice_number = None
+    total_revenue_so_far = 0
+    
+    # If project_id provided, get project context
+    if project_id:
+        project = get_object_or_404(Project, pk=project_id)
+        assigned_workers = project.worker_projects.select_related('worker', 'role').all()
+        existing_transactions = project.revenue_transactions.select_related('worker', 'stage').order_by('-transaction_date')[:10]
+        
+        # Calculate next invoice number
+        last_invoice_count = project.revenue_transactions.count()
+        next_invoice_number = f"{project.project_code}-INV-{str(last_invoice_count + 1).zfill(3)}"
+        
+        # Calculate total revenue so far
+        total_revenue_so_far = project.revenue_transactions.aggregate(
+            total=models.Sum('revenue_amount')
+        )['total'] or 0
+    
     if request.method == "POST":
         form = RevenueForm(request.POST)
         if form.is_valid():
             record_transaction(form.cleaned_data)
-            return redirect("project_list")
+            
+            # Create activity log
+            recorded_project = form.cleaned_data.get('project')
+            revenue_amt = form.cleaned_data.get('revenue_amount')
+            ProjectActivity.objects.create(
+                project=recorded_project,
+                activity_type='REVENUE_RECORDED',
+                related_worker=form.cleaned_data.get('worker'),
+                performed_by=request.user,
+                description=f"Revenue recorded: ₹{revenue_amt} for {form.cleaned_data.get('stage').name} stage"
+            )
+            
+            messages.success(request, f"Revenue of ₹{revenue_amt} recorded successfully!")
+            return redirect("project_detail", pk=recorded_project.id)
     else:
-        form = RevenueForm()
+        # Initialize form with smart defaults if project provided
+        initial_data = {}
+        if project:
+            initial_data['project'] = project
+            initial_data['stage'] = project.current_stage
+            initial_data['transaction_date'] = date.today()
+            if next_invoice_number:
+                initial_data['invoice_number'] = next_invoice_number
+        
+        form = RevenueForm(initial=initial_data)
+        
+        # If project context exists, filter worker dropdown to only assigned workers
+        if project and assigned_workers:
+            worker_ids = [wp.worker.id for wp in assigned_workers]
+            form.fields['worker'].queryset = Worker.objects.filter(id__in=worker_ids)
 
-    return render(request, "leads_engine/revenue_create.html", {"form": form})
+    # Calculate remaining opportunity for context
+    remaining = None
+    capture_ratio = None
+    if project:
+        remaining = calculate_remaining_opportunity(project)
+        capture_ratio = calculate_capture_ratio(project)
+
+    return render(request, "leads_engine/revenue_create.html", {
+        "form": form,
+        "project": project,
+        "assigned_workers": assigned_workers,
+        "existing_transactions": existing_transactions,
+        "next_invoice_number": next_invoice_number,
+        "total_revenue_so_far": total_revenue_so_far,
+        "remaining": remaining,
+        "capture_ratio": capture_ratio,
+    })
 
 # Requirement Create
 def requirement_create_view(request):

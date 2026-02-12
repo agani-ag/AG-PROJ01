@@ -42,7 +42,7 @@
                         <a href="{% url 'add_project_note' project.pk %}" class="btn btn-sm btn-outline-secondary">
                             <i class="fa fa-sticky-note"></i> Add Note
                         </a>
-                        <a href="{% url 'revenue_create' %}" class="btn btn-sm btn-outline-warning">
+                        <a href="{% url 'revenue_create_for_project' project.pk %}" class="btn btn-sm btn-outline-warning">
                             <i class="fa fa-rupee-sign"></i> Record Revenue
                         </a>
                         <a href="{% url 'project_timeline' project.pk %}" class="btn btn-sm btn-outline-dark">

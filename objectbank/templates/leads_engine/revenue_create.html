@@ -1,22 +1,121 @@
 {% extends "base.html" %}
-{% block title %}Record Revenue{% endblock %}
+{% block title %}{% if project %}Record Revenue - {{ project.name }}{% else %}Record Revenue{% endif %}{% endblock %}
 
 {% block content %}
 
 <div class="container-fluid">
 
+    {% if project %}
+    <!-- Project Context Card -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-primary">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-project-diagram me-2"></i>
+                            <strong>Recording Revenue For:</strong> {{ project.name }}
+                        </div>
+                        <a href="{% url 'project_detail' project.pk %}" class="btn btn-sm btn-light">
+                            <i class="fas fa-arrow-left me-1"></i>Back to Project
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <h6 class="text-muted mb-1">Project Code</h6>
+                            <p class="mb-0 fw-bold">{{ project.project_code }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h6 class="text-muted mb-1">Current Stage</h6>
+                            <p class="mb-0">
+                                <span class="badge bg-info">{{ project.current_stage.name }}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-3">
+                            <h6 class="text-muted mb-1">Total Revenue So Far</h6>
+                            <p class="mb-0 fw-bold text-success">₹{{ total_revenue_so_far|floatformat:0 }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <h6 class="text-muted mb-1">Remaining Opportunity</h6>
+                            <p class="mb-0 fw-bold text-danger">₹{{ remaining|floatformat:0 }}</p>
+                        </div>
+                    </div>
+                    
+                    {% if capture_ratio is not None %}
+                    <div class="mt-3">
+                        <h6 class="text-muted mb-2">Revenue Capture Progress</h6>
+                        <div class="progress" style="height: 25px;">
+                            <div class="progress-bar bg-{% if capture_ratio >= 70 %}success{% elif capture_ratio >= 50 %}warning{% else %}danger{% endif %}" 
+                                 role="progressbar" 
+                                 style="width: {{ capture_ratio }}%;" 
+                                 aria-valuenow="{{ capture_ratio }}" 
+                                 aria-valuemin="0" 
+                                 aria-valuemax="100">
+                                {{ capture_ratio }}% Captured
+                            </div>
+                        </div>
+                        <small class="text-muted">
+                            {% if capture_ratio < 50 %}
+                                <i class="fas fa-exclamation-triangle text-warning me-1"></i>Low capture rate - significant opportunity remaining
+                            {% elif capture_ratio < 70 %}
+                                <i class="fas fa-info-circle text-info me-1"></i>Good progress - continue recording revenue
+                            {% else %}
+                                <i class="fas fa-check-circle text-success me-1"></i>Excellent capture rate!
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Assigned Workers Quick Reference -->
+    {% if assigned_workers %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <i class="fas fa-users me-2"></i><strong>Assigned Workers</strong> ({{ assigned_workers|length }})
+                </div>
+                <div class="card-body p-2">
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for wp in assigned_workers %}
+                        <span class="badge bg-light text-dark border px-3 py-2">
+                            <i class="fas fa-user me-1"></i>{{ wp.worker.name }}
+                            <span class="text-muted ms-2">|</span>
+                            <span class="text-primary ms-2">{{ wp.role.name }}</span>
+                            {% if wp.revenue_generated > 0 %}
+                            <span class="text-muted ms-2">|</span>
+                            <span class="text-success ms-2">₹{{ wp.revenue_generated|floatformat:0 }}</span>
+                            {% endif %}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Revenue Recording Form -->
     <div class="row">
-        <div class="col-12 col-lg-8 offset-lg-2">
+        <div class="col-12 {% if existing_transactions %}col-lg-8{% else %}col-lg-10 offset-lg-1{% endif %}">
             <div class="card shadow-sm">
                 <div class="card-header bg-success text-white fw-bold">
-                    <i class="fas fa-money-bill-wave me-2"></i>Record Revenue Transaction
+                    <i class="fas fa-money-bill-wave me-2"></i>Revenue Transaction Details
                 </div>
                 <div class="card-body">
 
+                    {% if not project %}
                     <div class="alert alert-info" role="alert">
                         <i class="fas fa-info-circle me-2"></i>
-                        <strong>Revenue Recording:</strong> Track income from projects and attribute to workers. This helps calculate performance metrics and commissions.
+                        <strong>Tip:</strong> For better workflow, access this form from a project detail page to auto-fill project details.
                     </div>
+                    {% endif %}
 
                     {% if form.errors %}
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -35,11 +134,12 @@
                     </div>
                     {% endif %}
 
-                    <form method="POST">
+                    <form method="POST" id="revenueForm">
                         {% csrf_token %}
 
                         <div class="row g-3">
 
+                            {% if not project %}
                             <div class="col-12">
                                 <label class="form-label fw-bold">
                                     <i class="fas fa-project-diagram text-primary me-1"></i>Project *
@@ -49,6 +149,10 @@
                                     Select the project this revenue is associated with
                                 </small>
                             </div>
+                            {% else %}
+                            <!-- Hidden field for project when pre-selected -->
+                            <input type="hidden" name="project" value="{{ project.id }}">
+                            {% endif %}
 
                             <div class="col-12 col-md-6">
                                 <label class="form-label fw-bold">
@@ -57,26 +161,34 @@
                                 {{ form.stage }}
                                 <small class="form-text text-muted d-block mt-1">
                                     Which stage generated this revenue?
+                                    {% if project %}<span class="badge bg-info">Current: {{ project.current_stage.name }}</span>{% endif %}
                                 </small>
                             </div>
 
                             <div class="col-12 col-md-6">
                                 <label class="form-label fw-bold">
-                                    <i class="fas fa-user-tie text-info me-1"></i>Worker
+                                    <i class="fas fa-user-tie text-info me-1"></i>Worker (Optional)
                                 </label>
                                 {{ form.worker }}
                                 <small class="form-text text-muted d-block mt-1">
-                                    Who brought in this revenue? (Optional)
+                                    Who brought in this revenue?
+                                    {% if project and assigned_workers %}
+                                    <span class="badge bg-success">{{ assigned_workers|length }} available</span>
+                                    {% endif %}
                                 </small>
                             </div>
 
                             <div class="col-12 col-md-6">
                                 <label class="form-label fw-bold">
-                                    <i class="fas fa-file-invoice text-secondary me-1"></i>Invoice Number
+                                    <i class="fas fa-file-invoice text-secondary me-1"></i>Invoice Number *
                                 </label>
                                 {{ form.invoice_number }}
                                 <small class="form-text text-muted d-block mt-1">
+                                    {% if next_invoice_number %}
+                                    <span class="badge bg-secondary">Suggested: {{ next_invoice_number }}</span>
+                                    {% else %}
                                     Reference number for tracking
+                                    {% endif %}
                                 </small>
                             </div>
 
@@ -123,24 +235,31 @@
                                 </label>
                                 {{ form.margin_amount }}
                                 <small class="form-text text-muted d-block mt-1">
-                                    Profit (Revenue - Cost)
+                                    <span id="marginLabel">Profit (Auto-calculated)</span>
                                 </small>
                             </div>
 
-                            <div class="col-12">
-                                <div class="alert alert-warning" role="alert">
-                                    <i class="fas fa-calculator me-2"></i>
-                                    <strong>Quick Tip:</strong> Margin Amount = Revenue Amount - Cost Amount. Make sure your calculations are accurate.
+                            <div class="col-12" id="marginWarning" style="display:none;">
+                                <div class="alert alert-danger mb-0" role="alert">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <strong>Negative Margin Detected!</strong> Cost exceeds revenue. Please verify your amounts.
+                                </div>
+                            </div>
+
+                            <div class="col-12" id="marginSuccess" style="display:none;">
+                                <div class="alert alert-success mb-0" role="alert">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    <strong>Healthy Margin:</strong> <span id="marginPercentage"></span> profit margin.
                                 </div>
                             </div>
 
                         </div>
 
                         <div class="d-flex gap-2 mt-4">
-                            <button type="submit" class="btn btn-success">
+                            <button type="submit" class="btn btn-success btn-lg">
                                 <i class="fas fa-save me-2"></i>Record Revenue
                             </button>
-                            <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                            <a href="{% if project %}{% url 'project_detail' project.pk %}{% else %}{% url 'project_list' %}{% endif %}" class="btn btn-secondary btn-lg">
                                 <i class="fas fa-times me-2"></i>Cancel
                             </a>
                         </div>
@@ -149,45 +268,153 @@
                 </div>
             </div>
 
-            <!-- Quick Reference Card -->
+            <!-- Quick Reference Tips -->
             <div class="card shadow-sm mt-3">
                 <div class="card-header bg-light">
-                    <i class="fas fa-lightbulb text-warning me-2"></i>Revenue Recording Tips
+                    <i class="fas fa-lightbulb text-warning me-2"></i>Revenue Recording Best Practices
                 </div>
                 <div class="card-body">
                     <ul class="mb-0 small">
-                        <li><strong>Project Association:</strong> Revenue must be linked to a project for tracking</li>
-                        <li><strong>Stage Tracking:</strong> Helps identify which construction phases are most profitable</li>
-                        <li><strong>Worker Attribution:</strong> Links revenue to specific workers for performance metrics and commissions</li>
-                        <li><strong>Margin Calculation:</strong> Accurate margins help evaluate project profitability</li>
-                        <li><strong>Invoice Numbers:</strong> Use consistent numbering for easy reference and auditing</li>
+                        <li><strong>Stage Accuracy:</strong> Recording revenue against the correct stage helps identify profitable phases</li>
+                        <li><strong>Worker Attribution:</strong> Links revenue to workers for performance metrics and commission calculations</li>
+                        <li><strong>Invoice Tracking:</strong> Use consistent numbering (e.g., PROJ001-INV-001) for easy auditing</li>
+                        <li><strong>Margin Monitoring:</strong> Healthy margins are typically 20-30% in construction projects</li>
+                        <li><strong>Timely Recording:</strong> Record revenue as soon as received for accurate financial tracking</li>
                     </ul>
                 </div>
             </div>
 
         </div>
+
+        {% if existing_transactions %}
+        <!-- Recent Transactions Sidebar -->
+        <div class="col-12 col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light fw-bold">
+                    <i class="fas fa-history me-2"></i>Recent Transactions ({{ existing_transactions|length }})
+                </div>
+                <div class="card-body p-2">
+                    <div class="list-group list-group-flush">
+                        {% for txn in existing_transactions %}
+                        <div class="list-group-item px-2 py-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <div class="fw-bold text-success">₹{{ txn.revenue_amount|floatformat:0 }}</div>
+                                    <small class="text-muted">{{ txn.transaction_date|date:"M d, Y" }}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="badge bg-info">{{ txn.stage.name }}</span>
+                                    {% if txn.worker %}
+                                    <br><small class="text-muted">{{ txn.worker.name }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <small class="text-muted d-block mt-1">
+                                <i class="fas fa-file-invoice me-1"></i>{{ txn.invoice_number }}
+                            </small>
+                            <div class="mt-1">
+                                <small class="text-muted">Margin: </small>
+                                <small class="{% if txn.margin_amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                                    ₹{{ txn.margin_amount|floatformat:0 }}
+                                </small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            {% if project %}
+            <div class="card shadow-sm mt-3">
+                <div class="card-header bg-light">
+                    <i class="fas fa-chart-pie me-2"></i>Financial Summary
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <small class="text-muted">Estimated Total Value</small>
+                        <div class="fw-bold">₹{{ project.estimated_total_value|floatformat:0 }}</div>
+                    </div>
+                    <div class="mb-2">
+                        <small class="text-muted">Revenue Recorded</small>
+                        <div class="fw-bold text-success">₹{{ total_revenue_so_far|floatformat:0 }}</div>
+                    </div>
+                    <div class="mb-2">
+                        <small class="text-muted">Remaining Opportunity</small>
+                        <div class="fw-bold text-danger">₹{{ remaining|floatformat:0 }}</div>
+                    </div>
+                    <hr>
+                    <div>
+                        <small class="text-muted">Capture Ratio</small>
+                        <div class="fw-bold {% if capture_ratio >= 70 %}text-success{% elif capture_ratio >= 50 %}text-warning{% else %}text-danger{% endif %}">
+                            {{ capture_ratio }}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
     </div>
 
 </div>
 
 <script>
-// Auto-calculate margin when revenue or cost changes
+// Auto-calculate margin and show warnings/success messages
 document.addEventListener('DOMContentLoaded', function() {
     const revenueInput = document.querySelector('input[name="revenue_amount"]');
     const costInput = document.querySelector('input[name="cost_amount"]');
     const marginInput = document.querySelector('input[name="margin_amount"]');
+    const marginWarning = document.getElementById('marginWarning');
+    const marginSuccess = document.getElementById('marginSuccess');
+    const marginPercentage = document.getElementById('marginPercentage');
 
     function calculateMargin() {
         const revenue = parseFloat(revenueInput.value) || 0;
         const cost = parseFloat(costInput.value) || 0;
         const margin = revenue - cost;
+        
+        // Update margin field
         marginInput.value = margin.toFixed(2);
+        
+        // Show warnings/success based on margin
+        if (revenue > 0 && cost > 0) {
+            const marginPercent = ((margin / revenue) * 100).toFixed(1);
+            
+            if (margin < 0) {
+                marginWarning.style.display = 'block';
+                marginSuccess.style.display = 'none';
+            } else {
+                marginWarning.style.display = 'none';
+                marginSuccess.style.display = 'block';
+                marginPercentage.textContent = `${marginPercent}%`;
+            }
+        } else {
+            marginWarning.style.display = 'none';
+            marginSuccess.style.display = 'none';
+        }
     }
 
     if (revenueInput && costInput && marginInput) {
         revenueInput.addEventListener('input', calculateMargin);
         costInput.addEventListener('input', calculateMargin);
+        
+        // Calculate on page load if values exist
+        if (revenueInput.value || costInput.value) {
+            calculateMargin();
+        }
     }
+    
+    // Form validation
+    const form = document.getElementById('revenueForm');
+    form.addEventListener('submit', function(e) {
+        const margin = parseFloat(marginInput.value) || 0;
+        if (margin < 0) {
+            if (!confirm('Warning: You are recording a negative margin (loss). Do you want to continue?')) {
+                e.preventDefault();
+            }
+        }
+    });
 });
 </script>
 
