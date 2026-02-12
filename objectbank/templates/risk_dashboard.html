@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Risk & Credit Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Credit Risk & Alerts Dashboard</h4>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <div class="card shadow-sm bg-danger text-white">
+                <div class="card-body">
+                    <h6 class="text-white-50">Total Outstanding</h6>
+                    <h3 class="fw-bold">₹{{ total_outstanding|floatformat:0 }}</h3>
+                    <small>From {{ outstanding_list|length }} workers</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="text-muted">Workers at Risk</h6>
+                    <h3 class="fw-bold">{{ workers_at_risk|length }}</h3>
+                    <small>Yellow/Red flag workers</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm bg-info text-white">
+                <div class="card-body">
+                    <h6 class="text-white-50">Active Alerts</h6>
+                    <h3 class="fw-bold">{{ alerts|length }}</h3>
+                    <small>Requires action</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credit Alerts -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Credit Alerts (Action Required)
+                </div>
+                <div class="card-body">
+                    {% if alerts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Worker</th>
+                                    <th>Alert Type</th>
+                                    <th>Amount</th>
+                                    <th>Priority</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for alert in alerts %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'worker_detail' alert.worker.pk %}">
+                                            {{ alert.worker.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ alert.badge_class }}">
+                                            {{ alert.type }}
+                                        </span>
+                                        {% if alert.type == 'DUE_SOON' %}
+                                            <br><small class="text-muted">Due: {{ alert.due_date }}</small>
+                                        {% elif alert.type == 'OVERDUE' %}
+                                            <br><small class="text-danger">{{ alert.days_overdue }} days overdue</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">₹{{ alert.amount|floatformat:0 }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if alert.priority == 'CRITICAL' %}danger
+                                            {% elif alert.priority == 'HIGH' %}warning
+                                            {% else %}info{% endif %}">
+                                            {{ alert.priority }}
+                                        </span>
+                                    </td>
+                                    <td><small>{{ alert.action }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        ✓ No active alerts - all payments on track
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workers at Risk -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Workers at Risk
+                </div>
+                <div class="card-body">
+                    {% if workers_at_risk %}
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Worker</th>
+                                    <th>Risk Level</th>
+                                    <th>Current Balance</th>
+                                    <th>Reliability Score</th>
+                                    <th>Risk Flags</th>
+                                    <th>Policy</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in workers_at_risk %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}">
+                                            {{ item.worker.name }}
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">{{ item.worker.worker_code }}</small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{{ item.action.badge_class }}">
+                                            {{ item.risk_level }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end">₹{{ item.summary.current_balance|floatformat:0 }}</td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-{% if item.summary.reliability_score >= 70 %}success
+                                                {% elif item.summary.reliability_score >= 50 %}warning
+                                                {% else %}danger{% endif %}"
+                                                style="width: {{ item.summary.reliability_score }}%;">
+                                                {{ item.summary.reliability_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <ul class="list-unstyled mb-0">
+                                            {% for flag in item.risk_flags %}
+                                            <li><small>⚠️ {{ flag }}</small></li>
+                                            {% endfor %}
+                                        </ul>
+                                    </td>
+                                    <td>
+                                        <strong>{{ item.action.payment_terms }}</strong>
+                                        <br>
+                                        <small>Limit: ₹{{ item.action.max_credit_limit|floatformat:0 }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        ✓ No workers at risk - all in good standing
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Outstanding Balances -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Top Outstanding Balances
+                </div>
+                <div class="card-body">
+                    {% if outstanding_list %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Worker</th>
+                                    <th>Outstanding Amount</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in outstanding_list %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}">
+                                            {{ item.worker.name }}
+                                        </a>
+                                    </td>
+                                    <td class="text-end">
+                                        <strong class="text-danger">₹{{ item.outstanding|floatformat:0 }}</strong>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}" 
+                                           class="btn btn-sm btn-outline-danger">
+                                            Review
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        ✓ No outstanding balances
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

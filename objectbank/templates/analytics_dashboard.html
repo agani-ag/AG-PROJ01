@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Analytics Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Business Intelligence Dashboard</h4>
+        </div>
+    </div>
+
+    <!-- Key Metrics Cards -->
+    <div class="row mb-3">
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm bg-primary text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">Total Revenue</h6>
+                    <h3 class="fw-bold">₹{{ summary.revenue.total_revenue|floatformat:0 }}</h3>
+                    <small>All time</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm bg-success text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">Total Projects</h6>
+                    <h3 class="fw-bold">{{ summary.projects.total_projects }}</h3>
+                    <small>Win Rate: {{ summary.projects.win_rate }}%</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm bg-info text-white h-100">
+                <div class="card-body">
+                    <h6 class="text-white-50">Avg Margin</h6>
+                    <h3 class="fw-bold">{{ summary.revenue.avg_margin_percent }}%</h3>
+                    <small>System wide</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm bg-warning text-dark h-100">
+                <div class="card-body">
+                    <h6 class="text-muted">Active Projects</h6>
+                    <h3 class="fw-bold">{{ summary.projects.active_projects }}</h3>
+                    <small>In progress</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pareto Analysis -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold">
+                    Pareto Analysis (80/20 Rule)
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h5 class="fw-bold">{{ summary.pareto.percentage }}% of workers</h5>
+                        <p class="mb-0">Generate <strong>₹{{ summary.pareto.revenue_generated|floatformat:0 }}</strong> (80% of total revenue)</p>
+                        <p class="mb-0"><small>Top {{ summary.pareto.count }} workers out of {{ summary.pareto.total_workers }}</small></p>
+                    </div>
+                    <h6 class="fw-bold">Top Revenue Generators:</h6>
+                    <ol>
+                        {% for item in summary.pareto.top_workers|slice:":5" %}
+                        <li>
+                            <a href="{% url 'worker_detail' item.worker.pk %}">{{ item.worker.name }}</a>
+                            - ₹{{ item.revenue|floatformat:0 }}
+                        </li>
+                        {% endfor %}
+                    </ol>
+                    <a href="{% url 'pareto_analysis' %}" class="btn btn-sm btn-outline-primary">
+                        View Full Analysis
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold">
+                    Worker Assignment Impact
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h6>With Workers</h6>
+                                <h3 class="text-success">{{ summary.assignment_impact.with_workers.win_rate }}%</h3>
+                                <small>Win Rate</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-3 bg-light rounded">
+                                <h6>Without Workers</h6>
+                                <h3 class="text-danger">{{ summary.assignment_impact.without_workers.win_rate }}%</h3>
+                                <small>Win Rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-{% if summary.assignment_impact.impact_positive %}success{% else %}warning{% endif %} mt-3 mb-0">
+                        <strong>Impact: {% if summary.assignment_impact.impact > 0 %}+{% endif %}{{ summary.assignment_impact.impact }}%</strong><br>
+                        <small>
+                            Worker assignments {% if summary.assignment_impact.impact_positive %}increase{% else %}decrease{% endif %} 
+                            project win rate by {{ summary.assignment_impact.impact|floatformat:1 }} percentage points
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue by Stage -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Revenue Per Construction Stage
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Stage</th>
+                                    <th>Total Revenue</th>
+                                    <th>Transactions</th>
+                                    <th>% of Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in stage_data %}
+                                <tr>
+                                    <td>{{ row.stage__name }}</td>
+                                    <td class="text-end">₹{{ row.total_revenue|floatformat:0 }}</td>
+                                    <td>{{ row.transaction_count }}</td>
+                                    <td>
+                                        {% widthratio row.total_revenue summary.revenue.total_revenue 100 %}%
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No data</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage Drop-off Analysis -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Stage Drop-off Analysis
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Stages where projects entered but revenue not captured (lost to competition)</p>
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Stage</th>
+                                    <th>Entered</th>
+                                    <th>Captured</th>
+                                    <th>Lost</th>
+                                    <th>Drop-off Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in dropoff_data %}
+                                <tr>
+                                    <td>{{ row.stage_name }}</td>
+                                    <td>{{ row.projects_entered }}</td>
+                                    <td>{{ row.projects_captured }}</td>
+                                    <td>{{ row.projects_lost }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if row.dropoff_rate > 50 %}danger
+                                            {% elif row.dropoff_rate > 30 %}warning
+                                            {% else %}success{% endif %}">
+                                            {{ row.dropoff_rate }}%
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">No data</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue Per Pincode -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Top Revenue Pincodes
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Pincode</th>
+                                    <th>Total Revenue</th>
+                                    <th>Projects</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in pincode_data|slice:":10" %}
+                                <tr>
+                                    <td><strong>{{ row.project__pincode }}</strong></td>
+                                    <td class="text-end">₹{{ row.total_revenue|floatformat:0 }}</td>
+                                    <td>{{ row.project_count }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No data</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

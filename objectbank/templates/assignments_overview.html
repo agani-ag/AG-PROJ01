@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Assignments Overview{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Worker Assignments Overview</h4>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-3">
+        <div class="col-md-3 col-6">
+            <div class="card shadow-sm bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="text-white-50">Total Requirements</h6>
+                    <h3 class="fw-bold">{{ statistics.total_requirements }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card shadow-sm bg-success text-white">
+                <div class="card-body">
+                    <h6 class="text-white-50">Filled</h6>
+                    <h3 class="fw-bold">{{ statistics.assigned_count }}</h3>
+                    <small>Fill Rate: {{ statistics.fill_rate }}%</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card shadow-sm bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="text-muted">Active Assignments</h6>
+                    <h3 class="fw-bold">{{ statistics.active_assignments }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card shadow-sm bg-danger text-white">
+                <div class="card-body">
+                    <h6 class="text-white-50">Unfilled</h6>
+                    <h3 class="fw-bold">{{ statistics.unfilled_count }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unfilled Requirements (Urgent) -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Unfilled Requirements (Next 14 Days)
+                </div>
+                <div class="card-body">
+                    {% if unfilled_requirements %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Role</th>
+                                    <th>Required From</th>
+                                    <th>Urgency</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for req in unfilled_requirements %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'project_detail' req.project.pk %}">
+                                            {{ req.project.name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ req.role.name }}</td>
+                                    <td>{{ req.required_from_date|date:"d M Y" }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ req.urgency.code }}">
+                                            {{ req.urgency.name }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-warning">
+                                            {{ req.status.name }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'assignment_intelligence' req.pk %}" 
+                                           class="btn btn-sm btn-primary">
+                                            Find Workers
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        ✓ All requirements filled for the next 14 days
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Assignments -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Active Assignments (In Progress)
+                </div>
+                <div class="card-body">
+                    {% if active_assignments %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Worker</th>
+                                    <th>Project</th>
+                                    <th>Role</th>
+                                    <th>Assigned Date</th>
+                                    <th>Days Active</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for assignment in active_assignments %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'worker_detail' assignment.worker.pk %}">
+                                            {{ assignment.worker.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'project_detail' assignment.requirement.project.pk %}">
+                                            {{ assignment.requirement.project.name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ assignment.requirement.role.name }}</td>
+                                    <td>{{ assignment.assigned_date|date:"d M Y" }}</td>
+                                    <td>{{ assignment.assigned_date|timesince }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        No active assignments at the moment
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Pareto Analysis{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Pareto Analysis (80/20 Rule)</h4>
+            <p class="text-muted">Identify the top performers driving most of your revenue</p>
+        </div>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="row mb-3">
+        <div class="col-md-8 offset-md-2">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body text-center">
+                    <h2 class="text-primary mb-3">{{ pareto_data.percentage }}% of Workers</h2>
+                    <h5 class="mb-3">Generate 80% of Total Revenue</h5>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted">Top Workers</h6>
+                                <h3 class="fw-bold text-success">{{ pareto_data.count }}</h3>
+                                <small>out of {{ pareto_data.total_workers }}</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted">Revenue Generated</h6>
+                                <h3 class="fw-bold text-primary">₹{{ pareto_data.revenue_generated|floatformat:0 }}</h3>
+                                <small>out of ₹{{ pareto_data.total_revenue|floatformat:0 }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Strategy Insights -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="fw-bold text-success">✓ Focus Strategy</h5>
+                    <p>Concentrate retention efforts on these {{ pareto_data.count }} workers</p>
+                    <ul class="small">
+                        <li>Provide premium incentives</li>
+                        <li>Exclusive project access</li>
+                        <li>Better payment terms</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="fw-bold text-warning">⚡ Growth Strategy</h5>
+                    <p>Clone success patterns from top performers</p>
+                    <ul class="small">
+                        <li>Analyze their work patterns</li>
+                        <li>Replicate referral channels</li>
+                        <li>Train similar workers</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="fw-bold text-info">📊 Risk Strategy</h5>
+                    <p>Reduce dependency concentration</p>
+                    <ul class="small">
+                        <li>Develop B-tier performers</li>
+                        <li>Diversify worker pool</li>
+                        <li>Backup for key workers</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Workers Detailed List -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Top {{ pareto_data.percentage }}% Workers (Detailed)
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Worker</th>
+                                    <th>Role</th>
+                                    <th>Revenue</th>
+                                    <th>% of Total</th>
+                                    <th>Cumulative %</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in pareto_data.top_workers %}
+                                <tr>
+                                    <td class="fw-bold">{{ forloop.counter }}</td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}">
+                                            {{ item.worker.name }}
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">{{ item.worker.worker_code }}</small>
+                                    </td>
+                                    <td>{{ item.worker.role.name }}</td>
+                                    <td class="text-end fw-bold">₹{{ item.revenue|floatformat:0 }}</td>
+                                    <td>
+                                        {% widthratio item.revenue pareto_data.total_revenue 100 %}%
+                                    </td>
+                                    <td>
+                                        <!-- Calculate cumulative percentage -->
+                                        {% with cumulative=0 %}
+                                        {% for prev in pareto_data.top_workers %}
+                                            {% if forloop.counter <= forloop.parentloop.counter %}
+                                                {% with cumulative=cumulative|add:prev.revenue %}
+                                                    {% if forloop.last %}
+                                                        {% widthratio cumulative pareto_data.total_revenue 100 %}%
+                                                    {% endif %}
+                                                {% endwith %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% endwith %}
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            View Profile
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker Assignment Impact -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Worker Assignment Impact on Project Win Rate
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted">Projects WITH Worker Assignments</h6>
+                                    <h2 class="text-success fw-bold">{{ worker_impact.with_workers.win_rate }}%</h2>
+                                    <p class="mb-0">Win Rate</p>
+                                    <small class="text-muted">{{ worker_impact.with_workers.won }} won out of {{ worker_impact.with_workers.total }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center justify-content-center">
+                            <h3 class="fw-bold {% if worker_impact.impact_positive %}text-success{% else %}text-danger{% endif %}">
+                                {% if worker_impact.impact > 0 %}+{% endif %}{{ worker_impact.impact }}%
+                            </h3>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h6 class="text-muted">Projects WITHOUT Worker Assignments</h6>
+                                    <h2 class="text-danger fw-bold">{{ worker_impact.without_workers.win_rate }}%</h2>
+                                    <p class="mb-0">Win Rate</p>
+                                    <small class="text-muted">{{ worker_impact.without_workers.won }} won out of {{ worker_impact.without_workers.total }}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-{% if worker_impact.impact_positive %}success{% else %}warning{% endif %} mt-3 mb-0">
+                        <strong>Conclusion:</strong> Worker assignments 
+                        {% if worker_impact.impact_positive %}
+                            <strong class="text-success">increase</strong> project win rate by <strong>{{ worker_impact.impact }}%</strong>
+                            <br><small>✓ Worker network is a critical success factor</small>
+                        {% else %}
+                            show <strong>{{ worker_impact.impact }}%</strong> impact
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

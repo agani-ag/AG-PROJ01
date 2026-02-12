@@ -1,11 +1,7 @@
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
-    <div class="container">
-        <a class="navbar-brand" 
-            {% if user.is_authenticated %}
-                href="{% url 'profile-edit' %}">{{ user.username|capfirst }}
-            {% else %}
-                href="#">Object Bank
-            {% endif %}
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="{% url 'home' %}">
+            🏗️ AG-PROJ01
         </a>
 
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
@@ -16,27 +12,96 @@
         </button>
 
         <div class="collapse navbar-collapse" id="navbarContent">
-            <ul class="navbar-nav ms-auto">
+            <ul class="navbar-nav me-auto">
 
-                <!-- Home -->
+                <!-- Dashboard -->
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'dashboard' %}">
+                        📊 Dashboard
+                    </a>
+                </li>
+
+                <!-- Projects Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="projectsDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        🏗️ Projects
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="projectsDropdown">
+                        <li><a class="dropdown-item" href="{% url 'project_list' %}">All Projects</a></li>
+                        <li><a class="dropdown-item" href="{% url 'project_create' %}">Create Project</a></li>
+                    </ul>
+                </li>
+
+                <!-- Workers Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="workersDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        👷 Workers
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="workersDropdown">
+                        <li><a class="dropdown-item" href="{% url 'worker_list' %}">All Workers</a></li>
+                        <li><a class="dropdown-item" href="{% url 'top_performers' %}">⭐ Top Performers</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'worker_create' %}">Add Worker</a></li>
+                    </ul>
+                </li>
+
+                <!-- Analytics Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="analyticsDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        📈 Analytics
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="analyticsDropdown">
+                        <li><a class="dropdown-item" href="{% url 'analytics_dashboard' %}">Analytics Dashboard</a></li>
+                        <li><a class="dropdown-item" href="{% url 'pareto_analysis' %}">Pareto Analysis (80/20)</a></li>
+                    </ul>
+                </li>
+
+                <!-- Risk & Credit -->
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'risk_dashboard' %}">
+                        ⚠️ Risk & Credit
+                    </a>
+                </li>
+
+                <!-- Assignments -->
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'assignments_overview' %}">
+                        📋 Assignments
+                    </a>
+                </li>
+
+            </ul>
+
+            <!-- Right Side Menu -->
+            <ul class="navbar-nav ms-auto">
+                {% if user.is_authenticated %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="userDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        👤 {{ user.username|capfirst }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="{% url 'profile-edit' %}">My Profile</a></li>
+                        {% if user.is_superuser %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'profiles' %}">👥 Manage Users</a></li>
+                        <li><a class="dropdown-item" href="{% url 'link-registry' %}">🔗 Link Registry</a></li>
+                        {% endif %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
+                    </ul>
+                </li>
+                {% else %}
                 <li class="nav-item">
                     <a class="nav-link" href="{% url 'login' %}">Login</a>
                 </li>
-                
-                {% if user.is_superuser %}
-                <!-- Customers Dropdown -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="adminDropdown"
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Admin
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="adminDropdown">
-                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                        <li><a class="dropdown-item" href="{% url 'link-registry' %}">Link Registry</a></li>
-                    </ul>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'signup' %}">Sign Up</a>
                 </li>
                 {% endif %}
-
             </ul>
         </div>
     </div>

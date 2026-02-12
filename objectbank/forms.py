@@ -78,6 +78,21 @@ class ProjectForm(forms.ModelForm):
             "lead_status",
             "expected_completion_date"
         ]
+        widgets = {
+            'project_code': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'client_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'full_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'city': forms.TextInput(attrs={'class': 'form-control'}),
+            'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'estimated_total_value': forms.NumberInput(attrs={'class': 'form-control'}),
+            'current_stage': forms.Select(attrs={'class': 'form-control'}),
+            'lead_status': forms.Select(attrs={'class': 'form-control'}),
+            'expected_completion_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
 
 
 class WorkerForm(forms.ModelForm):
@@ -91,6 +106,24 @@ class WorkerForm(forms.ModelForm):
             "primary_pincode",
             "joined_date"
         ]
+        widgets = {
+            'worker_code': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'role': forms.Select(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'primary_pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'joined_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
+        widgets = {
+            'project': forms.Select(attrs={'class': 'form-control'}),
+            'stage': forms.Select(attrs={'class': 'form-control'}),
+            'worker': forms.Select(attrs={'class': 'form-control'}),
+            'invoice_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'revenue_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'cost_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'margin_amount': forms.NumberInput(attrs={'class': 'form-control'}),
+            'transaction_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        }
 
 
 class RevenueForm(forms.ModelForm):
@@ -108,6 +141,13 @@ class RevenueForm(forms.ModelForm):
         ]
 
 
+        widgets = {
+            'project': forms.Select(attrs={'class': 'form-control'}),
+            'role': forms.Select(attrs={'class': 'form-control'}),
+            'required_from_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'urgency': forms.Select(attrs={'class': 'form-control'}),
+            'status': forms.Select(attrs={'class': 'form-control'}),
+        }
 class RequirementForm(forms.ModelForm):
     class Meta:
         model = ProjectWorkerRequirement

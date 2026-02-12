@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Worker Intelligence - {{ requirement.role.name }}{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- Requirement Details Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-primary">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">🎯 Worker Matching Intelligence</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-muted">PROJECT</h6>
+                            <h4>
+                                <a href="{% url 'project_detail' requirement.project.pk %}">
+                                    {{ requirement.project.name }}
+                                </a>
+                            </h4>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted">REQUIREMENT</h6>
+                            <h4>{{ requirement.role.name }}</h4>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-3">
+                            <strong>Location:</strong><br>
+                            {{ requirement.project.location_pincode }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Required From:</strong><br>
+                            {{ requirement.required_from_date|date:"d M Y" }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Urgency:</strong><br>
+                            <span class="badge bg-{{ requirement.urgency.code }}">
+                                {{ requirement.urgency.name }}
+                            </span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Status:</strong><br>
+                            <span class="badge bg-warning">
+                                {{ requirement.status.name }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Best Workers Matched -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    🏆 Best Worker Matches (Top {{ best_workers|length }})
+                </div>
+                <div class="card-body">
+                    {% if best_workers %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Worker</th>
+                                    <th>Match Score</th>
+                                    <th>Role Match</th>
+                                    <th>Location Match</th>
+                                    <th>Availability</th>
+                                    <th>Performance</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for match in best_workers %}
+                                <tr>
+                                    <td>
+                                        <span class="badge rounded-pill bg-secondary">
+                                            #{{ forloop.counter }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' match.worker.pk %}" 
+                                           class="fw-bold">
+                                            {{ match.worker.name }}
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">
+                                            {{ match.worker.primary_role.name }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 100px; height: 25px;">
+                                            <div class="progress-bar 
+                                                {% if match.total_score >= 80 %}bg-success
+                                                {% elif match.total_score >= 60 %}bg-info
+                                                {% elif match.total_score >= 40 %}bg-warning
+                                                {% else %}bg-secondary{% endif %}"
+                                                style="width: {{ match.total_score }}%;">
+                                                {{ match.total_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 80px; height: 20px;">
+                                            <div class="progress-bar bg-primary"
+                                                style="width: {{ match.role_score }}%;">
+                                                {{ match.role_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 80px; height: 20px;">
+                                            <div class="progress-bar bg-info"
+                                                style="width: {{ match.location_score }}%;">
+                                                {{ match.location_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 80px; height: 20px;">
+                                            <div class="progress-bar bg-success"
+                                                style="width: {{ match.availability_score }}%;">
+                                                {{ match.availability_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="width: 80px; height: 20px;">
+                                            <div class="progress-bar bg-warning"
+                                                style="width: {{ match.performance_score }}%;">
+                                                {{ match.performance_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' match.worker.pk %}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            View Profile
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Score Legend -->
+                    <div class="alert alert-light mt-3">
+                        <strong>Score Breakdown:</strong>
+                        <ul class="mb-0">
+                            <li><strong>Role Match (40%):</strong> Alignment with required role and experience</li>
+                            <li><strong>Location Match (30%):</strong> Geographic proximity to project site</li>
+                            <li><strong>Availability (20%):</strong> Current capacity to take on new assignments</li>
+                            <li><strong>Performance (10%):</strong> Historical influence and reliability scores</li>
+                        </ul>
+                    </div>
+
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <strong>No matches found.</strong> 
+                        Try adjusting the requirement criteria or add more workers to the system.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back Button -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <a href="{% url 'assignments_overview' %}" class="btn btn-secondary">
+                ← Back to Assignments Overview
+            </a>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

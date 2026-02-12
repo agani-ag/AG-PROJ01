@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Top Performers{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Top Performers</h4>
+            <p class="text-muted">Workers ranked by Influence Score</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Worker</th>
+                                    <th>Role</th>
+                                    <th>Influence Score</th>
+                                    <th>Total Revenue</th>
+                                    <th>Projects</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in top_workers %}
+                                <tr>
+                                    <td class="fw-bold">{{ forloop.counter }}</td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}">
+                                            {{ item.worker.name }}
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">{{ item.worker.worker_code }}</small>
+                                    </td>
+                                    <td>{{ item.worker.role.name }}</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="progress flex-grow-1" style="height: 20px; max-width: 200px;">
+                                                <div class="progress-bar 
+                                                    {% if item.influence_score >= 80 %}bg-success
+                                                    {% elif item.influence_score >= 60 %}bg-info
+                                                    {% elif item.influence_score >= 40 %}bg-warning
+                                                    {% else %}bg-secondary{% endif %}"
+                                                    role="progressbar"
+                                                    style="width: {{ item.influence_score }}%;">
+                                                    {{ item.influence_score }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% if item.influence_score >= 80 %}
+                                        <small class="text-success">⭐ Star Performer</small>
+                                        {% elif item.influence_score >= 60 %}
+                                        <small class="text-info">Strong Performer</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">₹{{ item.revenue|floatformat:0 }}</td>
+                                    <td>{{ item.projects_count }}</td>
+                                    <td>
+                                        <a href="{% url 'worker_detail' item.worker.pk %}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            View
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">
+                                        No worker data available
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Tiers -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Performance Tier Guide
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="alert alert-success mb-0">
+                                <h6 class="fw-bold">Star (80-100)</h6>
+                                <small>High influence, prioritize retention</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="alert alert-info mb-0">
+                                <h6 class="fw-bold">Strong (60-79)</h6>
+                                <small>Valuable, invest in growth</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="alert alert-warning mb-0">
+                                <h6 class="fw-bold">Average (40-59)</h6>
+                                <small>Standard relationship</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="alert alert-secondary mb-0">
+                                <h6 class="fw-bold">Low (0-39)</h6>
+                                <small>Risk of churn, needs activation</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}{{ worker.name }} - Performance{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- Worker Header -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h4 class="fw-bold mb-0">{{ worker.name }}</h4>
+                            <p class="text-muted mb-0">{{ worker.worker_code }} | {{ worker.role.name }}</p>
+                        </div>
+                        <div>
+                            <span class="badge bg-{% if worker.active_status %}success{% else %}secondary{% endif %}">
+                                {% if worker.active_status %}Active{% else %}Inactive{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Phone:</strong> {{ worker.phone }}</p>
+                            <p class="mb-1"><strong>Pincode:</strong> {{ worker.primary_pincode }}</p>
+                            <p class="mb-1"><strong>Joined:</strong> {{ worker.joined_date|date:"d M Y" }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Total Revenue:</strong> ₹{{ performance.total_revenue|floatformat:0 }}</p>
+                            <p class="mb-1"><strong>Projects:</strong> {{ performance.projects_count }}</p>
+                            <p class="mb-1"><strong>Active Assignments:</strong> {{ performance.active_assignments }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Projects Referred:</strong> {{ performance.projects_referred }}</p>
+                            <p class="mb-1"><strong>Availability:</strong> 
+                                <span class="badge bg-{% if performance.availability_status == 'AVAILABLE' %}success
+                                    {% elif performance.availability_status == 'LIMITED' %}info
+                                    {% elif performance.availability_status == 'BUSY' %}warning
+                                    {% else %}danger{% endif %}">
+                                    {{ performance.availability_status }}
+                                </span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Scores -->
+    <div class="row mb-3">
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Influence Score</h6>
+                    <h2 class="fw-bold text-primary">{{ performance.influence_score }}</h2>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar bg-primary" style="width: {{ performance.influence_score }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Loyalty Score</h6>
+                    <h2 class="fw-bold text-success">{{ performance.loyalty_score }}</h2>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar bg-success" style="width: {{ performance.loyalty_score }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Reliability Score</h6>
+                    <h2 class="fw-bold text-info">{{ performance.reliability_score }}</h2>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar bg-info" style="width: {{ performance.reliability_score }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6 mb-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center">
+                    <h6 class="text-muted">Availability</h6>
+                    <h2 class="fw-bold text-warning">{{ performance.availability_score }}</h2>
+                    <div class="progress" style="height: 5px;">
+                        <div class="progress-bar bg-warning" style="width: {{ performance.availability_score }}%;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Credit Risk Assessment -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Credit Risk Assessment
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>
+                                Risk Level: 
+                                <span class="badge bg-{{ credit_action.badge_class }}">
+                                    {{ risk_level }}
+                                </span>
+                            </h5>
+                            <p class="mb-0"><strong>{{ credit_action.message }}</strong></p>
+                            <p class="mb-0">Payment Terms: <strong>{{ credit_action.payment_terms }}</strong></p>
+                            <p class="mb-0">Max Credit Limit: <strong>₹{{ credit_action.max_credit_limit|floatformat:0 }}</strong></p>
+                        </div>
+                        <div class="col-md-6">
+                            {% if risk_flags %}
+                            <h6 class="text-danger">Risk Flags:</h6>
+                            <ul class="list-unstyled">
+                                {% for flag in risk_flags %}
+                                <li><small>⚠️ {{ flag }}</small></li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="text-success">✓ No risk flags</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projects Worked On -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Projects Worked On
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Project</th>
+                                    <th>Role</th>
+                                    <th>Revenue Generated</th>
+                                    <th>Referred By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for wp in worker_projects %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'project_detail' wp.project.pk %}">
+                                            {{ wp.project.name }}
+                                        </a>
+                                    </td>
+                                    <td>{{ wp.role.name }}</td>
+                                    <td>₹{{ wp.revenue_generated|floatformat:0 }}</td>
+                                    <td>
+                                        {% if wp.referred_by_worker %}
+                                            {{ wp.referred_by_worker.name }}
+                                        {% else %}
+                                            <span class="text-muted">Direct</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">
+                                        No projects yet
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

@@ -6,37 +6,80 @@
 <div class="container-fluid">
 
     <div class="row mb-3">
-        <div class="col-12 d-flex justify-content-between">
-            <h4 class="fw-bold">Worker List</h4>
-            <a href="{% url 'worker_create' %}" class="btn btn-primary btn-sm">
-                Add Worker
-            </a>
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4 class="fw-bold">Worker Intelligence</h4>
+            <div>
+                <a href="{% url 'top_performers' %}" class="btn btn-info btn-sm me-2">
+                    Top Performers
+                </a>
+                <a href="{% url 'worker_create' %}" class="btn btn-primary btn-sm">
+                    Add Worker
+                </a>
+            </div>
         </div>
     </div>
 
     <div class="row d-none d-md-block">
         <div class="col-12">
             <div class="table-responsive">
-                <table class="table table-bordered align-middle">
+                <table class="table table-bordered table-hover align-middle">
                     <thead class="table-light">
                         <tr>
                             <th>Code</th>
                             <th>Name</th>
                             <th>Role</th>
                             <th>Pincode</th>
+                            <th>Influence Score</th>
+                            <th>Availability</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for worker in workers %}
+                        {% for item in workers_data %}
                         <tr>
-                            <td>{{ worker.worker_code }}</td>
-                            <td>{{ worker.name }}</td>
-                            <td>{{ worker.role.name }}</td>
-                            <td>{{ worker.primary_pincode }}</td>
+                            <td>{{ item.worker.worker_code }}</td>
+                            <td>
+                                <a href="{% url 'worker_detail' item.worker.pk %}">
+                                    {{ item.worker.name }}
+                                </a>
+                            </td>
+                            <td>{{ item.worker.role.name }}</td>
+                            <td>{{ item.worker.primary_pincode }}</td>
+                            <td>
+                                <div class="progress" style="height: 20px;">
+                                    <div class="progress-bar 
+                                        {% if item.influence_score >= 70 %}bg-success
+                                        {% elif item.influence_score >= 40 %}bg-warning
+                                        {% else %}bg-secondary{% endif %}"
+                                        role="progressbar"
+                                        style="width: {{ item.influence_score }}%;"
+                                        aria-valuenow="{{ item.influence_score }}"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100">
+                                        {{ item.influence_score }}
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if item.availability_score >= 75 %}
+                                    <span class="badge bg-success">Available</span>
+                                {% elif item.availability_score >= 50 %}
+                                    <span class="badge bg-info">Limited</span>
+                                {% elif item.availability_score >= 25 %}
+                                    <span class="badge bg-warning">Busy</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Overloaded</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'worker_detail' item.worker.pk %}" class="btn btn-sm btn-outline-primary">
+                                    View Details
+                                </a>
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="4" class="text-center text-muted">
+                            <td colspan="7" class="text-center text-muted">
                                 No Workers
                             </td>
                         </tr>
@@ -44,6 +87,38 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- Mobile View -->
+    <div class="row d-md-none">
+        <div class="col-12">
+            {% for item in workers_data %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">{{ item.worker.name }}</h6>
+                    <p class="card-text mb-1">
+                        <small><strong>Code:</strong> {{ item.worker.worker_code }}</small><br>
+                        <small><strong>Role:</strong> {{ item.worker.role.name }}</small><br>
+                        <small><strong>Pincode:</strong> {{ item.worker.primary_pincode }}</small>
+                    </p>
+                    <div class="mb-2">
+                        <small><strong>Influence:</strong></small>
+                        <div class="progress" style="height: 15px;">
+                            <div class="progress-bar bg-primary"
+                                style="width: {{ item.influence_score }}%;">
+                                {{ item.influence_score }}
+                            </div>
+                        </div>
+                    </div>
+                    <a href="{% url 'worker_detail' item.worker.pk %}" class="btn btn-sm btn-primary">
+                        View Details
+                    </a>
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-center text-muted">No Workers</p>
+            {% endfor %}
         </div>
     </div>
 
