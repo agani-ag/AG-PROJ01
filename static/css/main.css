@@ -1,0 +1,16 @@
+/* Prevent horizontal overflow */
+html, body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* Fix Bootstrap row overflow issue */
+.row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Ensure all inputs behave */
+input, textarea, select {
+    max-width: 100%;
+}

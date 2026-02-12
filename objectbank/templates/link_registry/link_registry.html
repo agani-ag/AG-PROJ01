@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Login{% endblock %}
+{% block head %}
+<style>
+    .ag-row {
+        min-height: 52px;
+    }
+    .ag-cell {
+        font-size: 15px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <h2 class="mb-4">Link Registry</h2>
+    <!-- <div id="linkRegistryGrid" class="ag-theme-alpine" style="height: 70vh; width: 100%;"></div> -->
+    <div id="linkRegistryGrid" class="ag-theme-alpine" style="height: 500px; width: 100%;"></div>
+    <button id="addRowBtn" class="btn btn-success mt-2">Add Link</button>
+{% endblock %}
+{% block script %}
+<script>
+// --- Variables ---
+let gridApi;
+let gridColumnApi;
+let users = [];
+
+// --- Fetch Users ---
+fetch('/api/users/')
+    .then(res => res.json())
+    .then(data => { users = data; });
+
+// --- Column Definitions ---
+const columnDefs = [
+    { 
+        headerName: "Name", 
+        field: "link_name", 
+        flex: 1, 
+        editable: true 
+    },
+    { 
+        headerName: "URL", 
+        field: "link_url", 
+        flex: 2, 
+        editable: true,
+        cellStyle: { 'white-space': 'normal', 'word-break': 'break-word' } // text wrap
+    },
+    {
+        headerName: "User",
+        field: "user", // this is now the integer ID
+        flex: 1,
+        editable: true,
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: () => ({
+            values: users.map(u => u.id) // ID list for dropdown
+        }),
+        valueFormatter: params => {
+            if (!params.value) return '';
+            const u = users.find(u => u.id === params.value);
+            return u ? u.username : '';
+        }
+    },
+    {
+        headerName: "Active",
+        field: "active",
+        flex: 0.5,
+        editable: true,
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: { values: [0, 1] }
+    },
+    {
+        headerName: "Actions",
+        field: "id",
+        flex: 0.5,
+        minWidth: 100,
+        cellRenderer: params => `<button class="btn btn-sm btn-danger">Delete</button>`
+    }
+];
+
+// --- Grid Options ---
+const gridOptions = {
+    columnDefs,
+    rowData: [],
+    pagination: true,
+    paginationPageSize: 10,
+    paginationPageSizeSelector: [10, 25, 50, 100],
+    domLayout: 'autoHeight',
+    defaultColDef: { sortable: true, filter: true, resizable: true },
+
+    onGridReady: params => {
+        gridApi = params.api;
+        gridColumnApi = params.columnApi;
+
+        // Load initial data
+        fetch('/api/links/')
+            .then(res => res.json())
+            .then(data => gridApi.updateGridOptions({ rowData: data }));
+    },
+
+    onCellValueChanged: params => {
+        const row = params.data;
+        const method = row.id ? 'PATCH' : 'POST';
+        const url = row.id ? `/api/links/${row.id}/` : '/api/links/';
+
+        fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify(row)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (!row.id && data.id) params.node.setData(data);
+        })
+        .catch(() => alert(`${method} failed!`));
+    },
+
+    onCellClicked: params => {
+        if (params.colDef.headerName === "Actions") {
+            const row = params.data;
+            if (!row.id) {
+                gridApi.applyTransaction({ remove: [row] });
+                return;
+            }
+            if (confirm("Delete this link?")) {
+                fetch(`/api/links/${row.id}/`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': csrftoken }
+                })
+                .then(res => {
+                    if (res.ok) gridApi.applyTransaction({ remove: [row] });
+                    else alert("Delete failed!");
+                });
+            }
+        }
+    }
+};
+
+// --- Initialize Grid ---
+document.addEventListener('DOMContentLoaded', () => {
+    const gridDiv = document.querySelector('#linkRegistryGrid');
+    agGrid.createGrid(gridDiv, gridOptions);
+
+    // Add new blank row
+    document.getElementById('addRowBtn').addEventListener('click', () => {
+        if (!gridApi) return;
+        gridApi.applyTransaction({ add: [{ link_name: '', link_url: '', user: null, active: 1 }] });
+    });
+});
+</script>
+{% endblock %}

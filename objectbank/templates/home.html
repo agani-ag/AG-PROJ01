@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="container min-vh-100 d-flex align-items-center justify-content-center">
+    <div class="col-12 col-sm-10 col-md-8 col-lg-5">
+        <div class="card shadow-lg border-0">
+            <div class="card-body p-4 p-md-5">
+
+                <!-- Header -->
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold" style="text-transform: uppercase;">
+                        <span style="text-decoration: underline; 
+                            text-decoration-color: #E53935; text-decoration-thickness: 2px;
+                                text-underline-offset: 3px;">object 
+                        </span>
+                        <span style="text-decoration: underline;
+                            text-decoration-color: #1E88E5; text-decoration-thickness: 2px;
+                                text-underline-offset: 3px;">bank
+                        </span>
+                        {% if user.is_authenticated %}
+                        <br>
+                        <span style="font-size: 1.25rem; color: #555;">
+                            Welcome back, {{ user.username|capfirst }}!
+                        </span>
+                        {% endif %}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
