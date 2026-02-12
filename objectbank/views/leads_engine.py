@@ -732,18 +732,52 @@ def calendar_events_api(request):
     - end: End date (ISO format)
     - project_id: Filter by specific project (optional)
     """
-    start_date = request.GET.get('start')
-    end_date = request.GET.get('end')
-    project_id = request.GET.get('project_id')
+    from datetime import datetime
+    from django.utils import timezone
+    import re
     
-    # Convert to datetime if provided
-    if start_date:
-        from datetime import datetime
-        start_date = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-    if end_date:
-        from datetime import datetime
-        end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    try:
+        start_date = request.GET.get('start')
+        end_date = request.GET.get('end')
+        project_id = request.GET.get('project_id')
+        
+        # Convert to timezone-aware datetime if provided
+        if start_date:
+            # Clean up the date string - remove 'Z', fix timezone format
+            start_date = start_date.replace('Z', '')
+            # Fix timezone format: '2026-02-01T00:00:00 05:30' -> '2026-02-01T00:00:00+05:30'
+            start_date = re.sub(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s+([\d:]+)$', r'\1+\2', start_date)
+            start_date = re.sub(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s*\+00:00$', r'\1', start_date)
+            # Parse as naive datetime first
+            if '+' in start_date or '-' in start_date[-6:]:
+                start_dt = datetime.fromisoformat(start_date)
+                start_date = timezone.make_aware(start_dt, timezone.get_current_timezone()) if timezone.is_naive(start_dt) else start_dt
+            else:
+                start_dt = datetime.fromisoformat(start_date)
+                start_date = timezone.make_aware(start_dt, timezone.get_current_timezone())
+        
+        if end_date:
+            # Clean up the date string - remove 'Z', fix timezone format
+            end_date = end_date.replace('Z', '')
+            # Fix timezone format: '2026-02-01T00:00:00 05:30' -> '2026-02-01T00:00:00+05:30'
+            end_date = re.sub(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s+([\d:]+)$', r'\1+\2', end_date)
+            end_date = re.sub(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s*\+00:00$', r'\1', end_date)
+            # Parse as naive datetime first
+            if '+' in end_date or '-' in end_date[-6:]:
+                end_dt = datetime.fromisoformat(end_date)
+                end_date = timezone.make_aware(end_dt, timezone.get_current_timezone()) if timezone.is_naive(end_dt) else end_dt
+            else:
+                end_dt = datetime.fromisoformat(end_date)
+                end_date = timezone.make_aware(end_dt, timezone.get_current_timezone())
+        
+        events = get_calendar_events(start_date, end_date, project_id)
+        
+        return JsonResponse(events, safe=False)
     
-    events = get_calendar_events(start_date, end_date, project_id)
-    
-    return JsonResponse(events, safe=False)
+    except Exception as e:
+        import traceback
+        error_details = {
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }
+        return JsonResponse(error_details, status=500)

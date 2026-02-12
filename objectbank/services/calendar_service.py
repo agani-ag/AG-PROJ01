@@ -30,6 +30,14 @@ def get_calendar_events(start_date=None, end_date=None, project_id=None):
     if project_id:
         projects = projects.filter(pk=project_id)
     
+    # Convert datetime to date for date-only fields
+    start_date_only = None
+    end_date_only = None
+    if start_date:
+        start_date_only = start_date.date()
+    if end_date:
+        end_date_only = end_date.date()
+    
     # Date filtering for activities
     activity_filter = Q()
     if start_date:
@@ -80,10 +88,10 @@ def get_calendar_events(start_date=None, end_date=None, project_id=None):
     
     # 2. REVENUE TRANSACTIONS (Cash flow events)
     revenue_filter = Q()
-    if start_date:
-        revenue_filter &= Q(transaction_date__gte=start_date)
-    if end_date:
-        revenue_filter &= Q(transaction_date__lte=end_date)
+    if start_date_only:
+        revenue_filter &= Q(transaction_date__gte=start_date_only)
+    if end_date_only:
+        revenue_filter &= Q(transaction_date__lte=end_date_only)
     
     transactions = ProjectRevenueTransaction.objects.select_related(
         'project', 'stage', 'worker'
@@ -184,10 +192,10 @@ def get_calendar_events(start_date=None, end_date=None, project_id=None):
     
     # 5. EXPECTED COMPLETION DATES (Deadlines)
     deadline_filter = Q(expected_completion_date__isnull=False)
-    if start_date:
-        deadline_filter &= Q(expected_completion_date__gte=start_date)
-    if end_date:
-        deadline_filter &= Q(expected_completion_date__lte=end_date)
+    if start_date_only:
+        deadline_filter &= Q(expected_completion_date__gte=start_date_only)
+    if end_date_only:
+        deadline_filter &= Q(expected_completion_date__lte=end_date_only)
     
     if project_id:
         deadline_filter &= Q(pk=project_id)
