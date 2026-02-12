@@ -7,7 +7,7 @@ from .views import (
 
 urlpatterns = [
     # Home URL
-    path('', views.home, name='home'),
+    path('', views.dashboard_view, name='home'),
 
     # Auth URLs
     path('login', auth.login_view, name='login'),
@@ -22,4 +22,18 @@ urlpatterns = [
 
     # Link Registry URL
     path('link-registry/', link_registry.link_registry_view, name='link-registry'),
+
+
+    #Dashboard URL
+    path("", views.dashboard_view, name="dashboard"),
+
+    path("projects/", views.project_list_view, name="project_list"),
+    path("projects/create/", views.project_create_view, name="project_create"),
+    path("projects/<int:pk>/", views.project_detail_view, name="project_detail"),
+
+    path("workers/create/", views.worker_create_view, name="worker_create"),
+
+    path("revenue/create/", views.revenue_create_view, name="revenue_create"),
+
+    path("requirements/create/", views.requirement_create_view, name="requirement_create"),
 ]

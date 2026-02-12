@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Create Project{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-12 col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Create New Project
+                </div>
+                <div class="card-body">
+
+                    <form method="POST">
+                        {% csrf_token %}
+
+                        <div class="row g-3">
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Project Code</label>
+                                {{ form.project_code }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Project Name</label>
+                                {{ form.name }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Client Name</label>
+                                {{ form.client_name }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Phone</label>
+                                {{ form.phone }}
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">Address</label>
+                                {{ form.full_address }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Pincode</label>
+                                {{ form.pincode }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">City</label>
+                                {{ form.city }}
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label">Estimated Value</label>
+                                {{ form.estimated_total_value }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Current Stage</label>
+                                {{ form.current_stage }}
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label">Lead Status</label>
+                                {{ form.lead_status }}
+                            </div>
+
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <button type="submit" class="btn btn-success">
+                                Save Project
+                            </button>
+                        </div>
+
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

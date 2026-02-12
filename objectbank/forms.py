@@ -5,7 +5,8 @@ from django.contrib.auth.forms import (
     UserCreationForm, AuthenticationForm
 )
 from .models import (
-    UserProfile
+    Project, UserProfile, Worker,
+    ProjectRevenueTransaction, ProjectWorkerRequirement
 )
 
 class AuthForm(AuthenticationForm):
@@ -57,3 +58,62 @@ class UserProfileEditForm(ModelForm):
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
         }
+
+class ProjectForm(forms.ModelForm):
+    class Meta:
+        model = Project
+        fields = [
+            "project_code",
+            "name",
+            "client_name",
+            "phone",
+            "full_address",
+            "pincode",
+            "city",
+            "latitude",
+            "longitude",
+            "estimated_total_value",
+            "current_stage",
+            "lead_status",
+            "expected_completion_date"
+        ]
+
+
+class WorkerForm(forms.ModelForm):
+    class Meta:
+        model = Worker
+        fields = [
+            "worker_code",
+            "name",
+            "role",
+            "phone",
+            "primary_pincode",
+            "joined_date"
+        ]
+
+
+class RevenueForm(forms.ModelForm):
+    class Meta:
+        model = ProjectRevenueTransaction
+        fields = [
+            "project",
+            "stage",
+            "worker",
+            "invoice_number",
+            "revenue_amount",
+            "cost_amount",
+            "margin_amount",
+            "transaction_date"
+        ]
+
+
+class RequirementForm(forms.ModelForm):
+    class Meta:
+        model = ProjectWorkerRequirement
+        fields = [
+            "project",
+            "role",
+            "required_from_date",
+            "urgency",
+            "status"
+        ]

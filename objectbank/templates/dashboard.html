@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <h4 class="fw-bold">Dashboard Overview</h4>
+        </div>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="row g-3">
+
+        <div class="col-12 col-sm-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6>Total Projects</h6>
+                    <h3 class="fw-bold text-primary">{{ total_projects }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6>Total Revenue</h6>
+                    <h3 class="fw-bold text-success">{{ total_revenue }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-sm-6 col-lg-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h6>Remaining Opportunity</h6>
+                    <h3 class="fw-bold text-danger">{{ remaining_opportunity }}</h3>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Revenue Per Pincode -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Revenue Per Pincode
+                </div>
+                <div class="card-body">
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Pincode</th>
+                                    <th>Total Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in pincode_data %}
+                                <tr>
+                                    <td>{{ row.project__pincode }}</td>
+                                    <td>{{ row.total_revenue }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="2" class="text-center text-muted">
+                                        No Data Available
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
