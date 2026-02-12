@@ -149,53 +149,121 @@
 
             <!-- Stage Breakdown -->
             <div class="card shadow-sm mb-3">
-                <div class="card-header fw-bold">
-                    <i class="fa fa-chart-bar"></i> Stage Breakdown (Prioritized by Business Value)
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fa fa-chart-bar"></i> Stage Breakdown (Natural Construction Sequence)
+                    </div>
+                    <small class="text-muted">
+                        <span class="badge bg-danger">CRITICAL</span>
+                        <span class="badge bg-warning">High</span>
+                        <span class="badge bg-primary">Medium</span>
+                        <span class="badge bg-secondary">Low</span>
+                    </small>
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <strong>Reading Guide:</strong> Stages shown in construction sequence. 
+                        Focus on <strong class="text-danger">CRITICAL</strong> and <strong class="text-warning">High</strong> urgency stages for immediate action.
+                    </div>
+                    
                     <div class="table-responsive">
                         <table class="table table-bordered table-sm align-middle">
                             <thead class="table-light">
                                 <tr>
+                                    <th style="width: 5%;">#</th>
                                     <th>Stage</th>
-                                    <th>Priority</th>
+                                    <th style="width: 12%;">Urgency</th>
+                                    <th style="width: 10%;">Priority</th>
                                     <th>Estimated</th>
                                     <th>Captured</th>
                                     <th>Remaining</th>
-                                    <th>Status</th>
+                                    <th style="width: 18%;">Action Needed</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for item in stages_with_priority %}
-                                <tr>
-                                    <td>
-                                        <strong>{{ item.stage.name }}</strong>
-                                        {% if item.stage == project.current_stage %}
-                                        <span class="badge bg-primary">Current</span>
-                                        {% endif %}
+                                <tr class="{% if item.is_current %}table-primary{% elif item.is_next %}table-warning{% elif item.is_completed %}table-light{% endif %}">
+                                    <td class="text-center">
+                                        <small class="text-muted">{{ item.stage.sequence_order }}</small>
                                     </td>
-                                    <td style="width: 120px;">
-                                        <div class="progress" style="height: 18px;">
-                                            <div class="progress-bar bg-{% if item.priority_score >= 70 %}success{% elif item.priority_score >= 40 %}warning{% else %}secondary{% endif %}"
-                                                style="width: {{ item.priority_score }}%;">
-                                                <small>{{ item.priority_score|floatformat:0 }}</small>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div>
+                                                {% if item.is_current %}
+                                                <i class="fas fa-arrow-right text-primary me-1"></i>
+                                                {% elif item.is_next %}
+                                                <i class="fas fa-arrow-circle-right text-warning me-1"></i>
+                                                {% elif item.project_stage.is_completed %}
+                                                <i class="fas fa-check-circle text-success me-1"></i>
+                                                {% elif item.is_past %}
+                                                <i class="fas fa-exclamation-triangle text-danger me-1"></i>
+                                                {% else %}
+                                                <i class="fas fa-circle text-muted me-1" style="font-size: 0.5rem;"></i>
+                                                {% endif %}
+                                                <strong>{{ item.stage.name }}</strong>
+                                                {% if item.project_stage.is_completed and item.project_stage.completed_date %}
+                                                <br><small class="text-success">
+                                                    <i class="fas fa-calendar-check"></i> Completed: {{ item.project_stage.completed_date|date:"d M Y" }}
+                                                </small>
+                                                {% elif item.position_label %}
+                                                <br><small class="text-muted">{{ item.position_label }}</small>
+                                                {% endif %}
                                             </div>
                                         </div>
                                     </td>
-                                    <td>₹{{ item.project_stage.estimated_stage_value|floatformat:0 }}</td>
-                                    <td>₹{{ item.project_stage.captured_stage_revenue|floatformat:0 }}</td>
-                                    <td class="text-danger">₹{{ item.remaining|floatformat:0 }}</td>
                                     <td>
-                                        {% if item.project_stage.is_completed %}
-                                        <span class="badge bg-success">Done</span>
-                                        {% else %}
-                                        <span class="badge bg-warning">Pending</span>
-                                        {% endif %}
+                                        <span class="badge bg-{{ item.urgency_color }} w-100">
+                                            {{ item.urgency_level }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-{% if item.priority_score >= 80 %}danger{% elif item.priority_score >= 60 %}warning{% elif item.priority_score >= 40 %}primary{% else %}secondary{% endif %}"
+                                                style="width: {{ item.priority_score }}%;"
+                                                role="progressbar">
+                                                <small class="fw-bold">{{ item.priority_score|floatformat:0 }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <strong>₹{{ item.project_stage.estimated_stage_value|floatformat:0 }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="{% if item.capture_ratio > 70 %}text-success{% elif item.capture_ratio > 30 %}text-warning{% else %}text-danger{% endif %}">
+                                            ₹{{ item.project_stage.captured_stage_revenue|floatformat:0 }}
+                                        </span>
+                                        <br><small class="text-muted">({{ item.capture_ratio|floatformat:0 }}%)</small>
+                                    </td>
+                                    <td>
+                                        <strong class="{% if item.remaining > 0 %}text-danger{% else %}text-success{% endif %}">
+                                            ₹{{ item.remaining|floatformat:0 }}
+                                        </strong>
+                                    </td>
+                                    <td>
+                                        <small class="{% if item.urgency_level == 'CRITICAL' %}text-danger fw-bold{% elif item.urgency_level == 'High' %}text-warning fw-bold{% else %}text-muted{% endif %}">
+                                            {{ item.action_recommendation }}
+                                        </small>
                                     </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <strong>Legend:</strong>
+                            <i class="fas fa-arrow-right text-primary ms-2"></i> Current Stage &nbsp;
+                            <i class="fas fa-arrow-circle-right text-warning ms-2"></i> Next Stage &nbsp;
+                            <i class="fas fa-check-circle text-success ms-2"></i> Completed &nbsp;
+                            <i class="fas fa-exclamation-triangle text-danger ms-2"></i> Past Incomplete
+                        </small>
+                        <br>
+                        <small class="text-info">
+                            <i class="fas fa-lightbulb me-1"></i>
+                            <strong>Auto-Completion:</strong> When you move to a new stage, all previous stages are automatically marked as completed.
+                        </small>
                     </div>
                 </div>
             </div>

@@ -115,12 +115,30 @@ from ..services.project_service import (
     calculate_remaining_opportunity,
     calculate_capture_ratio,
     get_project_stages_with_priority,
-    is_late_entry_project
+    is_late_entry_project,
+    recalculate_project_stage_estimates,
+    mark_past_stages_completed
 )
 
 
 def project_detail_view(request, pk):
     project = Project.objects.get(pk=pk)
+    
+    # Auto-fix: Check if stage estimates need recalculation (all zeros)
+    # This fixes projects created before intelligent distribution was implemented
+    if project.estimated_total_value > 0:
+        total_stage_estimates = project.stages.aggregate(
+            total=models.Sum('estimated_stage_value')
+        )['total'] or 0
+        
+        # If total stage estimates are 0 but project has estimated value, recalculate
+        if total_stage_estimates == 0:
+            recalculate_project_stage_estimates(project)
+    
+    # Auto-fix: Mark past stages as completed if not already done
+    # This fixes projects that were moved forward before auto-completion was implemented
+    mark_past_stages_completed(project)
+    
     remaining = calculate_remaining_opportunity(project)
     capture_ratio = calculate_capture_ratio(project)
     stages_with_priority = get_project_stages_with_priority(project)
@@ -590,10 +608,15 @@ def update_construction_stage_view(request, project_pk):
             project.current_stage = new_stage
             project.save(update_fields=['current_stage'])
             
+            # Auto-complete all past stages
+            completed_count = mark_past_stages_completed(project)
+            
             # Log activity
             description = f"Construction stage changed from '{old_stage.name}' to '{new_stage.name}'"
             if notes:
                 description += f"\nNotes: {notes}"
+            if completed_count > 0:
+                description += f"\n✓ {completed_count} past stage(s) auto-marked as completed"
             
             ProjectActivity.objects.create(
                 project=project,
@@ -604,7 +627,10 @@ def update_construction_stage_view(request, project_pk):
                 performed_by=request.user
             )
             
-            messages.success(request, f"✓ Construction stage updated to '{new_stage.name}'")
+            success_msg = f"✓ Construction stage updated to '{new_stage.name}'"
+            if completed_count > 0:
+                success_msg += f" ({completed_count} past stage(s) completed)"
+            messages.success(request, success_msg)
             return redirect('project_detail', pk=project.pk)
     else:
         form = UpdateConstructionStageForm(initial={'construction_stage': project.current_stage})

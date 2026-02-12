@@ -179,6 +179,17 @@ class Project(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
+        # Track if current_stage was changed
+        is_new = self.pk is None
+        old_stage = None
+        
+        if not is_new:
+            try:
+                old_project = Project.objects.get(pk=self.pk)
+                old_stage = old_project.current_stage
+            except Project.DoesNotExist:
+                pass
+        
         if not self.project_code:
             # Auto-generate project code: PROJ-YYYY-####
             from datetime import date
@@ -199,6 +210,11 @@ class Project(models.Model):
             self.project_code = f"PROJ-{year}-{new_seq:04d}"
         
         super().save(*args, **kwargs)
+        
+        # Auto-complete past stages if current_stage changed
+        if not is_new and old_stage and old_stage != self.current_stage:
+            from .services.project_service import mark_past_stages_completed
+            mark_past_stages_completed(self)
 
     def __str__(self):
         return f"{self.project_code} - {self.name}"
