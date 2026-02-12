@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Timeline - {{ project.name }}{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+    
+    <div class="row mb-3">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'project_list' %}">Projects</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'project_detail' project.pk %}">{{ project.project_code }}</a></li>
+                    <li class="breadcrumb-item active">Timeline</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h4 class="fw-bold">{{ project.name }}</h4>
+                    <p class="text-muted mb-0">{{ project.project_code }} | Complete History & Timeline</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Activities Timeline -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    <i class="fa fa-history"></i> Activity Timeline
+                </div>
+                <div class="card-body">
+                    {% if activities %}
+                    <div class="timeline">
+                        {% for activity in activities %}
+                        <div class="timeline-item mb-4 pb-3 border-bottom">
+                            <div class="d-flex align-items-start">
+                                <div class="me-3">
+                                    {% if activity.activity_type == 'CREATED' %}
+                                    <span class="badge bg-success p-2"><i class="fa fa-plus"></i></span>
+                                    {% elif activity.activity_type == 'STATUS_CHANGE' %}
+                                    <span class="badge bg-info p-2"><i class="fa fa-flag"></i></span>
+                                    {% elif activity.activity_type == 'STAGE_CHANGE' %}
+                                    <span class="badge bg-primary p-2"><i class="fa fa-hammer"></i></span>
+                                    {% elif activity.activity_type == 'WORKER_ASSIGNED' %}
+                                    <span class="badge bg-success p-2"><i class="fa fa-user-plus"></i></span>
+                                    {% elif activity.activity_type == 'WORKER_REMOVED' %}
+                                    <span class="badge bg-warning p-2"><i class="fa fa-user-minus"></i></span>
+                                    {% elif activity.activity_type == 'REVENUE_RECORDED' %}
+                                    <span class="badge bg-warning p-2"><i class="fa fa-rupee-sign"></i></span>
+                                    {% elif activity.activity_type == 'REQUIREMENT_CREATED' %}
+                                    <span class="badge bg-info p-2"><i class="fa fa-tasks"></i></span>
+                                    {% elif activity.activity_type == 'NOTE_ADDED' %}
+                                    <span class="badge bg-secondary p-2"><i class="fa fa-sticky-note"></i></span>
+                                    {% elif activity.activity_type == 'STAGE_COMPLETED' %}
+                                    <span class="badge bg-success p-2"><i class="fa fa-check-circle"></i></span>
+                                    {% elif activity.activity_type == 'PROJECT_WON' %}
+                                    <span class="badge bg-success p-2"><i class="fa fa-trophy"></i></span>
+                                    {% elif activity.activity_type == 'PROJECT_LOST' %}
+                                    <span class="badge bg-danger p-2"><i class="fa fa-times-circle"></i></span>
+                                    {% else %}
+                                    <span class="badge bg-secondary p-2"><i class="fa fa-info"></i></span>
+                                    {% endif %}
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">{{ activity.get_activity_type_display }}</h6>
+                                    <p class="mb-2">{{ activity.description }}</p>
+                                    
+                                    {% if activity.old_value and activity.new_value %}
+                                    <div class="badge bg-light text-dark me-2">
+                                        From: {{ activity.old_value }}
+                                    </div>
+                                    <div class="badge bg-light text-dark">
+                                        To: {{ activity.new_value }}
+                                    </div>
+                                    {% endif %}
+                                    
+                                    {% if activity.related_worker %}
+                                    <div class="mt-1">
+                                        <small class="text-info">
+                                            <i class="fa fa-user"></i> 
+                                            <a href="{% url 'worker_detail' activity.related_worker.pk %}">
+                                                {{ activity.related_worker.name }}
+                                            </a>
+                                        </small>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    <div class="mt-2">
+                                        <small class="text-muted">
+                                            {% if activity.performed_by %}
+                                            <i class="fa fa-user"></i> {{ activity.performed_by.username }}
+                                            {% endif %}
+                                            <i class="fa fa-clock ms-2"></i> {{ activity.created_at|date:"d M Y, h:i A" }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center">
+                        <i class="fa fa-info-circle"></i> No activity recorded yet
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Notes Section -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-sticky-note"></i> All Notes</span>
+                    <a href="{% url 'add_project_note' project.pk %}" class="btn btn-sm btn-primary">
+                        <i class="fa fa-plus"></i> Add
+                    </a>
+                </div>
+                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                    {% if notes %}
+                    {% for note in notes %}
+                    <div class="mb-3 pb-3 border-bottom">
+                        {% if note.is_important %}
+                        <span class="badge bg-danger mb-2">Important</span>
+                        {% endif %}
+                        <p class="mb-2">{{ note.note }}</p>
+                        <small class="text-muted">
+                            <i class="fa fa-user"></i> {{ note.created_by.username }}
+                            <br>
+                            <i class="fa fa-clock"></i> {{ note.created_at|date:"d M Y, h:i A" }}
+                        </small>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="text-muted text-center mb-0">
+                        <i class="fa fa-info-circle"></i> No notes yet
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card shadow-sm mt-3">
+                <div class="card-header fw-bold">
+                    <i class="fa fa-arrow-left"></i> Back to Project
+                </div>
+                <div class="card-body">
+                    <a href="{% url 'project_detail' project.pk %}" class="btn btn-primary w-100">
+                        <i class="fa fa-eye"></i> View Project Details
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

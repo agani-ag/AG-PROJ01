@@ -6,7 +6,8 @@ from django.contrib.auth.forms import (
 )
 from .models import (
     Project, UserProfile, Worker,
-    ProjectRevenueTransaction, ProjectWorkerRequirement
+    ProjectRevenueTransaction, ProjectWorkerRequirement,
+    WorkerProject, ProjectNote, LeadStatus, ConstructionStage
 )
 
 class AuthForm(AuthenticationForm):
@@ -153,4 +154,69 @@ class RequirementForm(forms.ModelForm):
             'required_from_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'urgency': forms.Select(attrs={'class': 'form-control'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
+        }
+
+
+# Project Workflow Forms
+class AssignWorkerToProjectForm(forms.ModelForm):
+    """Assign a worker to a project"""
+    class Meta:
+        model = WorkerProject
+        fields = ['worker', 'role', 'referred_by_worker']
+        widgets = {
+            'worker': forms.Select(attrs={'class': 'form-control'}),
+            'role': forms.Select(attrs={'class': 'form-control'}),
+            'referred_by_worker': forms.Select(attrs={'class': 'form-control'}),
+        }
+        labels = {
+            'worker': 'Select Worker',
+            'role': 'Role in this Project',
+            'referred_by_worker': 'Referred By (Optional)',
+        }
+
+
+class UpdateLeadStatusForm(forms.Form):
+    """Update project lead status"""
+    lead_status = forms.ModelChoiceField(
+        queryset=LeadStatus.objects.all().order_by('sequence_order'),
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='New Lead Status'
+    )
+    notes = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Optional notes about this status change...'}),
+        required=False,
+        label='Notes (Optional)'
+    )
+
+
+class UpdateConstructionStageForm(forms.Form):
+    """Update project construction stage"""
+    construction_stage = forms.ModelChoiceField(
+        queryset=ConstructionStage.objects.filter(is_active=True).order_by('sequence_order'),
+        widget=forms.Select(attrs={'class': 'form-control'}),
+        label='New Construction Stage'
+    )
+    notes = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3, 'placeholder': 'Optional notes about this stage change...'}),
+        required=False,
+        label='Notes (Optional)'
+    )
+
+
+class ProjectNoteForm(forms.ModelForm):
+    """Add notes/updates to project"""
+    class Meta:
+        model = ProjectNote
+        fields = ['note', 'is_important']
+        widgets = {
+            'note': forms.Textarea(attrs={
+                'class': 'form-control',
+                'rows': 4,
+                'placeholder': 'Add your note or update about this project...'
+            }),
+            'is_important': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+        labels = {
+            'note': 'Note/Update',
+            'is_important': 'Mark as Important',
         }

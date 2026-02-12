@@ -44,8 +44,17 @@ def project_create_view(request):
         form = ProjectForm(request.POST)
         if form.is_valid():
             project = create_project(form.cleaned_data)
+            
+            # Log project creation
+            ProjectActivity.objects.create(
+                project=project,
+                activity_type='CREATED',
+                description=f"Project '{project.name}' created with code {project.project_code}",
+                performed_by=request.user
+            )
+            
             messages.success(request, f"✓ Project '{project.name}' created successfully with code {project.project_code}!")
-            return redirect("project_list")
+            return redirect("project_detail", pk=project.pk)
     else:
         form = ProjectForm()
 
@@ -66,13 +75,25 @@ def project_detail_view(request, pk):
     capture_ratio = calculate_capture_ratio(project)
     stages_with_priority = get_project_stages_with_priority(project)
     late_entry = is_late_entry_project(project)
+    
+    # Get assigned workers
+    assigned_workers = project.worker_projects.select_related('worker', 'role', 'referred_by_worker').all()
+    
+    # Get recent activities (last 10)
+    recent_activities = project.activities.select_related('related_worker', 'performed_by')[:10]
+    
+    # Get recent notes (last 5)
+    recent_notes = project.notes.select_related('created_by')[:5]
 
     return render(request, "leads_engine/project_detail.html", {
         "project": project,
         "remaining": remaining,
         "capture_ratio": capture_ratio,
         "stages_with_priority": stages_with_priority,
-        "late_entry": late_entry
+        "late_entry": late_entry,
+        "assigned_workers": assigned_workers,
+        "recent_activities": recent_activities,
+        "recent_notes": recent_notes,
     })
 
 # Worker Create
@@ -314,3 +335,221 @@ def assignments_overview_view(request):
     }
     
     return render(request, "leads_engine/assignments_overview.html", context)
+
+
+# =====================================================
+# PROJECT LIFECYCLE MANAGEMENT
+# =====================================================
+
+from ..forms import (
+    AssignWorkerToProjectForm,
+    UpdateLeadStatusForm,
+    UpdateConstructionStageForm,
+    ProjectNoteForm
+)
+from ..models import ProjectActivity, ProjectNote, WorkerProject
+
+
+def assign_worker_to_project_view(request, project_pk):
+    """Assign a worker to a project"""
+    project = Project.objects.get(pk=project_pk)
+    
+    if request.method == "POST":
+        form = AssignWorkerToProjectForm(request.POST)
+        if form.is_valid():
+            worker_project = form.save(commit=False)
+            worker_project.project = project
+            worker_project.save()
+            
+            # Log activity
+            ProjectActivity.objects.create(
+                project=project,
+                activity_type='WORKER_ASSIGNED',
+                description=f"Worker {worker_project.worker.name} assigned as {worker_project.role.name}",
+                related_worker=worker_project.worker,
+                performed_by=request.user
+            )
+            
+            messages.success(
+                request,
+                f"✓ Worker '{worker_project.worker.name}' assigned to project successfully!"
+            )
+            return redirect('project_detail', pk=project.pk)
+    else:
+        form = AssignWorkerToProjectForm()
+    
+    # Get already assigned workers
+    assigned_workers = project.worker_projects.select_related('worker', 'role').all()
+    
+    context = {
+        'project': project,
+        'form': form,
+        'assigned_workers': assigned_workers
+    }
+    
+    return render(request, "leads_engine/assign_worker.html", context)
+
+
+def remove_worker_from_project_view(request, project_pk, worker_project_pk):
+    """Remove a worker from a project"""
+    project = Project.objects.get(pk=project_pk)
+    worker_project = WorkerProject.objects.get(pk=worker_project_pk)
+    
+    worker_name = worker_project.worker.name
+    
+    # Log activity before deletion
+    ProjectActivity.objects.create(
+        project=project,
+        activity_type='WORKER_REMOVED',
+        description=f"Worker {worker_name} removed from project",
+        related_worker=worker_project.worker,
+        performed_by=request.user
+    )
+    
+    worker_project.delete()
+    
+    messages.info(request, f"Worker '{worker_name}' removed from project.")
+    return redirect('assign_worker_to_project', project_pk=project.pk)
+
+
+def update_lead_status_view(request, project_pk):
+    """Update project lead status"""
+    project = Project.objects.get(pk=project_pk)
+    
+    if request.method == "POST":
+        form = UpdateLeadStatusForm(request.POST)
+        if form.is_valid():
+            old_status = project.lead_status
+            new_status = form.cleaned_data['lead_status']
+            notes = form.cleaned_data.get('notes', '')
+            
+            project.lead_status = new_status
+            project.save(update_fields=['lead_status'])
+            
+            # Log activity
+            description = f"Lead status changed from '{old_status.name}' to '{new_status.name}'"
+            if notes:
+                description += f"\nNotes: {notes}"
+            
+            # Determine activity type
+            if new_status.is_won:
+                activity_type = 'PROJECT_WON'
+            elif new_status.is_lost:
+                activity_type = 'PROJECT_LOST'
+            else:
+                activity_type = 'STATUS_CHANGE'
+            
+            ProjectActivity.objects.create(
+                project=project,
+                activity_type=activity_type,
+                description=description,
+                old_value=old_status.name,
+                new_value=new_status.name,
+                performed_by=request.user
+            )
+            
+            messages.success(request, f"✓ Lead status updated to '{new_status.name}'")
+            return redirect('project_detail', pk=project.pk)
+    else:
+        form = UpdateLeadStatusForm(initial={'lead_status': project.lead_status})
+    
+    context = {
+        'project': project,
+        'form': form
+    }
+    
+    return render(request, "leads_engine/update_lead_status.html", context)
+
+
+def update_construction_stage_view(request, project_pk):
+    """Update project construction stage"""
+    project = Project.objects.get(pk=project_pk)
+    
+    if request.method == "POST":
+        form = UpdateConstructionStageForm(request.POST)
+        if form.is_valid():
+            old_stage = project.current_stage
+            new_stage = form.cleaned_data['construction_stage']
+            notes = form.cleaned_data.get('notes', '')
+            
+            project.current_stage = new_stage
+            project.save(update_fields=['current_stage'])
+            
+            # Log activity
+            description = f"Construction stage changed from '{old_stage.name}' to '{new_stage.name}'"
+            if notes:
+                description += f"\nNotes: {notes}"
+            
+            ProjectActivity.objects.create(
+                project=project,
+                activity_type='STAGE_CHANGE',
+                description=description,
+                old_value=old_stage.name,
+                new_value=new_stage.name,
+                performed_by=request.user
+            )
+            
+            messages.success(request, f"✓ Construction stage updated to '{new_stage.name}'")
+            return redirect('project_detail', pk=project.pk)
+    else:
+        form = UpdateConstructionStageForm(initial={'construction_stage': project.current_stage})
+    
+    context = {
+        'project': project,
+        'form': form
+    }
+    
+    return render(request, "leads_engine/update_construction_stage.html", context)
+
+
+def add_project_note_view(request, project_pk):
+    """Add note/update to project"""
+    project = Project.objects.get(pk=project_pk)
+    
+    if request.method == "POST":
+        form = ProjectNoteForm(request.POST)
+        if form.is_valid():
+            note = form.save(commit=False)
+            note.project = project
+            note.created_by = request.user
+            note.save()
+            
+            # Log activity
+            ProjectActivity.objects.create(
+                project=project,
+                activity_type='NOTE_ADDED',
+                description=f"Note added: {note.note[:100]}{'...' if len(note.note) > 100 else ''}",
+                performed_by=request.user
+            )
+            
+            messages.success(request, "✓ Note added successfully!")
+            return redirect('project_detail', pk=project.pk)
+    else:
+        form = ProjectNoteForm()
+    
+    context = {
+        'project': project,
+        'form': form,
+        'notes': project.notes.all()[:10]  # Show last 10 notes
+    }
+    
+    return render(request, "leads_engine/add_project_note.html", context)
+
+
+def project_timeline_view(request, project_pk):
+    """View complete project timeline/history"""
+    project = Project.objects.get(pk=project_pk)
+    
+    activities = project.activities.select_related(
+        'related_worker', 'performed_by'
+    ).all()[:50]  # Last 50 activities
+    
+    notes = project.notes.select_related('created_by').all()
+    
+    context = {
+        'project': project,
+        'activities': activities,
+        'notes': notes
+    }
+    
+    return render(request, "leads_engine/project_timeline.html", context)

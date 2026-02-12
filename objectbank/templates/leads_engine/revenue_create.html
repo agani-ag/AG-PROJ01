@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Record Revenue{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-12 col-lg-8 offset-lg-2">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white fw-bold">
+                    <i class="fas fa-money-bill-wave me-2"></i>Record Revenue Transaction
+                </div>
+                <div class="card-body">
+
+                    <div class="alert alert-info" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Revenue Recording:</strong> Track income from projects and attribute to workers. This helps calculate performance metrics and commissions.
+                    </div>
+
+                    {% if form.errors %}
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0 mt-2">
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li>{{ field.label }}: {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endif %}
+
+                    <form method="POST">
+                        {% csrf_token %}
+
+                        <div class="row g-3">
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-project-diagram text-primary me-1"></i>Project *
+                                </label>
+                                {{ form.project }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Select the project this revenue is associated with
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-hard-hat text-warning me-1"></i>Construction Stage *
+                                </label>
+                                {{ form.stage }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Which stage generated this revenue?
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-user-tie text-info me-1"></i>Worker
+                                </label>
+                                {{ form.worker }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Who brought in this revenue? (Optional)
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-file-invoice text-secondary me-1"></i>Invoice Number
+                                </label>
+                                {{ form.invoice_number }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Reference number for tracking
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-calendar-alt text-danger me-1"></i>Transaction Date *
+                                </label>
+                                {{ form.transaction_date }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    When was the payment received?
+                                </small>
+                            </div>
+
+                            <div class="col-12">
+                                <hr class="my-3">
+                                <h6 class="text-muted mb-3">
+                                    <i class="fas fa-chart-line me-2"></i>Financial Details
+                                </h6>
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-dollar-sign text-success me-1"></i>Revenue Amount *
+                                </label>
+                                {{ form.revenue_amount }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Total income received
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-minus-circle text-danger me-1"></i>Cost Amount *
+                                </label>
+                                {{ form.cost_amount }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Total expenses incurred
+                                </small>
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-percentage text-info me-1"></i>Margin Amount *
+                                </label>
+                                {{ form.margin_amount }}
+                                <small class="form-text text-muted d-block mt-1">
+                                    Profit (Revenue - Cost)
+                                </small>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="alert alert-warning" role="alert">
+                                    <i class="fas fa-calculator me-2"></i>
+                                    <strong>Quick Tip:</strong> Margin Amount = Revenue Amount - Cost Amount. Make sure your calculations are accurate.
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="d-flex gap-2 mt-4">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save me-2"></i>Record Revenue
+                            </button>
+                            <a href="{% url 'project_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i>Cancel
+                            </a>
+                        </div>
+                    </form>
+
+                </div>
+            </div>
+
+            <!-- Quick Reference Card -->
+            <div class="card shadow-sm mt-3">
+                <div class="card-header bg-light">
+                    <i class="fas fa-lightbulb text-warning me-2"></i>Revenue Recording Tips
+                </div>
+                <div class="card-body">
+                    <ul class="mb-0 small">
+                        <li><strong>Project Association:</strong> Revenue must be linked to a project for tracking</li>
+                        <li><strong>Stage Tracking:</strong> Helps identify which construction phases are most profitable</li>
+                        <li><strong>Worker Attribution:</strong> Links revenue to specific workers for performance metrics and commissions</li>
+                        <li><strong>Margin Calculation:</strong> Accurate margins help evaluate project profitability</li>
+                        <li><strong>Invoice Numbers:</strong> Use consistent numbering for easy reference and auditing</li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Auto-calculate margin when revenue or cost changes
+document.addEventListener('DOMContentLoaded', function() {
+    const revenueInput = document.querySelector('input[name="revenue_amount"]');
+    const costInput = document.querySelector('input[name="cost_amount"]');
+    const marginInput = document.querySelector('input[name="margin_amount"]');
+
+    function calculateMargin() {
+        const revenue = parseFloat(revenueInput.value) || 0;
+        const cost = parseFloat(costInput.value) || 0;
+        const margin = revenue - cost;
+        marginInput.value = margin.toFixed(2);
+    }
+
+    if (revenueInput && costInput && marginInput) {
+        revenueInput.addEventListener('input', calculateMargin);
+        costInput.addEventListener('input', calculateMargin);
+    }
+});
+</script>
+
+{% endblock %}

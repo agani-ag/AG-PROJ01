@@ -30,6 +30,14 @@ urlpatterns = [
     path("projects/", leads_engine.project_list_view, name="project_list"),
     path("projects/create/", leads_engine.project_create_view, name="project_create"),
     path("projects/<int:pk>/", leads_engine.project_detail_view, name="project_detail"),
+    
+    # Project Lifecycle URLs
+    path("projects/<int:project_pk>/assign-worker/", leads_engine.assign_worker_to_project_view, name="assign_worker_to_project"),
+    path("projects/<int:project_pk>/remove-worker/<int:worker_project_pk>/", leads_engine.remove_worker_from_project_view, name="remove_worker_from_project"),
+    path("projects/<int:project_pk>/update-status/", leads_engine.update_lead_status_view, name="update_lead_status"),
+    path("projects/<int:project_pk>/update-stage/", leads_engine.update_construction_stage_view, name="update_construction_stage"),
+    path("projects/<int:project_pk>/add-note/", leads_engine.add_project_note_view, name="add_project_note"),
+    path("projects/<int:project_pk>/timeline/", leads_engine.project_timeline_view, name="project_timeline"),
 
     # Worker URLs
     path("workers/", leads_engine.worker_list_view, name="worker_list"),

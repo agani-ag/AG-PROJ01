@@ -1,36 +1,65 @@
 {% extends "base.html" %}
-{% block title %}Project Detail{% endblock %}
+{% block title %}{{ project.name }} - Detail{% endblock %}
 
 {% block content %}
 
 <div class="container-fluid">
 
-    <!-- Project Header -->
+    <!-- Project Header with Actions -->
     <div class="row mb-3">
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h4 class="fw-bold">{{ project.name }}</h4>
+                    <div class="d-flex justify-content-between align-items-start flex-wrap">
+                        <div class="mb-2">
+                            <h4 class="fw-bold mb-1">{{ project.name }}</h4>
                             <p class="text-muted mb-0">{{ project.project_code }}</p>
                         </div>
-                        <div>
+                        <div class="mb-2">
                             {% if late_entry %}
-                            <span class="badge bg-warning">Late Entry Project</span>
+                            <span class="badge bg-warning me-1">Late Entry</span>
                             {% endif %}
-                            <span class="badge bg-primary">{{ project.current_stage.name }}</span>
-                            <span class="badge bg-info">{{ project.lead_status.name }}</span>
+                            <span class="badge bg-primary me-1">{{ project.current_stage.name }}</span>
+                            <span class="badge bg-{% if project.lead_status.is_won %}success{% elif project.lead_status.is_lost %}danger{% else %}info{% endif %}">
+                                {{ project.lead_status.name }}
+                            </span>
                         </div>
                     </div>
+                    
                     <hr>
+                    
+                    <!-- Quick Actions -->
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <a href="{% url 'update_lead_status' project.pk %}" class="btn btn-sm btn-outline-primary">
+                            <i class="fa fa-flag"></i> Update Lead Status
+                        </a>
+                        <a href="{% url 'update_construction_stage' project.pk %}" class="btn btn-sm btn-outline-info">
+                            <i class="fa fa-hammer"></i> Update Stage
+                        </a>
+                        <a href="{% url 'assign_worker_to_project' project.pk %}" class="btn btn-sm btn-outline-success">
+                            <i class="fa fa-user-plus"></i> Assign Worker
+                        </a>
+                        <a href="{% url 'add_project_note' project.pk %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fa fa-sticky-note"></i> Add Note
+                        </a>
+                        <a href="{% url 'revenue_create' %}" class="btn btn-sm btn-outline-warning">
+                            <i class="fa fa-rupee-sign"></i> Record Revenue
+                        </a>
+                        <a href="{% url 'project_timeline' project.pk %}" class="btn btn-sm btn-outline-dark">
+                            <i class="fa fa-timeline"></i> View Timeline
+                        </a>
+                    </div>
+                    
+                    <!-- Project Info -->
                     <div class="row">
                         <div class="col-md-4">
+                            <h6 class="text-muted">Client Information</h6>
                             <p class="mb-1"><strong>Client:</strong> {{ project.client_name }}</p>
                             <p class="mb-1"><strong>Phone:</strong> {{ project.phone }}</p>
-                            <p class="mb-1"><strong>Pincode:</strong> {{ project.pincode }} | {{ project.city }}</p>
+                            <p class="mb-1"><strong>Location:</strong> {{ project.pincode }}, {{ project.city }}</p>
                         </div>
                         <div class="col-md-4">
+                            <h6 class="text-muted">Financial Summary</h6>
                             <p class="mb-1"><strong>Estimated Value:</strong> ₹{{ project.estimated_total_value|floatformat:0 }}</p>
                             <p class="mb-1"><strong>Capture Ratio:</strong> 
                                 <span class="badge bg-{% if capture_ratio >= 70 %}success{% elif capture_ratio >= 50 %}warning{% else %}danger{% endif %}">
@@ -42,6 +71,7 @@
                             </p>
                         </div>
                         <div class="col-md-4">
+                            <h6 class="text-muted">Project Status</h6>
                             <p class="mb-1"><strong>Current Stage:</strong> {{ project.current_stage.name }}</p>
                             <p class="mb-1"><strong>Lead Status:</strong> {{ project.lead_status.name }}</p>
                             {% if project.referred_by_worker %}
@@ -58,24 +88,80 @@
         </div>
     </div>
 
-    <!-- Stage Breakdown with Priority -->
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card shadow-sm">
+    <div class="row">
+        <!-- Left Column: Main Data -->
+        <div class="col-lg-8">
+            
+            <!-- Assigned Workers -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-users"></i> Assigned Workers</span>
+                    <a href="{% url 'assign_worker_to_project' project.pk %}" class="btn btn-sm btn-success">
+                        <i class="fa fa-plus"></i> Assign
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if assigned_workers %}
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Worker</th>
+                                    <th>Role</th>
+                                    <th>Revenue</th>
+                                    <th>Referred By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for wp in assigned_workers %}
+                                <tr>
+                                    <td>
+                                        <a href="{% url 'worker_detail' wp.worker.pk %}">
+                                            <strong>{{ wp.worker.name }}</strong>
+                                        </a>
+                                        <br>
+                                        <small class="text-muted">{{ wp.worker.worker_code }}</small>
+                                    </td>
+                                    <td><span class="badge bg-info">{{ wp.role.name }}</span></td>
+                                    <td>₹{{ wp.revenue_generated|floatformat:0 }}</td>
+                                    <td>
+                                        {% if wp.referred_by_worker %}
+                                        <a href="{% url 'worker_detail' wp.referred_by_worker.pk %}">
+                                            {{ wp.referred_by_worker.name }}
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center mb-0">
+                        <i class="fa fa-info-circle"></i> No workers assigned yet.
+                        <a href="{% url 'assign_worker_to_project' project.pk %}">Assign a worker</a>
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Stage Breakdown -->
+            <div class="card shadow-sm mb-3">
                 <div class="card-header fw-bold">
-                    Stage Breakdown (Prioritized by Business Value)
+                    <i class="fa fa-chart-bar"></i> Stage Breakdown (Prioritized by Business Value)
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-bordered align-middle">
+                        <table class="table table-bordered table-sm align-middle">
                             <thead class="table-light">
                                 <tr>
                                     <th>Stage</th>
-                                    <th>Priority Score</th>
+                                    <th>Priority</th>
                                     <th>Estimated</th>
                                     <th>Captured</th>
                                     <th>Remaining</th>
-                                    <th>Capture %</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
@@ -88,38 +174,23 @@
                                         <span class="badge bg-primary">Current</span>
                                         {% endif %}
                                     </td>
-                                    <td>
-                                        <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar bg-{% if item.priority_score >= 70 %}success
-                                                {% elif item.priority_score >= 40 %}warning
-                                                {% else %}secondary{% endif %}"
+                                    <td style="width: 120px;">
+                                        <div class="progress" style="height: 18px;">
+                                            <div class="progress-bar bg-{% if item.priority_score >= 70 %}success{% elif item.priority_score >= 40 %}warning{% else %}secondary{% endif %}"
                                                 style="width: {{ item.priority_score }}%;">
-                                                {{ item.priority_score }}
+                                                <small>{{ item.priority_score|floatformat:0 }}</small>
                                             </div>
                                         </div>
                                     </td>
                                     <td>₹{{ item.project_stage.estimated_stage_value|floatformat:0 }}</td>
                                     <td>₹{{ item.project_stage.captured_stage_revenue|floatformat:0 }}</td>
-                                    <td class="text-danger fw-bold">₹{{ item.remaining|floatformat:0 }}</td>
-                                    <td>
-                                        <span class="badge bg-{% if item.capture_ratio >= 70 %}success
-                                            {% elif item.capture_ratio >= 30 %}warning
-                                            {% else %}danger{% endif %}">
-                                            {{ item.capture_ratio }}%
-                                        </span>
-                                    </td>
+                                    <td class="text-danger">₹{{ item.remaining|floatformat:0 }}</td>
                                     <td>
                                         {% if item.project_stage.is_completed %}
-                                            <span class="badge bg-success">Completed</span>
+                                        <span class="badge bg-success">Done</span>
                                         {% else %}
-                                            <span class="badge bg-warning">Pending</span>
+                                        <span class="badge bg-warning">Pending</span>
                                         {% endif %}
-                                    </td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="7" class="text-center text-muted">
-                                        No stage data
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -128,59 +199,103 @@
                     </div>
                 </div>
             </div>
+
         </div>
-    </div>
 
-    <!-- Revenue Transactions -->
-    <div class="row mt-3">
-        <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-header fw-bold">
-                    Revenue Transactions
+        <!-- Right Column: Timeline & Notes -->
+        <div class="col-lg-4">
+            
+            <!-- Recent Notes -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="fa fa-sticky-note"></i> Recent Notes</span>
+                    <a href="{% url 'add_project_note' project.pk %}" class="btn btn-sm btn-primary">
+                        <i class="fa fa-plus"></i> Add
+                    </a>
                 </div>
-                <div class="card-body">
-
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Stage</th>
-                                    <th>Worker</th>
-                                    <th>Revenue</th>
-                                    <th>Margin</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for txn in project.revenue_transactions.all %}
-                                <tr>
-                                    <td>{{ txn.transaction_date|date:"d M Y" }}</td>
-                                    <td>{{ txn.stage.name }}</td>
-                                    <td>
-                                        {% if txn.worker %}
-                                        <a href="{% url 'worker_detail' txn.worker.pk %}">
-                                            {{ txn.worker.name }}
-                                        </a>
-                                        {% else %}
-                                        <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>₹{{ txn.revenue_amount|floatformat:0 }}</td>
-                                    <td>₹{{ txn.margin_amount|floatformat:0 }}</td>
-                                </tr>
-                                {% empty %}
-                                <tr>
-                                    <td colspan="5" class="text-center text-muted">
-                                        No revenue transactions
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                    {% if recent_notes %}
+                    {% for note in recent_notes %}
+                    <div class="mb-3 pb-2 border-bottom">
+                        {% if note.is_important %}
+                        <span class="badge bg-danger mb-1">Important</span>
+                        {% endif %}
+                        <p class="mb-1">{{ note.note }}</p>
+                        <small class="text-muted">
+                            <i class="fa fa-user"></i> {{ note.created_by.username }}
+                            | <i class="fa fa-clock"></i> {{ note.created_at|date:"d M Y, h:i A" }}
+                        </small>
                     </div>
-
+                    {% endfor %}
+                    {% else %}
+                    <p class="text-muted text-center mb-0">
+                        <i class="fa fa-info-circle"></i> No notes yet
+                    </p>
+                    {% endif %}
                 </div>
+                {% if recent_notes.count > 5 %}
+                <div class="card-footer text-center">
+                    <a href="{% url 'project_timeline' project.pk %}" class="btn btn-sm btn-link">View All Notes</a>
+                </div>
+                {% endif %}
             </div>
+
+            <!-- Recent Activity -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-bold">
+                    <i class="fa fa-history"></i> Recent Activity
+                </div>
+                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                    {% if recent_activities %}
+                    {% for activity in recent_activities %}
+                    <div class="mb-3 pb-2 border-bottom">
+                        <div class="d-flex align-items-start">
+                            <div class="me-2">
+                                {% if activity.activity_type == 'CREATED' %}
+                                <span class="badge bg-success">Created</span>
+                                {% elif activity.activity_type == 'STATUS_CHANGE' %}
+                                <span class="badge bg-info">Status</span>
+                                {% elif activity.activity_type == 'STAGE_CHANGE' %}
+                                <span class="badge bg-primary">Stage</span>
+                                {% elif activity.activity_type == 'WORKER_ASSIGNED' %}
+                                <span class="badge bg-success">Worker</span>
+                                {% elif activity.activity_type == 'REVENUE_RECORDED' %}
+                                <span class="badge bg-warning">Revenue</span>
+                                {% elif activity.activity_type == 'PROJECT_WON' %}
+                                <span class="badge bg-success">Won</span>
+                                {% elif activity.activity_type == 'PROJECT_LOST' %}
+                                <span class="badge bg-danger">Lost</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Update</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex-grow-1">
+                                <p class="mb-1 small">{{ activity.description }}</p>
+                                <small class="text-muted">
+                                    {% if activity.performed_by %}
+                                    <i class="fa fa-user"></i> {{ activity.performed_by.username }}
+                                    {% endif %}
+                                    | <i class="fa fa-clock"></i> {{ activity.created_at|date:"d M Y, h:i A" }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="text-muted text-center mb-0">
+                        <i class="fa fa-info-circle"></i> No activity yet
+                    </p>
+                    {% endif %}
+                </div>
+                {% if recent_activities.count >= 10 %}
+                <div class="card-footer text-center">
+                    <a href="{% url 'project_timeline' project.pk %}" class="btn btn-sm btn-link">
+                        View Complete Timeline
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+
         </div>
     </div>
 

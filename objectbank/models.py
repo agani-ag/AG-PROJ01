@@ -450,3 +450,94 @@ class WorkerCreditLedger(models.Model):
 
     def __str__(self):
         return f"{self.worker.name} - {self.running_balance}"
+
+
+# =====================================================
+# PROJECT ACTIVITY & HISTORY TRACKING
+# =====================================================
+
+class ProjectActivity(models.Model):
+    """Track all project activities, changes, and timeline"""
+    
+    ACTIVITY_TYPES = [
+        ('CREATED', 'Project Created'),
+        ('STATUS_CHANGE', 'Lead Status Changed'),
+        ('STAGE_CHANGE', 'Construction Stage Changed'),
+        ('WORKER_ASSIGNED', 'Worker Assigned'),
+        ('WORKER_REMOVED', 'Worker Removed'),
+        ('REVENUE_RECORDED', 'Revenue Transaction Recorded'),
+        ('REQUIREMENT_CREATED', 'Worker Requirement Created'),
+        ('NOTE_ADDED', 'Note Added'),
+        ('STAGE_COMPLETED', 'Stage Marked Complete'),
+        ('PROJECT_WON', 'Project Won'),
+        ('PROJECT_LOST', 'Project Lost'),
+        ('UPDATE', 'Project Updated'),
+    ]
+    
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='activities'
+    )
+    
+    activity_type = models.CharField(max_length=30, choices=ACTIVITY_TYPES)
+    
+    description = models.TextField()  # Human-readable description
+    
+    # Optional references
+    old_value = models.CharField(max_length=200, blank=True, null=True)
+    new_value = models.CharField(max_length=200, blank=True, null=True)
+    
+    related_worker = models.ForeignKey(
+        Worker,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='project_activities'
+    )
+    
+    # Who performed this action
+    performed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name_plural = 'Project Activities'
+    
+    def __str__(self):
+        return f"{self.project.project_code} - {self.get_activity_type_display()} - {self.created_at}"
+
+
+class ProjectNote(models.Model):
+    """Standalone notes/updates for projects"""
+    
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='notes'
+    )
+    
+    note = models.TextField()
+    
+    is_important = models.BooleanField(default=False)  # Pin important notes
+    
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Note for {self.project.project_code} - {self.created_at}"

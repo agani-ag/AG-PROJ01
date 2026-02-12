@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Project Detail{% endblock %}
+
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- Project Header -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h4 class="fw-bold">{{ project.name }}</h4>
+                            <p class="text-muted mb-0">{{ project.project_code }}</p>
+                        </div>
+                        <div>
+                            {% if late_entry %}
+                            <span class="badge bg-warning">Late Entry Project</span>
+                            {% endif %}
+                            <span class="badge bg-primary">{{ project.current_stage.name }}</span>
+                            <span class="badge bg-info">{{ project.lead_status.name }}</span>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Client:</strong> {{ project.client_name }}</p>
+                            <p class="mb-1"><strong>Phone:</strong> {{ project.phone }}</p>
+                            <p class="mb-1"><strong>Pincode:</strong> {{ project.pincode }} | {{ project.city }}</p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Estimated Value:</strong> ₹{{ project.estimated_total_value|floatformat:0 }}</p>
+                            <p class="mb-1"><strong>Capture Ratio:</strong> 
+                                <span class="badge bg-{% if capture_ratio >= 70 %}success{% elif capture_ratio >= 50 %}warning{% else %}danger{% endif %}">
+                                    {{ capture_ratio }}%
+                                </span>
+                            </p>
+                            <p class="mb-1"><strong>Remaining Opportunity:</strong> 
+                                <span class="text-danger fw-bold">₹{{ remaining|floatformat:0 }}</span>
+                            </p>
+                        </div>
+                        <div class="col-md-4">
+                            <p class="mb-1"><strong>Current Stage:</strong> {{ project.current_stage.name }}</p>
+                            <p class="mb-1"><strong>Lead Status:</strong> {{ project.lead_status.name }}</p>
+                            {% if project.referred_by_worker %}
+                            <p class="mb-1"><strong>Referred By:</strong> 
+                                <a href="{% url 'worker_detail' project.referred_by_worker.pk %}">
+                                    {{ project.referred_by_worker.name }}
+                                </a>
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage Breakdown with Priority -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Stage Breakdown (Prioritized by Business Value)
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Stage</th>
+                                    <th>Priority Score</th>
+                                    <th>Estimated</th>
+                                    <th>Captured</th>
+                                    <th>Remaining</th>
+                                    <th>Capture %</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in stages_with_priority %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ item.stage.name }}</strong>
+                                        {% if item.stage == project.current_stage %}
+                                        <span class="badge bg-primary">Current</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-{% if item.priority_score >= 70 %}success
+                                                {% elif item.priority_score >= 40 %}warning
+                                                {% else %}secondary{% endif %}"
+                                                style="width: {{ item.priority_score }}%;">
+                                                {{ item.priority_score }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>₹{{ item.project_stage.estimated_stage_value|floatformat:0 }}</td>
+                                    <td>₹{{ item.project_stage.captured_stage_revenue|floatformat:0 }}</td>
+                                    <td class="text-danger fw-bold">₹{{ item.remaining|floatformat:0 }}</td>
+                                    <td>
+                                        <span class="badge bg-{% if item.capture_ratio >= 70 %}success
+                                            {% elif item.capture_ratio >= 30 %}warning
+                                            {% else %}danger{% endif %}">
+                                            {{ item.capture_ratio }}%
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if item.project_stage.is_completed %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted">
+                                        No stage data
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Revenue Transactions -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">
+                    Revenue Transactions
+                </div>
+                <div class="card-body">
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Stage</th>
+                                    <th>Worker</th>
+                                    <th>Revenue</th>
+                                    <th>Margin</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for txn in project.revenue_transactions.all %}
+                                <tr>
+                                    <td>{{ txn.transaction_date|date:"d M Y" }}</td>
+                                    <td>{{ txn.stage.name }}</td>
+                                    <td>
+                                        {% if txn.worker %}
+                                        <a href="{% url 'worker_detail' txn.worker.pk %}">
+                                            {{ txn.worker.name }}
+                                        </a>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>₹{{ txn.revenue_amount|floatformat:0 }}</td>
+                                    <td>₹{{ txn.margin_amount|floatformat:0 }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">
+                                        No revenue transactions
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
