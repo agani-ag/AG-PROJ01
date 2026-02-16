@@ -39,7 +39,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django_crontab',
     'rest_framework',
     'objectbank',
 ]
@@ -141,10 +140,4 @@ PROJ02_URL = os.getenv('PROJ02_URL')
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUPS = [
     int(x) for x in os.getenv("TELEGRAM_GROUPS", "").split(",") if x
-]
-
-# CRONJOBS
-CRONJOBS = [
-    ('*/1 * * * *', 'objectbank.cron.test_telegram'),  # Every minute for testing
-    # ('0 9 * * *', 'objectbank.cron.test_telegram'),  # Every day at 9:00 AM
 ]
