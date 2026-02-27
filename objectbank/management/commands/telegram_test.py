@@ -15,5 +15,4 @@ class Command(BaseCommand):
             'markdown': True
         })
         data = resp.json()
-        send_telegram_message(0, "This is a test message from the Telegram bot.")
-        send_telegram_message(1, data['markdown'])
+        send_telegram_message(0, data['markdown'])
