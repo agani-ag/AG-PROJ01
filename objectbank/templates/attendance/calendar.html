@@ -1,37 +1,136 @@
 {% extends "base.html" %}
-{% block title %}Attendance{% endblock %}
+{% load static %}
+
+{% block title %}Calendar - {{ profile.name }}{% endblock %}
+
 {% block content %}
+{% block head %}
+    <style>
+        body, html {
+            overflow: hidden;
+            height: 100%;
+        }
+    </style>
+{% endblock %}
 
-<h2>Attendance - {{ profile.name }} ({{ month }}/{{ year }})</h2>
-<a href="?month={{ prev_month }}&year={{ prev_year }}">Prev</a>
-<a href="?month={{ next_month }}&year={{ next_year }}">Next</a>
+<h2 class="mb-3">Calendar ({{ month }}/{{ year }})
+    {% if user.is_superuser %}<small>{{ profile.name }}</small>{% endif %}
+</h2>
 
-<table border="1" style="border-collapse: collapse; text-align: center;">
-<tr>
-  <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
-</tr>
-{% for week in month_weeks %}
-<tr>
-    {% for day in week %}
-        {% if day %}
-        <td style="width:50px; height:50px;">
-            {{ day.day.day }}
-            {% if day.attendance %}
-                {% if day.attendance.present %}
-                    <a href="{% url 'mark_attendance' profile.id day.day|date:'Y-m-d' %}" style="color:green; font-weight:bold;">✅</a>
-                {% else %}
-                    <a href="{% url 'mark_attendance' profile.id day.day|date:'Y-m-d' %}" style="color:red; font-weight:bold;">❌</a>
-                {% endif %}
-            {% else %}
-                <span style="color:gray;">—</span>
-            {% endif %}
-        </td>
-        {% else %}
-        <td></td>
-        {% endif %}
-    {% endfor %}
-</tr>
-{% endfor %}
-</table>
+<div class="mb-3 d-flex justify-content-between align-items-center">
+    <!-- Navigation buttons -->
+    <div>
+        <a class="btn btn-outline-primary btn-sm me-2" href="?month={{ prev_month }}&year={{ prev_year }}">⬅ Prev</a>
+        <a class="btn btn-outline-primary btn-sm" href="?month={{ next_month }}&year={{ next_year }}">Next ➡</a>
+    </div>
 
+    <!-- Totals section (inside the same div) -->
+    <div class="d-flex justify-content-between">
+        <div class="badge bg-primary p-2">
+            <strong>Total Working Days: </strong><span id="total_working_days">{{ total_working_days }}</span>
+        </div>
+        <div class="badge bg-success p-2">
+            <strong>Days Present: </strong><span id="total_present">{{ total_present }}</span>
+        </div>
+        <div class="badge bg-danger p-2">
+            <strong>Days Absent: </strong><span id="total_absent">{{ total_absent }}</span>
+        </div>
+        <div class="badge bg-warning p-2">
+            <strong>Salary: </strong>₹<span id="salary">{{ salary|floatformat:2 }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-bordered text-center align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th><th>Sun</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for week in month_weeks %}
+            <tr>
+                {% for day in week %}
+                    {% if day %}
+                        {% if day.attendance %}
+                            <td class="attendance-cell" data-user-id="{{ profile.id }}" data-date="{{ day.day|date:'Y-m-d' }}" 
+                                style="position:relative; height: 80px;{% if user.is_superuser %}cursor:pointer;{% endif %}">
+                                <div class="day-number" style="margin-bottom: 4px; font-size: 1em;">{{ day.day.day }}</div>
+                                <div class="badge-container" style="position:absolute; bottom:5px; width:100%; text-align:center;">
+                                    {% if day.attendance.present %}
+                                        <span class="badge bg-success" style="font-size: 0.8em;">Present</span>
+                                    {% else %}
+                                        <span class="badge bg-danger" style="font-size: 0.8em;">Absent</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        {% elif day.is_holiday %}
+                            <td class="table-secondary" style="height: 80px;">
+                                {{ day.day.day }}<br>
+                                <span class="badge bg-secondary" style="font-size: 0.8em;">Holiday</span>
+                            </td>
+                        {% else %}
+                            <td class="table-light" style="height: 80px;">
+                                {{ day.day.day }}<br>
+                                <span class="badge bg-light text-dark" style="font-size: 0.8em;">—</span>
+                            </td>
+                        {% endif %}
+                    {% else %}
+                        <td class="table-light" style="height: 80px;"></td>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block script %}
+{% if user.is_superuser %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function(){
+    $('.attendance-cell').click(function(){
+        var cell = $(this);
+        var user_id = cell.data('user-id');
+        var date = cell.data('date');
+
+        $.ajax({
+            url: "{% url 'ajax_mark_attendance' %}",
+            type: "POST",
+            data: {
+                'user_id': user_id,
+                'date': date,
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response){
+                if(response.status === 'success'){
+                    // Update the badge based on attendance
+                    var badgeHtml = response.present 
+                        ? '<span class="badge bg-success" style="font-size: 0.8em;">Present</span>'
+                        : '<span class="badge bg-danger" style="font-size: 0.8em;">Absent</span>';
+
+                    // Replace the old badge and update with the new one
+                    cell.find('.badge-container').html(badgeHtml);
+
+                    // Dynamically update the totals in the UI
+                    $('#total_working_days').text(response.total_working_days);
+                    $('#total_present').text(response.total_present);
+                    $('#total_absent').text(response.total_absent);
+                    $('#salary').text(response.salary.toFixed(2));  // Update salary immediately
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            },
+            error: function(){
+                alert('AJAX error!');
+            }
+        });
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

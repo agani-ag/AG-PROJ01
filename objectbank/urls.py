@@ -17,8 +17,8 @@ urlpatterns = [
     path('api/login/', auth.login_api, name='api_login'),
 
     # Attendance URLs
+    path('attendance/ajax/mark/', attendance.ajax_mark_attendance, name='ajax_mark_attendance'),
     path('attendance/<int:user_id>/', attendance.attendance_calendar, name='attendance_calendar'),
-    path('attendance/<int:user_id>/mark/<str:date_str>/', attendance.mark_attendance, name='mark_attendance'),
 
     # Profile URL
     path('profiles', profile.profiles, name='profiles'),
