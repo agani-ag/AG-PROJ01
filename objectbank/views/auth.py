@@ -1,18 +1,26 @@
 # Django imports
+from calendar import Calendar
+from datetime import date, datetime
 from django.contrib import messages
-from django.shortcuts import render, redirect
+from django.http import JsonResponse
 from django.contrib.auth.models import User
-from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.contrib.auth import login, logout, authenticate
-
+from rest_framework.decorators import api_view
+from django.shortcuts import (
+    render, redirect, get_object_or_404
+)
+from django.contrib.auth import (
+    login, logout, authenticate
+)
 # Imports
+from ..models import UserProfile, Attendance
 from ..forms import (
     UserProfileForm, SignupForm,
     AuthForm
 )
-from ..models import UserProfile
-from ..utils import send_telegram_message
+from ..utils import (
+    send_telegram_message, generate_attendance
+)
 
 # =============== AUTH VIEWS ===============
 def login_view(request):

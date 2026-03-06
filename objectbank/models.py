@@ -6,13 +6,13 @@ from .utils import (
 )
 
 DAYS_OF_WEEK = (
-    ('mon', 'Monday'),
-    ('tue', 'Tuesday'),
-    ('wed', 'Wednesday'),
-    ('thu', 'Thursday'),
-    ('fri', 'Friday'),
-    ('sat', 'Saturday'),
-    ('sun', 'Sunday'),
+    ('MON', 'Monday'),
+    ('TUE', 'Tuesday'),
+    ('WED', 'Wednesday'),
+    ('THU', 'Thursday'),
+    ('FRI', 'Friday'),
+    ('SAT', 'Saturday'),
+    ('SUN', 'Sunday'),
 )
 
 # =============== UserProfile ===============
@@ -50,7 +50,43 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.name or self.user.username
-    
+
+# =============== Holiday & Attendance ===============
+class Holiday(models.Model):
+    date = models.DateField(unique=True)
+    description = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.date} - {self.description}"
+
+
+class Attendance(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    date = models.DateField()
+    present = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('user', 'date')
+
+    def __str__(self):
+        return f"{self.user.name} - {self.date} - {'Present' if self.present else 'Absent'}"
+
+
+class SalaryTransaction(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    month = models.IntegerField()
+    year = models.IntegerField()
+    base_salary = models.DecimalField(max_digits=10, decimal_places=2)
+    credits = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    bonus = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
+    calculated_salary = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        unique_together = ('user', 'month', 'year')
+
+    def __str__(self):
+        return f"{self.user.name} - {self.month}/{self.year} - {self.calculated_salary}"
+
 # =============== Link Registry ===============
 class LinkRegistry(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

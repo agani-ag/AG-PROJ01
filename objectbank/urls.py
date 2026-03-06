@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
-    auth, views, link_registry,
-    profile, leads_engine
+    auth, attendance,
+    profile, link_registry, leads_engine
     
 )
 
@@ -15,6 +15,10 @@ urlpatterns = [
     path('logout', auth.logout_view, name='logout'),
     # API endpoints for auth
     path('api/login/', auth.login_api, name='api_login'),
+
+    # Attendance URLs
+    path('attendance/<int:user_id>/', attendance.attendance_calendar, name='attendance_calendar'),
+    path('attendance/<int:user_id>/mark/<str:date_str>/', attendance.mark_attendance, name='mark_attendance'),
 
     # Profile URL
     path('profiles', profile.profiles, name='profiles'),
