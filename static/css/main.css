@@ -1,3 +1,7 @@
+/* ============================= */
+/* GLOBAL RESPONSIVE STYLES     */
+/* ============================= */
+
 /* Prevent horizontal overflow */
 html, body {
     max-width: 100%;
@@ -13,4 +17,316 @@ html, body {
 /* Ensure all inputs behave */
 input, textarea, select {
     max-width: 100%;
+}
+
+/* Responsive images */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ============================= */
+/* MOBILE-FIRST UTILITIES        */
+/* ============================= */
+
+/* Better spacing for mobile */
+@media (max-width: 767px) {
+    .container, .container-fluid {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    h1, h2, h3, h4, h5, h6 {
+        font-size: calc(1rem + 0.5vw);
+        word-wrap: break-word;
+    }
+    
+    /* Responsive buttons */
+    .btn {
+        font-size: 0.875rem;
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .btn-group {
+        flex-wrap: wrap;
+    }
+    
+    /* Responsive tables */
+    .table-responsive {
+        border: 0;
+    }
+    
+    /* Stack badges vertically on mobile */
+    .badge-container-mobile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    /* Responsive cards */
+    .card {
+        margin-bottom: 1rem;
+    }
+    
+    .card-body {
+        padding: 0.75rem;
+    }
+    
+    /* Better form controls on mobile */
+    .form-control, .form-select {
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+}
+
+/* ============================= */
+/* ATTENDANCE CALENDAR STYLES    */
+/* ============================= */
+
+/* Calendar responsive design */
+.calendar-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.calendar-table {
+    min-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.calendar-table td,
+.calendar-table th {
+    padding: 0.5rem;
+    vertical-align: middle;
+    text-align: center;
+    border: 1px solid #dee2e6 !important;
+    min-width: 60px;
+}
+
+/* Ensure empty cells are visible */
+.calendar-table td.table-light {
+    background-color: #f8f9fa;
+    height: inherit;
+}
+
+/* Mobile: Smaller calendar cells */
+@media (max-width: 767px) {
+    .calendar-table {
+        font-size: 0.75rem;
+    }
+    
+    .calendar-table td,
+    .calendar-table th {
+        padding: 0.25rem;
+        height: 60px;
+    }
+    
+    .day-number {
+        font-size: 0.95em !important;
+    }
+    
+    .badge {
+        font-size: 0.7em !important;
+        padding: 0.25em 0.5em !important;
+    }
+}
+
+/* Tablet and up: Normal calendar cells */
+@media (min-width: 768px) {
+    .calendar-table td {
+        height: 90px;
+    }
+    
+    .badge {
+        font-size: 0.85em !important;
+        padding: 0.35em 0.65em !important;
+    }
+}
+
+/* Force visibility of all cells */
+.calendar-table tbody tr {
+    display: table-row !important;
+}
+
+.calendar-table tbody tr td {
+    display: table-cell !important;
+}
+
+/* ============================= */
+/* STATISTICS BADGES LAYOUT      */
+/* ============================= */
+
+/* Desktop: Horizontal badges */
+.stats-badges {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Mobile: Stack badges in 2 columns */
+@media (max-width: 767px) {
+    .stats-badges {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    
+    .stats-badges .badge {
+        padding: 0.5rem !important;
+        font-size: 0.75rem !important;
+        text-align: center;
+    }
+}
+
+/* Credit and Bonus badges - clickable styles */
+.credit-badge, .bonus-badge {
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.credit-badge:hover, .bonus-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    opacity: 0.9;
+}
+
+.credit-badge:active, .bonus-badge:active {
+    transform: translateY(0);
+}
+
+/* ============================= */
+/* NAVIGATION IMPROVEMENTS       */
+/* ============================= */
+
+/* Better nav button spacing on mobile */
+@media (max-width: 767px) {
+    .nav-buttons {
+        margin-bottom: 1rem;
+    }
+    
+    .nav-buttons .btn {
+        flex: 1;
+        min-width: 100px;
+    }
+}
+
+/* ============================= */
+/* FLEX UTILITIES                */
+/* ============================= */
+
+/* Responsive flex wrapping */
+.flex-wrap-mobile {
+    display: flex;
+    gap: 0.5rem;
+}
+
+@media (max-width: 767px) {
+    .flex-wrap-mobile {
+        flex-direction: column;
+    }
+}
+
+/* ============================= */
+/* DASHBOARD & CARD IMPROVEMENTS */
+/* ============================= */
+
+/* Consistent card heights */
+.card-equal-height {
+    height: 100%;
+}
+
+/* Better spacing for quick actions */
+.quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+@media (max-width: 767px) {
+    .quick-actions .btn {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: 0;
+    }
+}
+
+/* ============================= */
+/* TEXT & TYPOGRAPHY             */
+/* ============================= */
+
+/* Prevent text overflow */
+.text-truncate-mobile {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+    .text-wrap-mobile {
+        white-space: normal !important;
+        word-break: break-word;
+    }
+}
+
+/* ============================= */
+/* MODAL IMPROVEMENTS            */
+/* ============================= */
+
+@media (max-width: 767px) {
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    .modal-body {
+        padding: 1rem;
+    }
+}
+
+/* ============================= */
+/* AG-GRID RESPONSIVENESS        */
+/* ============================= */
+
+@media (max-width: 767px) {
+    .ag-theme-alpine {
+        font-size: 12px;
+    }
+    
+    .ag-cell {
+        line-height: 36px;
+    }
+}
+
+/* ============================= */
+/* UTILITY CLASSES               */
+/* ============================= */
+
+/* Hide on mobile */
+.hide-mobile {
+    display: block;
+}
+
+@media (max-width: 767px) {
+    .hide-mobile {
+        display: none !important;
+    }
+}
+
+/* Show only on mobile */
+.show-mobile {
+    display: none;
+}
+
+@media (max-width: 767px) {
+    .show-mobile {
+        display: block !important;
+    }
+}
+
+/* Full width on mobile */
+@media (max-width: 767px) {
+    .mobile-full-width {
+        width: 100% !important;
+    }
 }

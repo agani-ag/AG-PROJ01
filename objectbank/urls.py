@@ -18,6 +18,7 @@ urlpatterns = [
 
     # Attendance URLs
     path('attendance/ajax/mark/', attendance.ajax_mark_attendance, name='ajax_mark_attendance'),
+    path('attendance/ajax/credit-bonus/', attendance.ajax_update_credit_bonus, name='ajax_update_credit_bonus'),
     path('attendance/<int:user_id>/', attendance.attendance_calendar, name='attendance_calendar'),
 
     # Profile URL

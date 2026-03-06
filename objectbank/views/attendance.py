@@ -8,17 +8,21 @@ from django.shortcuts import (
 )
 # Imports
 from ..models import (
-    UserProfile, Attendance, Holiday
+    UserProfile, Attendance, Holiday, SalaryTransaction
 )
 from ..utils import (
     generate_attendance, calculate_salary
 )
 # =============== Attendance Views ===============
-def attendance_calendar(request, user_id, month=None, year=None):
+def attendance_calendar(request, user_id):
     user = get_object_or_404(UserProfile, id=user_id)
     today = date.today()
-    month = int(month or today.month)
-    year = int(year or today.year)
+    
+    # Get month and year from query parameters, default to current month/year
+    month = request.GET.get('month', today.month)
+    year = request.GET.get('year', today.year)
+    month = int(month)
+    year = int(year)
 
     # Generate attendance at the beginning of the month
     generate_attendance(user, year, month)
@@ -38,6 +42,11 @@ def attendance_calendar(request, user_id, month=None, year=None):
                 week_days.append({'day': day, 'attendance': attendance, 'is_holiday': is_holiday})
             else:
                 week_days.append(None)
+        
+        # Ensure each week has exactly 7 days (pad with None if needed)
+        while len(week_days) < 7:
+            week_days.append(None)
+        
         month_weeks.append(week_days)
 
     # Calculate total working days, present, absent, and salary
@@ -45,6 +54,11 @@ def attendance_calendar(request, user_id, month=None, year=None):
     total_present = Attendance.objects.filter(user=user, date__year=year, date__month=month, present=True).count()
     total_absent = total_working_days - total_present
     salary = calculate_salary(user, year, month)  # Dynamically calculate salary based on updated attendance
+
+    # Get credits and bonus for this month
+    salary_transaction = SalaryTransaction.objects.filter(user=user, month=month, year=year).first()
+    credits = salary_transaction.credits if salary_transaction else 0.0
+    bonus = salary_transaction.bonus if salary_transaction else 0.0
 
     # Pagination (previous/next months)
     prev_month = month - 1 if month > 1 else 12
@@ -64,7 +78,9 @@ def attendance_calendar(request, user_id, month=None, year=None):
         'total_working_days': total_working_days,
         'total_present': total_present,
         'total_absent': total_absent,
-        'salary': salary
+        'salary': salary,
+        'credits': credits,
+        'bonus': bonus
     })
 
 def ajax_mark_attendance(request):
@@ -72,7 +88,7 @@ def ajax_mark_attendance(request):
     Toggle attendance via AJAX.
     Expects POST: user_id, date (YYYY-MM-DD)
     """
-    if request.method == "POST" and request.headers.get('x-requested-with') == 'XMLHttpRequest':
+    if request.method == "POST":
         user_id = request.POST.get('user_id')
         date_str = request.POST.get('date')
         try:
@@ -103,9 +119,69 @@ def ajax_mark_attendance(request):
                 'total_working_days': total_working_days,
                 'total_present': total_present,
                 'total_absent': total_absent,
-                'salary': salary  # Return updated salary in the response
+                'salary': float(salary)  # Ensure salary is a JSON-serializable float
             })
         except Exception as e:
             return JsonResponse({'status': 'error', 'error': str(e)})
 
+    return JsonResponse({'status': 'error', 'error': 'Invalid request'})
+
+def ajax_update_credit_bonus(request):
+    """
+    Update credits or bonus for a user's month via AJAX.
+    Expects POST: user_id, month, year, field_type ('credits' or 'bonus'), amount
+    """
+    if request.method == "POST":
+        user_id = request.POST.get('user_id')
+        month = request.POST.get('month')
+        year = request.POST.get('year')
+        field_type = request.POST.get('field_type')  # 'credits' or 'bonus'
+        amount = request.POST.get('amount')
+        
+        try:
+            user = UserProfile.objects.get(id=user_id)
+            month = int(month)
+            year = int(year)
+            amount = float(amount)
+            
+            if field_type not in ['credits', 'bonus']:
+                return JsonResponse({'status': 'error', 'error': 'Invalid field type'})
+            
+            # Get or create the salary transaction
+            salary_transaction, created = SalaryTransaction.objects.get_or_create(
+                user=user,
+                month=month,
+                year=year,
+                defaults={
+                    'base_salary': user.salary or 0,
+                    'credits': 0,
+                    'bonus': 0,
+                    'calculated_salary': 0
+                }
+            )
+            
+            # Update the appropriate field
+            if field_type == 'credits':
+                salary_transaction.credits = amount
+            else:
+                salary_transaction.bonus = amount
+            
+            salary_transaction.save()
+            
+            # Recalculate salary
+            from ..utils import calculate_salary
+            calculate_salary(user, year, month)
+            
+            # Get updated transaction
+            salary_transaction.refresh_from_db()
+            
+            return JsonResponse({
+                'status': 'success',
+                'credits': float(salary_transaction.credits),
+                'bonus': float(salary_transaction.bonus),
+                'salary': float(salary_transaction.calculated_salary)
+            })
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'error': str(e)})
+    
     return JsonResponse({'status': 'error', 'error': 'Invalid request'})
