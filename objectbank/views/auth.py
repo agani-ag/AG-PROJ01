@@ -26,7 +26,7 @@ def login_view(request):
             user = auth_form.get_user()
             if user:
                 login(request, user)
-                send_telegram_message(1,f"User *{user.username}* has logged in.")
+                # send_telegram_message(1,f"User *{user.username}* has logged in.")
                 return redirect("home")
         else:
             messages.error(request, auth_form.get_invalid_login_error())

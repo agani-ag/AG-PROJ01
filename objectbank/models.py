@@ -1,7 +1,18 @@
 from django.db import models
 from django.contrib.auth.models import User
+from multiselectfield import MultiSelectField
 from .utils import (
     phone_validator, pincode_validator
+)
+
+DAYS_OF_WEEK = (
+    ('mon', 'Monday'),
+    ('tue', 'Tuesday'),
+    ('wed', 'Wednesday'),
+    ('thu', 'Thursday'),
+    ('fri', 'Friday'),
+    ('sat', 'Saturday'),
+    ('sun', 'Sunday'),
 )
 
 # =============== UserProfile ===============
@@ -16,6 +27,10 @@ class UserProfile(models.Model):
     address = models.TextField(max_length=400, blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     
+    # Salary & Working Days
+    salary = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    working_days = MultiSelectField(choices=DAYS_OF_WEEK, max_choices=7, blank=True, null=True)
+
     # Geolocation
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

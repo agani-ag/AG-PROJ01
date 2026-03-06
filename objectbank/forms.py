@@ -37,19 +37,21 @@ class UserProfileForm(ModelForm):
 
     class Meta:
         model = UserProfile
-        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode']
+        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'salary', 'working_days']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'working_days': forms.CheckboxSelectMultiple(),
         }
 
 class UserProfileEditForm(ModelForm):
     class Meta:
         model = UserProfile
-        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude']
+        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude', 'salary', 'working_days']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
@@ -58,6 +60,8 @@ class UserProfileEditForm(ModelForm):
             'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'working_days': forms.CheckboxSelectMultiple(),
         }
 
 # Project Forms
