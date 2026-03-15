@@ -2,6 +2,7 @@
 
 # Dashboard View
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import models
 from ..services.analytics_service import get_dashboard_summary, revenue_per_pincode
@@ -9,7 +10,7 @@ from ..services.project_service import get_high_value_opportunities
 from ..services.credit_service import generate_credit_alerts
 from ..models import Project, ProjectActivity, Worker, WorkerProject
 
-
+@login_required
 def dashboard_view(request):
     """Enhanced dashboard with intelligence"""
     summary = get_dashboard_summary()
