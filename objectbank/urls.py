@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     auth, attendance,
-    profile, link_registry, leads_engine
+    profile, leads_engine
     
 )
 
@@ -26,9 +26,6 @@ urlpatterns = [
     path('profile/edit/', profile.profile_edit, name='profile-edit'),
     path('profile/delete/<int:user_id>/', profile.profile_delete, name='profile-delete'),
     path('profile/admin/edit/<int:user_id>/', profile.admin_profile_edit, name='profile-admin-edit'),
-
-    # Link Registry URL
-    path('link-registry/', link_registry.link_registry_view, name='link-registry'),
 
     # Dashboard URL
     path("dashboard/", leads_engine.dashboard_view, name="dashboard"),
