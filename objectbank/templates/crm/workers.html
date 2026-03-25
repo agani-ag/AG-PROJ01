@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="row">
+	<div class="col">
+		<h2>Workers</h2>
+	</div>
+	<div class="col text-end">
+		<a href="{% url 'worker_add' %}" class="btn btn-primary btn-sm btn-curve" title="Add Worker">
+			<i class="fas fa-plus"></i></a>
+        <a href="{% url 'job_roles' %}" class="btn btn-warning btn-sm btn-curve" title="Job Roles" id="jobRolesBtn">
+			<i class="fas fa-list"></i></a>
+	</div>
+</div>
+
+<table class="table table-striped table-bordered" id="worker-table">
+	<thead class="table-dark">
+		<tr>
+			<th>Name</th>
+			<th>Role</th>
+			<th>Phone</th>
+		</tr>
+	</thead>
+	<tbody class="two-col-form">
+		{% for worker in workers %}
+		<tr onclick="window.location='{% url 'worker_edit' worker.id %}'" style="cursor: pointer;">
+			<td>{{ worker.name }}</td>
+			<td>{{ worker.job_role.name }}</td>
+			<td>{{ worker.phone }}</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}
+
+{% block script %}
+<script>
+$(document).ready( function () {
+	$('#worker-table').DataTable({
+		"order": [],
+		"columnDefs": [],
+		"paging": true,
+        "lengthChange": false,
+        "searching": true,
+        "ordering": true,
+        });
+});
+</script>
+{% endblock %}

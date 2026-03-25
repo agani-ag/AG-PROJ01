@@ -109,18 +109,27 @@ class JobRole(models.Model):
     name = models.CharField(max_length=100, unique=True)
     category = models.CharField(max_length=100, blank=True, null=True)
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().title()
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
+    
+    class Meta:
+        ordering = ['name']
 
 class Worker(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
-    location = models.TextField(max_length=400, blank=True, null=True)
+    mobile = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
+    location = models.CharField(max_length=100, blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     job_role = models.ForeignKey(JobRole, on_delete=models.SET_NULL, null=True, blank=True)
     experience_years = models.IntegerField(default=0)
-    company_name = models.CharField(max_length=100, blank=True, null=True, default="Self-Employed")
+    company_name = models.CharField(max_length=100, blank=True, null=True, default="SELF-EMPLOYED")
     TRUST_LEVEL = [
         (0, 'Low'),
         (1, 'Medium'),
@@ -130,6 +139,17 @@ class Worker(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().title()
+        if self.location:
+            self.location = self.location.strip().title()
+        if self.email:
+            self.email = self.email.strip().lower()
+        if self.company_name:
+            self.company_name = self.company_name.strip().title()
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.name} - {self.job_role}"
 
@@ -137,7 +157,9 @@ class Leads(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
-    location = models.TextField(max_length=400, blank=True, null=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    location = models.TextField(max_length=100, blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     TYPE = [
         (0, 'New Construction'),
@@ -182,6 +204,15 @@ class Leads(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().title()
+        if self.location:
+            self.location = self.location.strip().title()
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.name} - {self.get_status_display()}"
 
@@ -304,6 +335,11 @@ class MaterialRequest(models.Model):
     ]
     status = models.IntegerField(choices=STATUS, default=0)
 
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().title()
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.name} - {self.get_status_display()}"
 

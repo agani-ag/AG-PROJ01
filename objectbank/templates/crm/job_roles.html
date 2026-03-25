@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="row">
+	<div class="col">
+		<h2>Job Roles</h2>
+	</div>
+	<div class="col text-end">
+		<a href="#" class="btn btn-primary btn-sm btn-curve" title="Add Job Role" id="addJobRoleBtn">
+			<i class="fas fa-plus"></i></a>
+		<a href="{% url 'workers' %}" class="btn btn-warning btn-sm btn-curve" title="Workers" id="workersBtn">
+			<i class="fas fa-list"></i></a>
+	</div>
+</div>
+
+<table class="table table-striped table-bordered" id="job-role-table">
+	<thead class="table-dark">
+		<tr>
+			<th>Role Name</th>
+			<th>Category</th>
+		</tr>
+	</thead>
+	<tbody class="two-col-form">
+		{% for job_role in job_roles %}
+		<tr>
+			<td>{{ job_role.name }}</td>
+			<td>{% if job_role.category %}{{ job_role.category }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}
+
+{% block script %}
+<script>
+$(document).ready( function () {
+	$('#job-role-table').DataTable({
+		"order": [],
+		"columnDefs": [],
+		"paging": true,
+        "lengthChange": false,
+        "searching": true,
+        "ordering": true,
+        });
+
+    $('#addJobRoleBtn').click(function () {
+		// Step 1: Role Name
+		Swal.fire({
+			title: 'Enter Role Name',
+			input: 'text',
+			inputPlaceholder: 'Role Name',
+			showCancelButton: true,
+			inputValidator: (value) => {
+				if (!value) return 'Role name is required!';
+			}
+		}).then((result1) => {
+
+			if (!result1.isConfirmed) return;
+
+			let name = result1.value;
+
+			// Convert categories to dropdown format
+			const jobCategories = {{ job_categories|safe }};
+			let categoryOptions = {};
+			jobCategories.forEach(function (cat) {
+				categoryOptions[cat] = cat;
+			});
+
+			// Step 2: Category Dropdown
+			Swal.fire({
+				title: 'Select Category',
+				input: 'select',
+				inputOptions: categoryOptions,
+				inputPlaceholder: 'Select a category',
+				showCancelButton: true,
+				inputValidator: (value) => {
+					if (!value) return 'Category is required!';
+				}
+			}).then((result2) => {
+
+				if (!result2.isConfirmed) return;
+
+				let category = result2.value;
+
+				// Step 3: AJAX
+				$.ajax({
+					url: "{% url 'job_role_create' %}",
+					type: "POST",
+					data: {
+						name: name,
+						category: category
+					},
+					success: function (response) {
+
+						if (response.success) {
+							Swal.fire({
+								icon: 'success',
+								title: 'Saved!',
+								text: 'Job role created successfully'
+							}).then(() => {
+								location.reload();
+							});
+
+						} else {
+							Swal.fire({
+								icon: 'warning',
+								title: 'Message',
+								text: response.error
+							}).then(() => {
+								location.reload();
+							});
+						}
+					},
+					error: function () {
+						Swal.fire({
+							icon: 'warning',
+							title: 'Message',
+							text: 'The Request Process Not Completed. Please Try Again.'
+						});
+					}
+				});
+			});
+		});
+	});
+});
+</script>
+{% endblock %}

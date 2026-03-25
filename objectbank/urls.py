@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     auth, views, link_registry,
-    profile, attendance
+    profile, attendance, crm
     
 )
 
@@ -27,4 +27,12 @@ urlpatterns = [
     path('attendance/ajax/mark/', attendance.ajax_mark_attendance, name='ajax_mark_attendance'),
     path('attendance/<int:user_id>/', attendance.attendance_calendar, name='attendance_calendar'),
     path('attendance/ajax/credit-bonus/', attendance.ajax_update_credit_bonus, name='ajax_update_credit_bonus'),
+
+    # CRM URLs
+    path('crm/workers', crm.workers, name='workers'),
+    path('crm/job-roles', crm.job_roles, name='job_roles'),
+    path('crm/worker/add', crm.worker_add, name='worker_add'),
+    path('crm/job-role/create', crm.job_role_create, name='job_role_create'),
+    path('crm/worker/edit/<int:worker_id>', crm.worker_edit, name='worker_edit'),
+    path('crm/worker/delete/<int:worker_id>', crm.worker_delete, name='worker_delete'),
 ]

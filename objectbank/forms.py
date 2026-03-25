@@ -5,7 +5,7 @@ from django.contrib.auth.forms import (
     UserCreationForm, AuthenticationForm
 )
 from .models import (
-    UserProfile
+    UserProfile, Worker
 )
 
 class AuthForm(AuthenticationForm):
@@ -37,13 +37,13 @@ class UserProfileForm(ModelForm):
         model = UserProfile
         fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'salary', 'working_days']
         widgets = {
+            'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'working_days': forms.CheckboxSelectMultiple(),
         }
 
 class UserProfileEditForm(ModelForm):
@@ -51,6 +51,7 @@ class UserProfileEditForm(ModelForm):
         model = UserProfile
         fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude', 'salary', 'working_days']
         widgets = {
+            'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
@@ -59,5 +60,23 @@ class UserProfileEditForm(ModelForm):
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
-            'working_days': forms.CheckboxSelectMultiple(),
+        }
+
+class WorkerForm(ModelForm):
+    class Meta:
+        model = Worker
+        fields = ['name', 'email', 'phone', 'mobile', 'location', 'pincode', 'job_role',
+                  'experience_years', 'company_name', 'trust_level', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'mobile': forms.TextInput(attrs={'class': 'form-control'}),
+            'pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'location': forms.TextInput(attrs={'class': 'form-control'}),
+            'trust_level': forms.Select(attrs={'class': 'form-control'}),
+            'company_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'experience_years': forms.NumberInput(attrs={'class': 'form-control'}),
+            'job_role': forms.Select(attrs={'class': 'form-control', 'required': 'true'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
