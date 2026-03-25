@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Calendar - {{ profile.name }}{% endblock %}
+
+{% block head %}
+    <style>        
+        /* Mobile-optimized calendar header */
+        @media (max-width: 767px) {
+            .calendar-header {
+                font-size: 1.25rem;
+            }
+            
+            .calendar-header small {
+                display: block;
+                font-size: 0.875rem;
+            }
+        }
+        
+        /* Day number styling */
+        .day-number {
+            font-size: 1.1em !important;
+            font-weight: 600;
+            color: #212529;
+        }
+        
+        @media (min-width: 768px) {
+            .day-number {
+                font-size: 1.3em !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Calendar Header -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+    <h2 class="calendar-header mb-2 mb-md-0">
+        Calendar ({{ month }}/{{ year }})
+        <small class="text-muted">{{ profile.name }}</small>
+        <!-- {% if user.is_staff %}<small class="text-muted">{{ profile.name }}</small>{% endif %} -->
+    </h2>
+    
+    <!-- Navigation buttons -->
+    <div class="nav-buttons">
+        <a class="btn btn-outline-primary btn-sm me-2" href="?month={{ prev_month }}&year={{ prev_year }}">
+            <i class="fas fa-chevron-left d-none d-md-inline"></i> ⬅ Prev
+        </a>
+        <a class="btn btn-outline-primary btn-sm" href="?month={{ next_month }}&year={{ next_year }}">
+            Next ➡ <i class="fas fa-chevron-right d-none d-md-inline"></i>
+        </a>
+    </div>
+</div>
+
+<!-- Statistics Badges -->
+<div class="stats-badges mb-3">
+    <div class="badge bg-success p-2">
+        <strong>Present:</strong> <span id="total_present">{{ total_present }}</span>
+    </div>
+    <div class="badge bg-danger p-2">
+        <strong>Absent:</strong> <span id="total_absent">{{ total_absent }}</span>
+    </div>
+    <div class="badge bg-primary p-2">
+        <strong>Working Days:</strong> <span id="total_working_days">{{ total_working_days }}</span>
+    </div>
+    <div class="badge bg-warning text-dark p-2">
+        <strong>Salary:</strong> ₹<span id="salary">{{ salary|floatformat:2 }}</span>
+    </div>
+    <div class="badge bg-danger p-2{% if user.is_staff %} credit-badge{% endif %}" 
+         {% if user.is_staff %}style="cursor:pointer;" 
+         data-user-id="{{ profile.id }}" 
+         data-month="{{ month }}" 
+         data-year="{{ year }}"
+         title="Click to update credits"{% endif %}>
+        <strong>Credits:</strong> ₹<span id="credits">{{ credits|floatformat:2 }}</span>
+    </div>
+    <div class="badge bg-success p-2{% if user.is_staff %} bonus-badge{% endif %}" 
+         {% if user.is_staff %}style="cursor:pointer;" 
+         data-user-id="{{ profile.id }}" 
+         data-month="{{ month }}" 
+         data-year="{{ year }}"
+         title="Click to update bonus"{% endif %}>
+        <strong>Bonus:</strong> ₹<span id="bonus">{{ bonus|floatformat:2 }}</span>
+    </div>
+</div>
+
+<!-- Calendar Table -->
+<div class="calendar-container">
+    <table class="table table-bordered text-center align-middle calendar-table">
+        <thead class="table-light">
+            <tr>
+                <th>Mon</th>
+                <th>Tue</th>
+                <th>Wed</th>
+                <th>Thu</th>
+                <th>Fri</th>
+                <th>Sat</th>
+                <th>Sun</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for week in month_weeks %}
+            <tr>
+                {% for day in week %}
+                    {% if day %}
+                        {% if day.attendance %}
+                            <td class="attendance-cell" 
+                                data-user-id="{{ profile.id }}" 
+                                data-date="{{ day.day|date:'Y-m-d' }}" 
+                                style="position:relative;{% if user.is_staff %}cursor:pointer;{% endif %}">
+                                <div class="day-number" style="margin-bottom: 4px;">
+                                    {{ day.day.day }}
+                                </div>
+                                <div class="badge-container" style="position:absolute; bottom:5px; width:100%; text-align:center;">
+                                    {% if day.attendance.present %}
+                                        <span class="badge bg-success d-md-none">P</span>
+                                        <span class="badge bg-success d-none d-md-inline">Present</span>
+                                    {% else %}
+                                        <span class="badge bg-danger d-md-none">A</span>
+                                        <span class="badge bg-danger d-none d-md-inline">Absent</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        {% elif day.is_holiday %}
+                            <td class="table-secondary">
+                                <div class="day-number" style="margin-bottom: 4px;">{{ day.day.day }}</div>
+                                <span class="badge bg-secondary d-md-none">H</span>
+                                <span class="badge bg-secondary d-none d-md-inline">Holiday</span>
+                            </td>
+                        {% else %}
+                            <td class="table-light">
+                                <div class="day-number" style="margin-bottom: 4px;">{{ day.day.day }}</div>
+                                <span class="badge bg-light text-dark" style="visibility: hidden;">—</span>
+                            </td>
+                        {% endif %}
+                    {% else %}
+                        <td class="table-light" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">&nbsp;</td>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Mobile Legend -->
+<div class="d-md-none mt-3">
+    <div class="card">
+        <div class="card-body p-2">
+            <small>
+                <strong>Legend:</strong>
+                <span class="badge bg-success">P</span> Present &nbsp;
+                <span class="badge bg-danger">A</span> Absent &nbsp;
+                <span class="badge bg-secondary">H</span> Holiday
+            </small>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block script %}
+{% if user.is_staff %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function(){
+    // Attendance marking functionality
+    $('.attendance-cell').click(function(){
+        var cell = $(this);
+        var user_id = cell.data('user-id');
+        var date = cell.data('date');
+
+        $.ajax({
+            url: "{% url 'ajax_mark_attendance' %}",
+            type: "POST",
+            data: {
+                'user_id': user_id,
+                'date': date,
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response){
+                if(response.status === 'success'){
+                    // Update the badge based on attendance (responsive - mobile & desktop)
+                    var badgeHtml = response.present 
+                        ? '<span class="badge bg-success d-md-none">P</span><span class="badge bg-success d-none d-md-inline">Present</span>'
+                        : '<span class="badge bg-danger d-md-none">A</span><span class="badge bg-danger d-none d-md-inline">Absent</span>';
+
+                    // Replace the old badge with the new one
+                    cell.find('.badge-container').html(badgeHtml);
+
+                    // Dynamically update the totals in the UI
+                    $('#total_working_days').text(response.total_working_days);
+                    $('#total_present').text(response.total_present);
+                    $('#total_absent').text(response.total_absent);
+                    
+                    // Update salary with proper formatting
+                    if(response.salary !== undefined && response.salary !== null) {
+                        var salaryValue = parseFloat(response.salary);
+                        $('#salary').text(salaryValue.toFixed(2));
+                    }
+                    
+                    // Visual feedback
+                    cell.addClass('table-info');
+                    setTimeout(function() {
+                        cell.removeClass('table-info');
+                    }, 500);
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            },
+            error: function(){
+                alert('AJAX error! Please check your connection.');
+            }
+        });
+    });
+    
+    // Credit update functionality
+    $('.credit-badge').click(function(){
+        var badge = $(this);
+        var user_id = badge.data('user-id');
+        var month = badge.data('month');
+        var year = badge.data('year');
+        var currentCredits = $('#credits').text();
+        
+        Swal.fire({
+            title: 'Update Credits',
+            html: '<p>Enter the credits amount for <strong>' + month + '/' + year + '</strong></p>',
+            input: 'number',
+            inputValue: currentCredits,
+            inputAttributes: {
+                min: 0,
+                step: 0.01,
+                placeholder: 'Enter amount'
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Update',
+            confirmButtonColor: '#17a2b8',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value || value < 0) {
+                    return 'Please enter a valid amount!';
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                var amount = parseFloat(result.value);
+                
+                $.ajax({
+                    url: "{% url 'ajax_update_credit_bonus' %}",
+                    type: "POST",
+                    data: {
+                        'user_id': user_id,
+                        'month': month,
+                        'year': year,
+                        'field_type': 'credits',
+                        'amount': amount,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'
+                    },
+                    success: function(response){
+                        if(response.status === 'success'){
+                            $('#credits').text(response.credits.toFixed(2));
+                            $('#salary').text(response.salary.toFixed(2));
+                            
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Updated!',
+                                text: 'Credits have been updated successfully.',
+                                timer: 2000,
+                                showConfirmButton: false
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error',
+                                text: response.error
+                            });
+                        }
+                    },
+                    error: function(){
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Failed to update credits. Please try again.'
+                        });
+                    }
+                });
+            }
+        });
+    });
+    
+    // Bonus update functionality
+    $('.bonus-badge').click(function(){
+        var badge = $(this);
+        var user_id = badge.data('user-id');
+        var month = badge.data('month');
+        var year = badge.data('year');
+        var currentBonus = $('#bonus').text();
+        
+        Swal.fire({
+            title: 'Update Bonus',
+            html: '<p>Enter the bonus amount for <strong>' + month + '/' + year + '</strong></p>',
+            input: 'number',
+            inputValue: currentBonus,
+            inputAttributes: {
+                min: 0,
+                step: 0.01,
+                placeholder: 'Enter amount'
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Update',
+            confirmButtonColor: '#28a745',
+            cancelButtonText: 'Cancel',
+            inputValidator: (value) => {
+                if (!value || value < 0) {
+                    return 'Please enter a valid amount!';
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                var amount = parseFloat(result.value);
+                
+                $.ajax({
+                    url: "{% url 'ajax_update_credit_bonus' %}",
+                    type: "POST",
+                    data: {
+                        'user_id': user_id,
+                        'month': month,
+                        'year': year,
+                        'field_type': 'bonus',
+                        'amount': amount,
+                        'csrfmiddlewaretoken': '{{ csrf_token }}'
+                    },
+                    success: function(response){
+                        if(response.status === 'success'){
+                            $('#bonus').text(response.bonus.toFixed(2));
+                            $('#salary').text(response.salary.toFixed(2));
+                            
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Updated!',
+                                text: 'Bonus has been updated successfully.',
+                                timer: 2000,
+                                showConfirmButton: false
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error',
+                                text: response.error
+                            });
+                        }
+                    },
+                    error: function(){
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Failed to update bonus. Please try again.'
+                        });
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

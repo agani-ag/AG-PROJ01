@@ -2,9 +2,6 @@
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.shortcuts import render, redirect
-from django.contrib.auth.models import User
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 
 # Imports
 from ..forms import (
@@ -71,9 +68,3 @@ def signup_view(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
-
-# =============== REST API VIEWS ===============
-@api_view(['GET'])
-def user_list(request):
-    users = User.objects.filter(is_active=True).values('id', 'username')
-    return Response(list(users))

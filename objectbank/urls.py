@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     auth, views, link_registry,
-    profile
+    profile, attendance
     
 )
 
@@ -22,4 +22,9 @@ urlpatterns = [
 
     # Link Registry URL
     path('link-registry/', link_registry.link_registry_view, name='link-registry'),
+
+    # Attendance URLs
+    path('attendance/ajax/mark/', attendance.ajax_mark_attendance, name='ajax_mark_attendance'),
+    path('attendance/<int:user_id>/', attendance.attendance_calendar, name='attendance_calendar'),
+    path('attendance/ajax/credit-bonus/', attendance.ajax_update_credit_bonus, name='ajax_update_credit_bonus'),
 ]
