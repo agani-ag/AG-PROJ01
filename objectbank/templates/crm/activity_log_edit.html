@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Add Activity Log{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+		<div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Activity Log</h2>
+            {% else %}
+			    <h2 class="fw-bold">Add Activity Log</h2>
+            {% endif %}
+		</div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- Lead & Type -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Lead</label>
+                    {{ form.lead }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Type</label>
+                    {{ form.type }}
+                </div>
+            </div>
+
+            <!-- User & Follow Up Date -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">User</label>
+                    {{ form.user }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Follow Up Date</label>
+                    {{ form.follow_up_date }}
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="row">
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+            </div>
+
+            <!-- Submit -->
+			<div class="d-flex gap-2 mt-4">
+				<button type="submit" class="btn btn-primary btn-lg flex-fill">
+					<i class="fas fa-check me-2"></i>
+				</button>
+
+                {% if is_edit %}
+                <a href="{% url 'activity_log_delete' log.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+					<i class="fas fa-trash me-2"></i>
+				</a>
+                {% endif %}
+
+                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
+					<i class="fas fa-arrow-left me-2"></i>
+				</a>
+			</div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+    function showDeleteAlert() {
+        swal.fire({
+            title: 'Activity Log Deleted',
+            text: 'Do You want to delete this activity log?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{% url 'activity_log_delete' log.id %}";
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

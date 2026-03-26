@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Add Worker Commission{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+		<div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Worker Commission</h2>
+            {% else %}
+			    <h2 class="fw-bold">Add Worker Commission</h2>
+            {% endif %}
+		</div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- Worker -->
+            <div class="mb-3">
+                <label class="form-label">Worker</label>
+                {{ form.worker }}
+            </div>
+
+            <!-- Lead & Opportunity -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Lead</label>
+                    {{ form.lead }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Opportunity</label>
+                    {{ form.opportunity }}
+                </div>
+            </div>
+
+            <!-- Commission Amount & Paid -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Commission Amount</label>
+                    {{ form.commission_amount }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Paid</label>
+                    {{ form.paid }}
+                </div>
+            </div>
+
+            <!-- Submit -->
+			<div class="d-flex gap-2 mt-4">
+				<button type="submit" class="btn btn-primary btn-lg flex-fill">
+					<i class="fas fa-check me-2"></i>
+				</button>
+
+                {% if is_edit %}
+                <a href="{% url 'worker_commissions_delete' commission.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+					<i class="fas fa-trash me-2"></i>
+				</a>
+                {% endif %}
+
+                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
+					<i class="fas fa-arrow-left me-2"></i>
+				</a>
+			</div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+    function showDeleteAlert() {
+        swal.fire({
+            title: 'Worker Commission Deleted',
+            text: 'Do You want to delete this worker commission?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{% url 'worker_commissions_delete' commission.id %}";
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

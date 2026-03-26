@@ -4,28 +4,28 @@
 {% block content %}
 <div class="row">
 	<div class="col">
-		<h2>Leads</h2>
+		<h2>Material Requests</h2>
 	</div>
 	<div class="col text-end">
-		<a href="{% url 'lead_add' %}" class="btn btn-primary btn-sm btn-curve" title="Add Lead">
+		<a href="{% url 'material_request_add' %}" class="btn btn-primary btn-sm btn-curve" title="Add Material Request">
 			<i class="fas fa-plus"></i></a>
 	</div>
 </div>
 
-<table class="table table-striped table-bordered" id="lead-table">
+<table class="table table-striped table-bordered" id="material-request-table">
 	<thead class="table-dark">
 		<tr>
 			<th>Name</th>
-			<th>Stage</th>
+			<th>Type</th>
 			<th>Status</th>
 		</tr>
 	</thead>
 	<tbody class="two-col-form">
-		{% for lead in leads %}
-		<tr onclick="window.location='{% url 'lead_edit' lead.id %}'" style="cursor: pointer;">
-			<td>{{ lead.name }}</td>
-			<td>{{ lead.get_project_stage_display }}</td>
-			<td>{{ lead.get_status_display }}</td>
+		{% for material_request in material_requests %}
+		<tr onclick="window.location='{% url 'material_request_edit' material_request.id %}'" style="cursor: pointer;">
+			<td>{{ material_request.name }}</td>
+			<td>{{ material_request.get_type_display }}</td>
+			<td>{{ material_request.get_status_display }}</td>
 		</tr>
 		{% endfor %}
 	</tbody>
@@ -36,7 +36,7 @@
 {% block script %}
 <script>
 $(document).ready( function () {
-	$('#lead-table').DataTable({
+	$('#material-request-table').DataTable({
 		"order": [],
 		"columnDefs": [],
 		"paging": true,

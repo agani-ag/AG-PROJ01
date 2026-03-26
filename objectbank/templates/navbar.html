@@ -25,8 +25,14 @@
                         CRM
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="crmDropdown">
-                        <li><a class="dropdown-item" href="#">Leads</a></li>
+                        <li><a class="dropdown-item" href="{% url 'leads' %}">Leads</a></li>
                         <li><a class="dropdown-item" href="{% url 'workers' %}">Workers</a></li>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Features</h6>
+                        <li><a class="dropdown-item" href="{% url 'activity_log' %}">Activity Log</a></li>
+                        <li><a class="dropdown-item" href="{% url 'opportunity' %}">Opportunity</a></li>
+                        <li><a class="dropdown-item" href="{% url 'worker_commissions' %}">Commissions</a></li>
+                        <li><a class="dropdown-item" href="{% url 'material_request' %}">Material Requests</a></li>
                     </ul>
                 </li>
 

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Add Lead{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+		<div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Lead</h2>
+            {% else %}
+			    <h2 class="fw-bold">Add Lead</h2>
+            {% endif %}
+		</div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- Name & Type -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Name</label>
+                    {{ form.name }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Type</label>
+                    {{ form.type }}
+                </div>
+            </div>
+
+            <!-- Project Stage & Status -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Project Stage</label>
+                    {{ form.project_stage }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Status</label>
+                    {{ form.status }}
+                </div>
+            </div>
+
+			<!-- Source Type & Worker -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Source Type</label>
+                    {{ form.source_type }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Reference</label>
+                    {{ form.worker }}
+                </div>
+            </div>
+
+			<hr class="my-4">
+
+			<!-- Phone & Email -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Phone</label>
+                    {{ form.phone }}
+                </div>
+				<div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Email</label>
+                    {{ form.email }}
+                </div>
+            </div>
+				
+            <!-- Location & Pincode -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Location</label>
+                    {{ form.location }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Pincode</label>
+                    {{ form.pincode }}
+                </div>
+            </div>
+
+			<!-- Latitude & Longitude -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Latitude</label>
+                    {{ form.latitude }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Longitude</label>
+                    {{ form.longitude }}
+                </div>
+            </div>
+
+			<hr class="my-4">
+			
+            <!-- Assigned To -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Assigned To</label>
+                    {{ form.assigned_to }}
+                </div>
+            </div>
+
+            <!-- Submit -->
+			<div class="d-flex gap-2 mt-4">
+				<button type="submit" class="btn btn-primary btn-lg flex-fill">
+					<i class="fas fa-check me-2"></i>
+				</button>
+
+                {% if is_edit %}
+                <a href="{% url 'lead_delete' lead.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+					<i class="fas fa-trash me-2"></i>
+				</a>
+                {% endif %}
+
+                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
+					<i class="fas fa-arrow-left me-2"></i>
+				</a>
+			</div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+    function showDeleteAlert() {
+        swal.fire({
+            title: 'Lead Deleted',
+            text: 'Do You want to delete this lead?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{% url 'lead_delete' lead.id %}";
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

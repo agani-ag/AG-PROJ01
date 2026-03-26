@@ -1,4 +1,6 @@
 from django.db import models
+from datetime import timedelta
+from django.utils.timezone import now
 from django.contrib.auth.models import User
 from multiselectfield import MultiSelectField
 from .utils import (
@@ -215,7 +217,13 @@ class Leads(models.Model):
     
     def __str__(self):
         return f"{self.name} - {self.get_status_display()}"
+    
+    class Meta:
+        ordering = ['-created_at']
 
+def default_future_date():
+    return now().date() + timedelta(days=15)
+    
 class Opportunity(models.Model):
     lead = models.ForeignKey(Leads, on_delete=models.CASCADE)
     TYPE = [
@@ -258,7 +266,7 @@ class Opportunity(models.Model):
     ]
     type = models.IntegerField(choices=TYPE, default=0)
     estimated_value = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
-    closing_date = models.DateField()
+    closing_date = models.DateField(default=default_future_date)
     STATUS = [
         (0, 'Open'),
         (1, 'In Progress'),
@@ -356,7 +364,7 @@ class ActivityLog(models.Model):
     ]
     type = models.IntegerField(choices=TYPE, default=0)
     description = models.TextField(blank=True, null=True)
-    follow_up_date = models.DateField(blank=True, null=True)
+    follow_up_date = models.DateField(blank=True, null=True, default=default_future_date)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
