@@ -1,6 +1,7 @@
 from django.core.validators import RegexValidator
 from django.conf import settings
 from calendar import monthrange
+from decimal import Decimal
 from datetime import date
 import requests
 
@@ -46,11 +47,12 @@ def calculate_salary(user, year, month):
     base_salary = user.salary or 0
     daily_rate = base_salary / total_working_days if total_working_days else 0
     salary = daily_rate * attendances.count()
+    salary = Decimal(salary)
 
     # Fetch credits and bonus for this month
     transaction = SalaryTransaction.objects.filter(user=user, month=month, year=year).first()
-    credits = transaction.credits if transaction else 0
-    bonus = transaction.bonus if transaction else 0
+    credits = Decimal(transaction.credits) if transaction else Decimal(0)
+    bonus = Decimal(transaction.bonus) if transaction else Decimal(0)
     final_salary = salary - credits + bonus
 
     SalaryTransaction.objects.update_or_create(

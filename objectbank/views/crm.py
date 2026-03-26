@@ -13,6 +13,8 @@ from ..forms import (
     OpportunityForm, WorkerForm, WorkerCommissionsForm,
     MaterialRequestForm, ActivityLogForm, LeadsForm
 )
+import json
+
 # =============== JOB ROLE VIEWS ===============
 @login_required
 def job_roles(request):
@@ -217,7 +219,10 @@ def material_request_add(request):
     if request.method == 'POST':
         form = MaterialRequestForm(request.POST)
         if form.is_valid():
-            form.save()
+            obj = form.save(commit=False)
+            requirement_data = request.POST.get('requirement')
+            obj.requirement = json.loads(requirement_data) if requirement_data else []
+            obj.save()
             messages.success(request, 'Material Request added successfully.')
             return redirect('material_request')
         else:
@@ -237,7 +242,10 @@ def material_request_edit(request, material_request_id):
     if request.method == 'POST':
         form = MaterialRequestForm(request.POST, instance=material_request)
         if form.is_valid():
-            form.save()
+            obj = form.save(commit=False)
+            requirement_data = request.POST.get('requirement')
+            obj.requirement = json.loads(requirement_data) if requirement_data else []
+            obj.save()
             messages.success(request, 'Material Request updated successfully.')
             return redirect('material_request')
         else:

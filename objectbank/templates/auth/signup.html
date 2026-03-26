@@ -83,9 +83,12 @@
 					<i class="fas fa-user-plus me-2"></i>
 				</button>
 
+                {% if admin_panel %}
+                {% else %}
 				<a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
 					<i class="fas fa-house me-2"></i>
 				</a>
+                {% endif %}
 			</div>
 
         </form>

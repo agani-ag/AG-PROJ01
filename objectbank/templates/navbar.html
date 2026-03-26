@@ -19,6 +19,7 @@
             <ul class="navbar-nav ms-auto">
 
                 <!-- CRM Dropdown -->
+                {% if user.is_superuser or user.is_staff %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="crmDropdown"
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -35,30 +36,31 @@
                         <li><a class="dropdown-item" href="{% url 'material_request' %}">Material Requests</a></li>
                     </ul>
                 </li>
-
-                <!-- Actions -->
-                <li class="nav-item">
-                    {% if user.is_authenticated %}
-                        <a class="nav-link" href="{% url 'logout' %}">Logout</a>
-                    {% else %}
-                        <a class="nav-link" href="{% url 'login' %}">Login</a>
-                    {% endif %}
-                </li>
-                
-                {% if user.is_staff %}
-                <!-- Admin Dropdown -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="adminDropdown"
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Admin
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="adminDropdown">
-                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                        <li><a class="dropdown-item" href="{% url 'link-registry' %}">Link Registry</a></li>
-                    </ul>
-                </li>
                 {% endif %}
 
+                <!-- Settings Dropdown -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="settingsDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Settings
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
+                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
+                        {% if user.is_superuser %}
+                            <div class="dropdown-divider"></div>
+                            <h6 class="dropdown-header">Admin</h6>
+                            <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
+                            <li><a class="dropdown-item" href="{% url 'link-registry' %}">Link Registry</a></li>
+                        {% endif %}
+                    </ul>
+                </li>
+
+                <!-- Actions -->
+                {% if not user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'login' %}">Login</a>
+                    </li>
+                {% endif %}
             </ul>
         </div>
     </div>

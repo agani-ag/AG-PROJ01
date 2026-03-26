@@ -39,7 +39,6 @@
     <h2 class="calendar-header mb-2 mb-md-0">
         Calendar ({{ month }}/{{ year }})
         <small class="text-muted">{{ profile.name }}</small>
-        <!-- {% if user.is_staff %}<small class="text-muted">{{ profile.name }}</small>{% endif %} -->
     </h2>
     
     <!-- Navigation buttons -->
@@ -67,16 +66,16 @@
     <div class="badge bg-warning text-dark p-2">
         <strong>Salary:</strong> ₹<span id="salary">{{ salary|floatformat:2 }}</span>
     </div>
-    <div class="badge bg-danger p-2{% if user.is_staff %} credit-badge{% endif %}" 
-         {% if user.is_staff %}style="cursor:pointer;" 
+    <div class="badge bg-danger p-2{% if user.is_superuser %} credit-badge{% endif %}" 
+         {% if user.is_superuser %}style="cursor:pointer;" 
          data-user-id="{{ profile.id }}" 
          data-month="{{ month }}" 
          data-year="{{ year }}"
          title="Click to update credits"{% endif %}>
         <strong>Credits:</strong> ₹<span id="credits">{{ credits|floatformat:2 }}</span>
     </div>
-    <div class="badge bg-success p-2{% if user.is_staff %} bonus-badge{% endif %}" 
-         {% if user.is_staff %}style="cursor:pointer;" 
+    <div class="badge bg-success p-2{% if user.is_superuser %} bonus-badge{% endif %}" 
+         {% if user.is_superuser %}style="cursor:pointer;" 
          data-user-id="{{ profile.id }}" 
          data-month="{{ month }}" 
          data-year="{{ year }}"
@@ -108,7 +107,7 @@
                             <td class="attendance-cell" 
                                 data-user-id="{{ profile.id }}" 
                                 data-date="{{ day.day|date:'Y-m-d' }}" 
-                                style="position:relative;{% if user.is_staff %}cursor:pointer;{% endif %}">
+                                style="position:relative;{% if user.is_superuser %}cursor:pointer;{% endif %}">
                                 <div class="day-number" style="margin-bottom: 4px;">
                                     {{ day.day.day }}
                                 </div>
@@ -162,7 +161,7 @@
 
 
 {% block script %}
-{% if user.is_staff %}
+{% if user.is_superuser %}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
 $(document).ready(function(){

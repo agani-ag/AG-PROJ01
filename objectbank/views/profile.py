@@ -44,12 +44,15 @@ def admin_profile_edit(request, user_id):
             profile_form.save()
             auth_user.is_staff = "is_staff" in request.POST
             auth_user.is_active = "is_active" in request.POST
+            auth_user.is_superuser = "is_superuser" in request.POST
             auth_user.save()
             messages.success(request, "Profile & permissions updated successfully!")
+            return redirect('profiles')
         else:
             messages.error(request, f"{profile_form.errors}")
     context["profile_form"] = profile_form
     context["auth_user"] = auth_user
+    context["admin_panel"] = True
     return render(request, 'profile/profile_edit.html', context)
 
 def profile_delete(request, user_id):

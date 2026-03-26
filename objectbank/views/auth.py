@@ -29,9 +29,6 @@ def login_view(request):
     return render(request, 'auth/login.html', context)
 
 def signup_view(request):
-    admin = request.GET.get("admin", None)
-    if request.user.is_authenticated and not admin:
-        return redirect("home")
     context = {}
     signup_form = SignupForm()
     profile_form = UserProfileForm()
@@ -53,16 +50,13 @@ def signup_view(request):
             userprofile = profile_form.save(commit=False)
             userprofile.user = user
             userprofile.save()
-            if request.user.is_authenticated:
-                messages.success(request, "User created successfully!")
-                return redirect("profiles")
-            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-            return redirect("home")
+            messages.success(request, "User created successfully!")
+            return redirect("profiles")
+            # login(request, user, backend='django.contrib.auth.backends.ModelBackend')
         else:
             user.delete()  # Rollback user creation if profile is invalid
             messages.error(request, f"{profile_form.errors}")
             return render(request, 'auth/signup.html', context)
-
     return render(request, 'auth/signup.html', context)
 
 def logout_view(request):

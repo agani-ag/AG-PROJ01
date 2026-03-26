@@ -8,9 +8,6 @@
         <!-- Header -->
 		<div class="text-center mb-4">
 			<h2 class="fw-bold">Edit Profile</h2>
-			<p class="text-muted mb-0">
-				Update your profile information
-			</p>
 		</div>
 
         <form method="POST" class="card shadow-sm p-4">
@@ -68,7 +65,7 @@
                 </div>
             </div>
 
-            {% if user.is_superuser %}
+            {% if user.is_superuser and admin_panel %}
             <!-- Latitude & Longitude -->
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
@@ -84,6 +81,9 @@
             <!-- Staff & Active -->
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Admin</label>
+                    <input type="checkbox" {{ auth_user.is_superuser|yesno:"checked," }} name="is_superuser">
+
                     <label class="form-label">Staff</label>
                     <input type="checkbox" {{ auth_user.is_staff|yesno:"checked," }} name="is_staff">
 
@@ -103,15 +103,21 @@
 					<i class="fas fa-calendar me-2"></i>
 				</a>
 
-				<a href="{% url 'logout' %}" class="btn btn-warning btn-lg flex-fill">
-					<i class="fas fa-sign-out-alt me-2"></i>
-				</a>
+                {% if admin_panel %}
+                    <a href="{% url 'profiles' %}" class="btn btn-danger btn-lg flex-fill" title="Cancel">
+                        <i class="fas fa-times me-2"></i>
+                    </a>
+                {% else %}
+                    <a href="#" class="btn btn-danger btn-lg flex-fill"
+                        onclick="window.history.back()" title="Cancel">
+                        <i class="fas fa-times me-2"></i>
+                    </a>
 
-                <a href="#" class="btn btn-danger btn-lg flex-fill"
-                    onclick="window.history.back()" title="Cancel">
-					<i class="fas fa-reply me-2"></i>
-				</a>
-			</div>
+                    <a href="{% url 'logout' %}" class="btn btn-warning btn-lg flex-fill">
+                        <i class="fas fa-sign-out-alt me-2"></i>
+                    </a>
+                {% endif %}
+            </div>
 
         </form>
     </div>

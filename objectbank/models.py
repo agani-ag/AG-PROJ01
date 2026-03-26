@@ -30,7 +30,7 @@ class UserProfile(models.Model):
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     
     # Salary & Working Days
-    salary = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    salary = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, default=0.0)
     working_days = MultiSelectField(choices=DAYS_OF_WEEK, max_choices=7, blank=True, null=True)
 
     # Geolocation
@@ -43,7 +43,7 @@ class UserProfile(models.Model):
 
     def save(self, *args, **kwargs):
         if self.name:
-            self.name = self.name.strip().upper()
+            self.name = self.name.strip().title()
         if self.address:
             self.address = self.address.strip().upper()
         if self.email:
@@ -53,6 +53,9 @@ class UserProfile(models.Model):
     def __str__(self):
         return self.name or self.user.username
     
+    class Meta:
+        ordering = ['name']
+
 # =============== Link Registry ===============
 class LinkRegistry(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -64,7 +67,7 @@ class LinkRegistry(models.Model):
 
     def save(self, *args, **kwargs):
         if self.link_name:
-            self.link_name = self.link_name.strip().upper()
+            self.link_name = self.link_name.strip().title()
         if self.link_url:
             self.link_url = self.link_url.strip()
         super().save(*args, **kwargs)
@@ -284,7 +287,7 @@ class Opportunity(models.Model):
 class MaterialRequest(models.Model):
     lead = models.ForeignKey(Leads, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
-    requirement = models.TextField()
+    requirement = models.JSONField(blank=True, null=True)
     TYPE = [
         # Civil Materials
         (0, 'Cement & Concrete'),

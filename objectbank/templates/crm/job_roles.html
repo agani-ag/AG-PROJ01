@@ -36,11 +36,12 @@
 {% block script %}
 <script>
 $(document).ready( function () {
+	var isMobile = window.innerWidth <= 768;
 	$('#job-role-table').DataTable({
 		"order": [],
 		"columnDefs": [],
 		"paging": true,
-        "lengthChange": false,
+        "lengthChange": !isMobile,
         "searching": true,
         "ordering": true,
         });

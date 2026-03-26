@@ -41,13 +41,33 @@
                 </div>
             </div>
 
-            <!-- Requirement & Description -->
+            <!-- Requirement -->
             <div class="row">
-                <div class="col-12 col-md-6 mb-3">
+                <div class="mb-3">
                     <label class="form-label">Requirement</label>
-                    {{ form.requirement }}
+
+                    <table class="table table-bordered" id="requirement-table">
+                        <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th>Quantity</th>
+                                <th>
+                                    <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+</button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="requirement-body">
+                        </tbody>
+                    </table>
+
+                    <!-- Hidden field -->
+                    <input type="hidden" name="requirement" id="requirement-data">
                 </div>
-                <div class="col-12 col-md-6 mb-3">
+            </div>
+
+            <!-- Description -->
+            <div class="row">
+                <div class="col-12">
                     <label class="form-label">Description</label>
                     {{ form.description }}
                 </div>
@@ -92,6 +112,62 @@
             }
         });
     }
+
+// Existing data from Django (for edit page)
+let existingData = {{ form.instance.requirement|default:"[]"|safe }};
+
+// Load existing rows
+window.onload = function () {
+    if (existingData.length > 0) {
+        existingData.forEach(item => addRow(item.material, item.quantity));
+    } else {
+        addRow(); // empty row for new form
+    }
+};
+
+function addRow(material = "", quantity = "") {
+    let table = document.getElementById("requirement-body");
+
+    let row = `
+        <tr>
+            <td><input type="text" class="form-control material" value="${material}"></td>
+            <td><input type="number" class="form-control quantity" value="${quantity}"></td>
+            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">-</button></td>
+        </tr>
+    `;
+    table.insertAdjacentHTML('beforeend', row);
+}
+
+function removeRow(btn) {
+    let row = btn.closest("tr");
+    row.remove();
+}
+
+// Convert table → JSON before submit
+document.querySelector("form").addEventListener("submit", function () {
+    let data = [];
+
+    document.querySelectorAll("#requirement-body tr").forEach(row => {
+        let material = row.querySelector(".material").value;
+        let quantity = row.querySelector(".quantity").value;
+
+        if (material && quantity) {
+            data.push({ material, quantity });
+        }
+    });
+
+    if (data.length === 0) {
+        swal.fire({
+            title: 'Requirement Missing',
+            text: 'Please add at least one material with quantity.',
+            icon: 'warning',
+        });
+        event.preventDefault();
+        return;
+    }
+
+    document.getElementById("requirement-data").value = JSON.stringify(data);
+});
 </script>
 {% endif %}
 {% endblock %}

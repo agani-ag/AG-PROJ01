@@ -56,8 +56,8 @@ class UserProfileEditForm(ModelForm):
         widgets = {
             'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
             'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
@@ -121,12 +121,11 @@ class OpportunityForm(ModelForm):
 class MaterialRequestForm(ModelForm):
     class Meta:
         model = MaterialRequest
-        fields = ['lead', 'name', 'requirement', 'type', 'description','status']
+        fields = ['lead', 'name', 'type', 'description','status']
         widgets = {
             'type': forms.Select(attrs={'class': 'form-control'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'requirement': forms.Textarea(attrs={'class': 'form-control'}),
             'description': forms.Textarea(attrs={'class': 'form-control'}),
             'lead': forms.Select(attrs={'class': 'form-control', 'required': 'true'}),
         }
