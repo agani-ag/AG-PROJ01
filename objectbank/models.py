@@ -58,22 +58,22 @@ class UserProfile(models.Model):
 
 # =============== Link Registry ===============
 class LinkRegistry(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    link_name = models.CharField(max_length=100)
-    link_url = models.URLField(max_length=300)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+    url = models.URLField(max_length=300)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
 
     def save(self, *args, **kwargs):
-        if self.link_name:
-            self.link_name = self.link_name.strip().title()
-        if self.link_url:
-            self.link_url = self.link_url.strip()
+        if self.name:
+            self.name = self.name.strip().title()
+        if self.url:
+            self.url = self.url.strip()
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.link_name} - {self.user.username}"
+        return f"{self.name} - {self.user.username}"
 
 # =============== Holiday & Attendance ===============
 class Holiday(models.Model):
@@ -356,7 +356,7 @@ class MaterialRequest(models.Model):
 
 class ActivityLog(models.Model):
     lead = models.ForeignKey(Leads, on_delete=models.CASCADE)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    user = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
     TYPE = [
         (0, 'Communication'),
         (1, 'Site Visit'),

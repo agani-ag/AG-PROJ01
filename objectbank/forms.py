@@ -7,9 +7,10 @@ from django.contrib.auth.forms import (
 )
 from .models import (
     ActivityLog, MaterialRequest, UserProfile, Worker, Leads,
-    Opportunity, WorkerCommissions
+    Opportunity, WorkerCommissions, LinkRegistry
 
 )
+from urllib.parse import urlparse
 
 class AuthForm(AuthenticationForm):
     class Meta:
@@ -64,6 +65,30 @@ class UserProfileEditForm(ModelForm):
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }
+
+class LinkRegistryForm(ModelForm):
+    class Meta:
+        model = LinkRegistry
+        fields = ['user', 'name', 'url', 'is_active']
+        widgets = {
+            'user': forms.Select(attrs={'class': 'form-control'}),
+            'url': forms.Textarea(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def clean_url(self):
+        url = self.cleaned_data.get('url')
+
+        if not url:
+            return url
+
+        # If scheme is missing, add https://
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            url = 'https://' + url
+
+        return url
 
 class WorkerForm(ModelForm):
     class Meta:

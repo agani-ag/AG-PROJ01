@@ -36,7 +36,6 @@
                         <li><a class="dropdown-item" href="{% url 'material_request' %}">Material Requests</a></li>
                     </ul>
                 </li>
-                {% endif %}
 
                 <!-- Settings Dropdown -->
                 <li class="nav-item dropdown">
@@ -45,15 +44,16 @@
                         Settings
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
-                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                         {% if user.is_superuser %}
-                            <div class="dropdown-divider"></div>
                             <h6 class="dropdown-header">Admin</h6>
                             <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                            <li><a class="dropdown-item" href="{% url 'link-registry' %}">Link Registry</a></li>
+                            <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
+                            <div class="dropdown-divider"></div>
                         {% endif %}
+                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                     </ul>
                 </li>
+                {% endif %}
 
                 <!-- Actions -->
                 {% if not user.is_authenticated %}

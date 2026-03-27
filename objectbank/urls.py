@@ -21,7 +21,10 @@ urlpatterns = [
     path('profile/admin/edit/<int:user_id>/', profile.admin_profile_edit, name='profile-admin-edit'),
 
     # Link Registry URL
-    path('link-registry/', link_registry.link_registry_view, name='link-registry'),
+    path('link-registry', link_registry.link_registry, name='link_registry'),
+    path('link-registry/add', link_registry.link_registry_add, name='link_registry_add'),
+    path('link-registry/edit/<int:link_registry_id>', link_registry.link_registry_edit, name='link_registry_edit'),
+    path('link-registry/delete/<int:link_registry_id>', link_registry.link_registry_delete, name='link_registry_delete'),
 
     # Attendance URLs
     path('attendance/ajax/mark/', attendance.ajax_mark_attendance, name='ajax_mark_attendance'),
