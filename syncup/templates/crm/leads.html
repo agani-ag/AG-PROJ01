@@ -22,7 +22,7 @@
 	</thead>
 	<tbody class="two-col-form">
 		{% for lead in leads %}
-		<tr onclick="window.location='{% url 'lead_edit' lead.id %}'" style="cursor: pointer;">
+		<tr onclick="window.location='{% url 'lead_view' lead.id %}'" style="cursor: pointer;">
 			<td>{{ lead.name }}</td>
 			<td>{{ lead.get_project_stage_display }}</td>
 			<td>{{ lead.get_status_display }}</td>

@@ -6,8 +6,9 @@ from django.contrib.auth.forms import (
     UserCreationForm, AuthenticationForm
 )
 from .models import (
-    ActivityLog, MaterialRequest, UserProfile, Worker, Leads,
-    Opportunity, WorkerCommissions, LinkRegistry
+    ActivityLog, MaterialRequest, UserProfile,
+    Worker, Leads, LinkRegistry,
+    Opportunity, WorkerCommissions
 
 )
 from urllib.parse import urlparse
@@ -91,6 +92,11 @@ class LinkRegistryForm(ModelForm):
         return url
 
 class WorkerForm(ModelForm):
+    leads = forms.ModelMultipleChoiceField(
+        queryset=Leads.objects.all(),
+        required=False,
+        widget=forms.SelectMultiple(attrs={'class': 'form-control'})
+    )
     class Meta:
         model = Worker
         fields = ['name', 'email', 'phone', 'mobile', 'location', 'pincode', 'job_role',
@@ -112,11 +118,10 @@ class WorkerForm(ModelForm):
 class LeadsForm(ModelForm):
     class Meta:
         model = Leads
-        fields = ['name', 'email', 'phone', 'location', 'pincode', 'latitude', 'longitude',
-                  'type', 'project_stage', 'source_type', 'status', 'assigned_to', 'worker']
+        fields = ['name', 'email', 'phone', 'location', 'pincode', 'latitude', 'longitude', 'workers',
+                  'type', 'project_stage', 'source_type', 'status', 'assigned_to', 'referral_worker']
         widgets = {
             'type': forms.Select(attrs={'class': 'form-control'}),
-            'worker': forms.Select(attrs={'class': 'form-control'}),
             'status': forms.Select(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
@@ -126,6 +131,8 @@ class LeadsForm(ModelForm):
             'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'project_stage': forms.Select(attrs={'class': 'form-control'}),
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'referral_worker': forms.Select(attrs={'class': 'form-control'}),
+            'workers': forms.SelectMultiple(attrs={'class': 'form-control'}),
             'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }

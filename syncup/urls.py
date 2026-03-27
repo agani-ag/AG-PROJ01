@@ -43,6 +43,7 @@ urlpatterns = [
     # Leads URLs
     path('crm/leads', crm.leads, name='leads'),
     path('crm/lead/add', crm.lead_add, name='lead_add'),
+    path('crm/lead/view/<int:lead_id>', crm.lead_view, name='lead_view'),
     path('crm/lead/edit/<int:lead_id>', crm.lead_edit, name='lead_edit'),
     path('crm/lead/delete/<int:lead_id>', crm.lead_delete, name='lead_delete'),
     # Opportunity URLs

@@ -1,9 +1,9 @@
 # Django imports
 from django.contrib import messages
 from django.http import JsonResponse
-from django.shortcuts import render, redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, render, redirect
 
 from ..models import (
     Opportunity, Worker, JobRole, Leads,
@@ -11,7 +11,7 @@ from ..models import (
 )
 from ..forms import (
     OpportunityForm, WorkerForm, WorkerCommissionsForm,
-    MaterialRequestForm, ActivityLogForm, LeadsForm
+    MaterialRequestForm, ActivityLogForm, LeadsForm,
 )
 import json
 
@@ -54,7 +54,8 @@ def worker_add(request):
     if request.method == 'POST':
         form = WorkerForm(request.POST)
         if form.is_valid():
-            form.save()
+            worker = form.save()
+            worker.leads.set(form.cleaned_data['leads'])
             messages.success(request, 'Worker added successfully.')
             return redirect('workers')
         else:
@@ -67,20 +68,20 @@ def worker_add(request):
 @login_required
 def worker_edit(request, worker_id):
     context = {}
-    worker = Worker.objects.filter(id=worker_id).first()
-    if not worker:
-        messages.error(request, 'Worker not found.')
-        return redirect('workers')
+    worker = get_object_or_404(Worker, id=worker_id)
     if request.method == 'POST':
         form = WorkerForm(request.POST, instance=worker)
         if form.is_valid():
-            form.save()
+            worker = form.save()
+            # Save leads assignment
+            worker.leads.set(form.cleaned_data['leads'])
             messages.success(request, 'Worker updated successfully.')
             return redirect('workers')
         else:
             messages.error(request, form.errors.as_text())
     else:
-        form = WorkerForm(instance=worker)
+        # Pre-populate the multi-select field with current leads
+        form = WorkerForm(instance=worker, initial={'leads': worker.leads.all()})
     context['form'] = form
     context['worker'] = worker
     context['is_edit'] = True
@@ -88,20 +89,31 @@ def worker_edit(request, worker_id):
 
 @login_required
 def worker_delete(request, worker_id):
-    worker = Worker.objects.filter(id=worker_id).first()
-    if worker:
-        worker.delete()
-        messages.success(request, 'Worker deleted successfully.')
-    else:
-        messages.error(request, 'Worker not found.')
+    worker = get_object_or_404(Worker, id=worker_id)
+    worker.delete()
+    messages.success(request, 'Worker deleted successfully.')
     return redirect('workers')
 
 # =============== LEADS VIEWS ===============
 @login_required
 def leads(request):
     context = {}
-    context["leads"] = Leads.objects.select_related('worker','assigned_to').all()
+    context["leads"] = Leads.objects.select_related('referral_worker','assigned_to').all()
     return render(request, 'crm/leads.html', context)
+
+@login_required
+def lead_view(request, lead_id):
+    context = {}
+    lead = Leads.objects.filter(id=lead_id).first()
+    if not lead:
+        messages.error(request, 'Lead not found.')
+        return redirect('leads')
+    context['activity_logs'] = ActivityLog.objects.filter(lead=lead).select_related('user').order_by('-created_at')
+    context['material_requests'] = MaterialRequest.objects.filter(lead=lead).order_by('-created_at')
+    context['opportunities'] = Opportunity.objects.filter(lead=lead).order_by('-created_at')
+    context['commissions'] = WorkerCommissions.objects.filter(lead=lead).select_related('worker', 'opportunity').order_by('-created_at')
+    context['lead'] = lead
+    return render(request, 'crm/lead_view.html', context)
 
 @login_required
 def lead_add(request):
@@ -171,6 +183,8 @@ def opportunity_add(request):
             messages.error(request, form.errors.as_text())
     else:
         form = OpportunityForm()
+    if request.GET.get('catch'):
+        form.fields['lead'].initial = request.GET.get('catch')
     context['form'] = form
     return render(request, 'crm/opportunity_edit.html', context)
 
@@ -229,6 +243,8 @@ def material_request_add(request):
             messages.error(request, form.errors.as_text())
     else:
         form = MaterialRequestForm()
+    if request.GET.get('catch'):
+        form.fields['lead'].initial = request.GET.get('catch')
     context['form'] = form
     return render(request, 'crm/material_request_edit.html', context)
 
@@ -288,6 +304,8 @@ def worker_commissions_add(request):
     else:
         form = WorkerCommissionsForm()
     context['form'] = form
+    if request.GET.get('catch'):
+        form.fields['lead'].initial = request.GET.get('catch')
     return render(request, 'crm/worker_commissions_edit.html', context)
 
 @login_required
@@ -343,6 +361,8 @@ def activity_log_add(request):
     else:
         form = ActivityLogForm()
     context['form'] = form
+    if request.GET.get('catch'):
+        form.fields['lead'].initial = request.GET.get('catch')
     return render(request, 'crm/activity_log_edit.html', context)
 
 @login_required

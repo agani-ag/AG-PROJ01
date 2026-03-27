@@ -4,7 +4,7 @@
             {% if user.is_authenticated %}
                 href="{% url 'profile-edit' %}">{{ user.username|capfirst }}
             {% else %}
-                href="#">SyncUp
+                href="{% url 'login' %}">SyncUp <i class="fas fa-refresh"></i>
             {% endif %}
         </a>
 
@@ -53,13 +53,6 @@
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                     </ul>
                 </li>
-                {% endif %}
-
-                <!-- Actions -->
-                {% if not user.is_authenticated %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'login' %}">Login</a>
-                    </li>
                 {% endif %}
             </ul>
         </div>

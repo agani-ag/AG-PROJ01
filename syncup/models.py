@@ -204,7 +204,8 @@ class Leads(models.Model):
         (6, 'Lost'),
     ]
     status = models.IntegerField(choices=STATUS, default=0)
-    worker = models.ForeignKey(Worker, on_delete=models.SET_NULL, null=True, blank=True)
+    workers = models.ManyToManyField(Worker, related_name='leads', blank=True)
+    referral_worker = models.ForeignKey(Worker, on_delete=models.SET_NULL, null=True, blank=True, related_name='referred_leads')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

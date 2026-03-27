@@ -41,15 +41,23 @@
                 </div>
             </div>
 
-			<!-- Source Type & Worker -->
+			<!-- Source Type & Referrer -->
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
                     <label class="form-label">Source Type</label>
                     {{ form.source_type }}
                 </div>
                 <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Reference</label>
-                    {{ form.worker }}
+                    <label class="form-label">Referrer</label>
+                    {{ form.referral_worker }}
+                </div>
+            </div>
+			
+            <!-- Workers -->
+            <div class="row">
+                <div class="col-12">
+                    <label class="form-label">Workers</label>
+                    {{ form.workers }}
                 </div>
             </div>
 
