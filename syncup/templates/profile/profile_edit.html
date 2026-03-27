@@ -91,6 +91,14 @@
                     <input type="checkbox" {{ auth_user.is_active|yesno:"checked," }} name="is_active">
                 </div>
             </div>
+
+            <!-- Encoded Credentials -->
+            <div class="row">
+                <div class="col-12">
+                    <label class="form-label">Encoded Credentials</label>
+                    <input type="text" class="form-control" value="{{ encoded_credentials }}" readonly>
+                </div>
+            </div>
             {% endif %}
 
             <!-- Submit -->

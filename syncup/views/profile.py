@@ -55,6 +55,7 @@ def admin_profile_edit(request, user_id):
     context["profile_form"] = profile_form
     context["auth_user"] = auth_user
     context["admin_panel"] = True
+    context["encoded_credentials"] = auth_user.userprofile.encoded_credentials
     return render(request, 'profile/profile_edit.html', context)
 
 def profile_delete(request, user_id):

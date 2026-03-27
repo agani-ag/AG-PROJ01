@@ -41,6 +41,9 @@ class UserProfile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # API Authentication
+    encoded_credentials = models.CharField(max_length=255, blank=True, null=True)
+
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.strip().title()

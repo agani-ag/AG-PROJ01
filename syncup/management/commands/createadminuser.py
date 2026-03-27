@@ -1,7 +1,8 @@
-import os
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from ...models import UserProfile
+import base64
+import os
 
 class Command(BaseCommand):
     help = "Creates a superuser from environment variables"
@@ -25,4 +26,5 @@ class Command(BaseCommand):
 
         # Create associated UserProfile
         user = User.objects.get(username=username)
-        UserProfile.objects.create(user=user,name=username)
+        encoded_credentials = base64.b64encode(f"{user.username}:{password}".encode()).decode()
+        UserProfile.objects.create(user=user, name=username, encoded_credentials=encoded_credentials)
