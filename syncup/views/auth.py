@@ -8,7 +8,6 @@ from ..forms import (
     UserProfileForm, SignupForm,
     AuthForm
 )
-from ..models import UserProfile
 
 # =============== AUTH VIEWS ===============
 def login_view(request):

@@ -23,6 +23,7 @@ def profile_edit(request):
     context = {}
     user_profile = get_object_or_404(UserProfile, user=request.user)
     profile_form = UserProfileEditForm(instance=user_profile)
+    auth_user = request.user
     if request.method == "POST":
         profile_form = UserProfileEditForm(request.POST, instance=user_profile)
         if profile_form.is_valid():
@@ -31,6 +32,7 @@ def profile_edit(request):
         else:
             messages.error(request, f"{profile_form.errors}")
     context["profile_form"] = profile_form
+    context["auth_user"] = auth_user
     return render(request, 'profile/profile_edit.html', context)
 
 def admin_profile_edit(request, user_id):

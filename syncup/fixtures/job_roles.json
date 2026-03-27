@@ -1,0 +1,56 @@
+[
+  {"model": "syncup.jobrole", "fields": {"name": "Helper", "category": "General Labor"}},
+  {"model": "syncup.jobrole", "fields": {"name": "General Worker", "category": "General Labor"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Mason", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Head Mason", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Bar Bender", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Shuttering Carpenter", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Concrete Worker", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Tile Setter", "category": "Civil Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Stone Worker", "category": "Civil Work"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Carpenter", "category": "Carpentry & Wood"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Furniture Carpenter", "category": "Carpentry & Wood"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Modular Carpenter", "category": "Carpentry & Wood"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Electrician", "category": "Electrical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Electrical Supervisor", "category": "Electrical"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Plumber", "category": "Plumbing"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Plumbing Supervisor", "category": "Plumbing"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Painter", "category": "Finishing Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Polisher", "category": "Finishing Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Waterproofing Worker", "category": "Finishing Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "False Ceiling Worker", "category": "Finishing Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Glass Worker", "category": "Finishing Work"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Aluminium Worker", "category": "Finishing Work"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Welder", "category": "Mechanical / Specialized"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Fabricator", "category": "Mechanical / Specialized"}},
+  {"model": "syncup.jobrole", "fields": {"name": "HVAC Technician", "category": "Mechanical / Specialized"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Lift Technician", "category": "Mechanical / Specialized"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Machine Operator", "category": "Site & Equipment"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Crane Operator", "category": "Site & Equipment"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Excavator Operator", "category": "Site & Equipment"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Civil Engineer", "category": "Design & Technical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Site Engineer", "category": "Design & Technical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Structural Engineer", "category": "Design & Technical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Architect", "category": "Design & Technical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Draftsman", "category": "Design & Technical"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Quantity Surveyor", "category": "Design & Technical"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Site Supervisor", "category": "Management"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Project Manager", "category": "Management"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Contractor", "category": "Management"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Interior Designer", "category": "Interior"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Modular Kitchen Expert", "category": "Interior"}},
+
+  {"model": "syncup.jobrole", "fields": {"name": "Security", "category": "Other"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Cleaning Worker", "category": "Other"}},
+  {"model": "syncup.jobrole", "fields": {"name": "Other", "category": "Other"}}
+]

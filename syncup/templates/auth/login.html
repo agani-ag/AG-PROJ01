@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Login{% endblock %}
+{% block navbar %}{% endblock %}
+
+{% block content %}
+<style>
+/* ===== LOGIN PAGE HERO STYLE ===== */
+body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    overflow: hidden;
+    background: linear-gradient(-45deg, #1E88E5, #42A5F5, #1565C0, #64B5F6);
+    background-size: 200% 100%;
+    animation: bgGradient 25s ease infinite;
+    position: relative;
+}
+
+/* Horizontal gradient animation */
+@keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* Glow behind login card */
+.login-glow {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    background: rgba(224, 215, 255, 0.08); /* Light Lavender */
+    border-radius: 50%;
+    filter: blur(80px);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    animation: glowPulse 6s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* Login card */
+.login-card {
+    position: relative;
+    z-index: 1;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.2);
+    background: #F9FAFB; /* Ivory */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 30px 60px rgba(0,0,0,0.25);
+}
+
+/* Header */
+.login-header h2 {
+    font-weight: 700;
+    font-size: 2rem;
+    text-transform: uppercase;
+    position: relative;
+    display: inline-block;
+    color: #1F2937; /* Dark Charcoal */
+    animation: floatText 3s ease-in-out infinite;
+}
+
+.login-header h2 span {
+    text-decoration: underline;
+    text-decoration-color: #F87171; /* Soft Coral accent */
+    text-decoration-thickness: 3px;
+    text-underline-offset: 4px;
+}
+
+@keyframes floatText {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+}
+
+/* Input fields */
+.form-control {
+    border-radius: 8px;
+    box-shadow: none;
+    border: 1px solid #C4C5BA; /* Sophisticated Sage */
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #4F46E5; /* Indigo Blue */
+    box-shadow: 0 0 8px rgba(79,70,229,0.3);
+    outline: none;
+}
+
+/* Buttons */
+.btn-primary {
+    border-radius: 8px;
+    font-weight: 600;
+    background-color: #4F46E5; /* Indigo Blue */
+    border-color: #4F46E5;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(79,70,229,0.3);
+    background-color: #3730A3; /* Darker Indigo */
+    border-color: #3730A3;
+}
+
+/* Forgot password link */
+.forgot-password a {
+    color: #1F2937;
+    transition: color 0.3s ease;
+}
+
+.forgot-password a:hover {
+    color: #4F46E5; /* Indigo Blue on hover */
+    text-decoration: underline;
+}
+
+@media(max-width: 576px){
+    .login-card {
+        padding: 1.5rem !important;
+    }
+    .login-glow {
+        width: 200px;
+        height: 200px;
+        filter: blur(60px);
+    }
+}
+
+/* Particle style */
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.25;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    transition: transform 0.3s ease;
+}
+</style>
+
+<div class="position-relative w-100" style="max-width: 500px; margin:auto;">
+
+    <!-- Glow effect -->
+    <div class="login-glow"></div>
+
+    <!-- Particles container -->
+    <div id="particles-container"></div>
+
+    <!-- Login Card -->
+    <div class="card login-card shadow-lg border-0 p-4 p-md-5">
+
+        <!-- Header -->
+        <div class="text-center login-header mb-4">
+            <h2>
+                <span>SyncUp</span>
+            </h2>
+            <p class="text-muted mb-0">
+                Enter your credentials to access your account
+            </p>
+        </div>
+
+        <!-- Form -->
+        <form method="POST" novalidate>
+            {% csrf_token %}
+
+            <!-- Username -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Username</label>
+                {{ auth_form.username }}
+                {% if auth_form.username.errors %}
+                    <div class="text-danger small mt-1">
+                        {{ auth_form.username.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Password -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Password</label>
+                {{ auth_form.password }}
+                {% if auth_form.password.errors %}
+                    <div class="text-danger small mt-1">
+                        {{ auth_form.password.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Forgot Password -->
+            <div class="mb-4 text-end forgot-password">
+                <a href="/" class="text-decoration-none">
+                    Forgot Password?
+                </a>
+            </div>
+
+            <!-- Actions -->
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-sign-in-alt me-2"></i>
+                    Login
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script>
+// ===== Floating Luxury Particles =====
+const container = document.getElementById('particles-container');
+const particleCount = 20;
+const particles = [];
+
+// Luxury color palette
+const colors = ['#E4E4DE', '#C4C5BA', '#1B1B1B', '#4F46E5']; // Indigo as accent
+
+for(let i=0; i<particleCount; i++){
+    const div = document.createElement('div');
+    div.classList.add('particle');
+    const size = Math.random()*20 + 8;
+    div.style.width = size+'px';
+    div.style.height = size+'px';
+    div.style.background = colors[Math.floor(Math.random()*colors.length)];
+    div.style.top = Math.random()*100 + '%';
+    div.style.left = Math.random()*100 + '%';
+    container.appendChild(div);
+
+    particles.push({
+        el: div,
+        x: parseFloat(div.style.left),
+        y: parseFloat(div.style.top),
+        size: size,
+        angle: Math.random()*360,
+        speed: Math.random()*0.5+0.1,
+        scale: 1 + Math.random()*0.3
+    });
+}
+
+// Animate particles
+document.addEventListener('mousemove', (e) => {
+    const {clientX: x, clientY: y} = e;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+
+    particles.forEach(p => {
+        const dx = (x/winW*100 - p.x)/25;
+        const dy = (y/winH*100 - p.y)/25;
+        p.x += dx;
+        p.y += dy;
+
+        const rotate = `rotate(${p.angle}deg)`;
+        const scale = `scale(${p.scale})`;
+        p.angle += p.speed;
+
+        p.el.style.left = p.x+'%';
+        p.el.style.top = p.y+'%';
+        p.el.style.transform = rotate + ' ' + scale;
+    });
+});
+</script>
+{% endblock %}
