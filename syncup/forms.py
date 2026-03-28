@@ -45,10 +45,11 @@ class UserProfileForm(ModelForm):
             'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
 
 class UserProfileEditForm(ModelForm):
@@ -58,13 +59,14 @@ class UserProfileEditForm(ModelForm):
         widgets = {
             'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'email': forms.EmailInput(attrs={'class': 'form-control'}),
             'pincode': forms.TextInput(attrs={'class': 'form-control'}),
             'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
             'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
 
 class LinkRegistryForm(ModelForm):

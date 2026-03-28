@@ -15,6 +15,7 @@ urlpatterns = [
     path('logout', auth.logout_view, name='logout'),
     # API URLs
     path('api/auth/login', auth.auth_login_api, name='api_login'),
+    path('download/sqlite', auth.download_sqlite, name='download_sqlite'),
 
     # Profile URL
     path('profiles', profile.profiles, name='profiles'),
@@ -68,4 +69,5 @@ urlpatterns = [
     path('crm/activity-log/add', crm.activity_log_add, name='activity_log_add'),
     path('crm/activity-log/edit/<int:log_id>', crm.activity_log_edit, name='activity_log_edit'),
     path('crm/activity-log/delete/<int:log_id>', crm.activity_log_delete, name='activity_log_delete'),
+
 ]

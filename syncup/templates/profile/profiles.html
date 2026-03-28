@@ -23,7 +23,12 @@
 		{% for user in user_profiles %}
 		<tr onclick="window.location='{% url 'profile-admin-edit' user.id %}'" style="cursor: pointer;">
 			<td>{{ user.name }}</td>
-			<td>{{ user.phone }}</td>
+			<td>{% if user.phone %}
+					<a href="tel:{{ user.phone }}" style="text-decoration: none;">{{ user.phone }}</a>
+				{% else %}
+					<span class="text-danger">N/A</span>
+				{% endif %}
+			</td>
 		</tr>
 		{% endfor %}
 	</tbody>

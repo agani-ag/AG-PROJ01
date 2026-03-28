@@ -1,10 +1,10 @@
 # Django imports
+from django.conf import settings
 from django.contrib import messages
-from django.http import JsonResponse
 from django.shortcuts import render, redirect
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import login, logout, authenticate
-
 # Imports
 from ..forms import (
     UserProfileForm, SignupForm,
@@ -12,7 +12,9 @@ from ..forms import (
 )
 
 # Python imports
+from datetime import datetime
 import base64
+import os
 
 # =============== AUTH VIEWS ===============
 def login_view(request):
@@ -87,3 +89,14 @@ def auth_login_api(request):
         # return JsonResponse({"message": "Login successful", "username": user.username})
     else:
         return JsonResponse({"error": "Invalid username or password"}, status=401)
+    
+def download_sqlite(request):
+    sqlite_path = os.path.join(settings.BASE_DIR, 'ag-proj01.sqlite3')
+    if os.path.exists(sqlite_path):
+        with open(sqlite_path, 'rb') as f:
+            response = HttpResponse(f.read(), content_type='application/octet-stream')
+            filename = datetime.now().strftime("syncup_%Y%m%d_%H%M%S.sqlite3")
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+    else:
+        return HttpResponse("Database file not found", status=404)
