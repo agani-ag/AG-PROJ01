@@ -4,11 +4,21 @@
 {% block content %}
 <div class="row align-items-center mb-3">
     <div class="col">
-        <h2 class="mb-0">Link Registry</h2>
+        <h2 class="mb-0">
+            {% if public_filter %}
+                <a href="{% url 'link_registry' %}" style="text-decoration: none;color: black;">Link Registry</a>
+            {% else %}
+                <a href="?public=true{% if selected_user %}&filter={{ selected_user }}{% endif %}" 
+                    style="text-decoration: none;color: black;">Link Registry</a>
+            {% endif %}
+        </h2>
     </div>
 
     <div class="col-auto">
         <form method="GET" class="d-flex align-items-center gap-2">
+            {% if public_filter %}
+                <input type="hidden" name="public" value="true">
+            {% endif %}
             <select name="filter" class="form-control form-control-sm" onchange="this.form.submit()">
                 <option value="">All Users</option>
                 {% for user in users %}
@@ -40,7 +50,11 @@
 	<tbody class="two-col-form">
 		{% for link_registry in link_registries %}
 		<tr onclick="window.location='{% url 'link_registry_edit' link_registry.id %}'" style="cursor: pointer;">
-			<td>{{ link_registry.user }}</td>
+            {% if link_registry.is_public %}
+			    <td>{{ link_registry.public_user }}</td>
+            {% else %}
+                <td>{{ link_registry.user.name }}</td>
+            {% endif %}
 			<td>{{ link_registry.name }}</td>
 			<td>{% if link_registry.is_active %}
 				<span class="text-success font-weight-bold">Yes</span>

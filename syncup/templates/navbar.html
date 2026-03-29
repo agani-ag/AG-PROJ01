@@ -51,6 +51,9 @@
                             <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
                             <div class="dropdown-divider"></div>
                         {% endif %}
+                        {% if user.is_staff %}
+                            <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">Attendance</a></li>
+                        {% endif %}
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                     </ul>
                 </li>

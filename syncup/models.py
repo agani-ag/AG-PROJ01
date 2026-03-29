@@ -62,21 +62,28 @@ class UserProfile(models.Model):
 # =============== Link Registry ===============
 class LinkRegistry(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    public_user = models.CharField(max_length=100, blank=True, null=True)
     name = models.CharField(max_length=100)
     url = models.URLField(max_length=300)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    is_public = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.strip().title()
+        if self.public_user:
+            self.public_user = self.public_user.strip().title()
         if self.url:
             self.url = self.url.strip()
         super().save(*args, **kwargs)
     
     def __str__(self):
-        return f"{self.name} - {self.user.username}"
+        if self.is_public:
+            return f"{self.name} - {self.public_user}"
+        else:
+            return f"{self.name} - {self.user.name}"
 
 # =============== Holiday & Attendance ===============
 class Holiday(models.Model):
