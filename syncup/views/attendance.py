@@ -6,14 +6,25 @@ from django.http import JsonResponse
 from django.shortcuts import (
     render, redirect, get_object_or_404
 )
+from django.contrib.auth.decorators import login_required
 # Imports
 from ..models import (
-    UserProfile, Attendance, Holiday, SalaryTransaction
+    User, UserProfile, 
+    Attendance, Holiday, SalaryTransaction
 )
 from ..utils import (
     generate_attendance, calculate_salary
 )
 # =============== Attendance Views ===============
+@login_required
+def attendances(request):
+    context = {}
+    users = User.objects.filter(is_active=True, is_staff=True).select_related('profile').exclude(is_superuser=True)
+    user_profiles = UserProfile.objects.filter(user__in=users).select_related('user')
+    context["user_profiles"] = user_profiles
+    return render(request, 'attendance/attendances.html', context)
+
+@login_required
 def attendance_calendar(request, user_id):
     user = get_object_or_404(UserProfile, id=user_id)
     today = date.today()

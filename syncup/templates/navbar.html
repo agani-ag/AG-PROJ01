@@ -2,7 +2,7 @@
     <div class="container">
         <a class="navbar-brand" 
             {% if user.is_authenticated %}
-                href="{% url 'profile-edit' %}">{{ user.username|capfirst }}
+                href="{% url 'profile_edit' %}">{{ user.username|capfirst }}
             {% else %}
                 href="{% url 'login' %}">SyncUp <i class="fas fa-refresh"></i>
             {% endif %}
@@ -47,12 +47,13 @@
                         {% if user.is_superuser %}
                             <h6 class="dropdown-header">Admin</h6>
                             <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
+                            <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
                             <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
                             <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
                             <div class="dropdown-divider"></div>
                         {% endif %}
                         {% if user.is_staff %}
-                            <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">Attendance</a></li>
+                            <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
                         {% endif %}
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                     </ul>

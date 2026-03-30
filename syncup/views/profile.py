@@ -4,6 +4,8 @@ from django.shortcuts import (
     render, redirect, get_object_or_404
 )
 from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+
 # Imports
 from ..forms import (
     UserProfileEditForm
@@ -13,12 +15,14 @@ from ..models import (
 )
 
 # =============== AUTH VIEWS ===============
+@login_required
 def profiles(request):
     context = {}
     user_profiles = UserProfile.objects.all()
     context["user_profiles"] = user_profiles
     return render(request, 'profile/profiles.html', context)
 
+@login_required
 def profile_edit(request):
     context = {}
     user_profile = get_object_or_404(UserProfile, user=request.user)
@@ -35,6 +39,7 @@ def profile_edit(request):
     context["auth_user"] = auth_user
     return render(request, 'profile/profile_edit.html', context)
 
+@login_required
 def admin_profile_edit(request, user_id):
     context = {}
     user_profile = get_object_or_404(UserProfile, user__id=user_id)
@@ -58,6 +63,7 @@ def admin_profile_edit(request, user_id):
     context["encoded_credentials"] = auth_user.userprofile.encoded_credentials
     return render(request, 'profile/profile_edit.html', context)
 
+@login_required
 def profile_delete(request, user_id):
     if request.method == "POST":
         user = get_object_or_404(User, id=user_id)

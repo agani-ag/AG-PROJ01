@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout, authenticate
 # Imports
 from ..forms import (
@@ -34,6 +35,7 @@ def login_view(request):
     context["auth_form"] = auth_form
     return render(request, 'auth/login.html', context)
 
+@login_required
 def signup_view(request):
     context = {}
     signup_form = SignupForm()
@@ -66,6 +68,7 @@ def signup_view(request):
             return render(request, 'auth/signup.html', context)
     return render(request, 'auth/signup.html', context)
 
+@login_required
 def logout_view(request):
     logout(request)
     return redirect('login')
