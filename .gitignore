@@ -15,6 +15,7 @@ migrations/
 # Django environment & secrets
 .env
 .env.*
+*.json
 local_settings.py
 settings_local.py
 

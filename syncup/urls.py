@@ -1,8 +1,8 @@
 from django.urls import path
 from .views import (
     auth, views, link_registry,
-    profile, attendance, crm
-    
+    profile, attendance, crm,
+    device_access
 )
 
 urlpatterns = [
@@ -16,6 +16,7 @@ urlpatterns = [
     # API URLs
     path('api/auth/login', auth.auth_login_api, name='api_login'),
     path('download/sqlite', auth.download_sqlite, name='download_sqlite'),
+    path('api/telegram/send', views.send_telegram_message_api, name='send_telegram_message_api'),
 
     # Profile URL
     path('profiles', profile.profiles, name='profiles'),
@@ -70,4 +71,19 @@ urlpatterns = [
     path('crm/activity-log/edit/<int:log_id>', crm.activity_log_edit, name='activity_log_edit'),
     path('crm/activity-log/delete/<int:log_id>', crm.activity_log_delete, name='activity_log_delete'),
 
+    # Device Access URLs
+    path('device/api/auditlog', device_access.audit_log, name='audit_log'),
+    path('device/api/sync/data', device_access.sync_data, name='sync_data'),
+    path('device/api/list', device_access.list_devices, name='device_list'),
+    path('device/api/login', device_access.device_login, name='device_login'),
+    path('device/api/auditlogs', device_access.get_audit_logs, name='audit_logs'),
+    path('device/api/sync/status', device_access.sync_status, name='sync_status'),
+    path('device/api/health', device_access.health_check, name='device_health_check'),
+    path('device/api/register', device_access.register_device, name='device_register'),
+    path('device/api/synced', device_access.list_synced_data, name='list_synced_data'),
+    path('device/api/unregister', device_access.unregister_device, name='device_unregister'),
+    path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
+    # Test Device URLs
+    path('device/test1', device_access.test1, name='test1'),
+    path('device/test2', device_access.test2, name='test2'),
 ]

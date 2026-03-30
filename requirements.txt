@@ -2,3 +2,4 @@ django
 python-dotenv
 requests
 django-multiselectfield
+google-auth
