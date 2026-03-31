@@ -21,7 +21,7 @@
 	</thead>
 	<tbody class="two-col-form">
 		{% for user in user_profiles %}
-		<tr onclick="window.location='{% url 'profile_admin_edit' user.id %}'" style="cursor: pointer;">
+		<tr onclick="window.location='{% url 'profile_admin_edit' user.user_id %}'" style="cursor: pointer;">
 			<td>{{ user.name }}</td>
 			<td>{% if user.phone %}
 					<a href="tel:{{ user.phone }}" style="text-decoration: none;">{{ user.phone }}</a>

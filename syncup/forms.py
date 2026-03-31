@@ -22,10 +22,11 @@ class AuthForm(AuthenticationForm):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
-class SignupForm(UserCreationForm):
+
+class SignupForm(ModelForm):
     class Meta:
         model = User
-        fields = ('username', 'password1', 'password2')
+        fields = ('username',)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -70,54 +71,28 @@ class UserProfileEditForm(ModelForm):
         }
 
 class LinkRegistryForm(ModelForm):
-    public_user_select = forms.ChoiceField(
-        required=False,
-        widget=forms.Select(attrs={'class': 'form-control'})
-    )
-
     class Meta:
         model = LinkRegistry
-        fields = ['user', 'name', 'url', 'public_user', 'is_active', 'is_public']
+        fields = ['user', 'name', 'url', 'is_active']
         widgets = {
             'user': forms.Select(attrs={'class': 'form-control'}),
             'url': forms.Textarea(attrs={'class': 'form-control'}),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
-            'public_user': forms.TextInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'is_public': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Get distinct public_user values
-        users = LinkRegistry.objects.values_list('public_user', flat=True).distinct()
-        # Remove empty/null values
-        users = [u for u in users if u]
-        # Set choices
-        self.fields['public_user_select'].choices = [('', '--- Select ---')] + [(u, u) for u in users]
 
     def clean_url(self):
         url = self.cleaned_data.get('url')
+
         if not url:
             return url
+
+        # If scheme is missing, add https://
         parsed = urlparse(url)
         if not parsed.scheme:
             url = 'https://' + url
-        return url
 
-    def clean(self):
-        cleaned_data = super().clean()
-        is_public = cleaned_data.get('is_public')
-        public_user = cleaned_data.get('public_user')
-        public_user_select = cleaned_data.get('public_user_select')
-        # If dropdown selected, override text input
-        if public_user_select:
-            cleaned_data['public_user'] = public_user_select
-            public_user = public_user_select
-        # Validation
-        if is_public and not public_user:
-            self.add_error('public_user', 'Provide a value or select one when is_public is checked.')
-        return cleaned_data
+        return url
 
 class WorkerForm(ModelForm):
     leads = forms.ModelMultipleChoiceField(

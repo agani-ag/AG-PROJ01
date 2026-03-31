@@ -6,14 +6,18 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout, authenticate
+
 # Imports
 from ..forms import (
     UserProfileForm, SignupForm,
     AuthForm
 )
+from syncup.models import UserProfile
+from django.contrib.auth.models import User
 
 # Python imports
 from datetime import datetime
+import secrets
 import base64
 import os
 
@@ -44,20 +48,24 @@ def signup_view(request):
     context["profile_form"] = profile_form
     
     if request.method == "POST":
+        random_password = secrets.token_urlsafe(8)
         signup_form = SignupForm(request.POST)
         profile_form = UserProfileForm(request.POST)
         context["signup_form"] = signup_form
         context["profile_form"] = profile_form
 
         if signup_form.is_valid():
-            user = signup_form.save()
+            user = signup_form.save(commit=False)
+            user.set_password(random_password)
+            user.save()
         else:
             messages.error(request, f"{signup_form.errors}")
             return render(request, 'auth/signup.html', context)
         if profile_form.is_valid():
             userprofile = profile_form.save(commit=False)
             userprofile.user = user
-            userprofile.encoded_credentials = base64.b64encode(f"{user.username}:{signup_form.cleaned_data['password1']}".encode()).decode()
+            userprofile.random_password = random_password
+            userprofile.encoded_credentials = base64.b64encode(f"{user.username}:{random_password}".encode()).decode()
             userprofile.save()
             messages.success(request, "User created successfully!")
             return redirect("profiles")
@@ -92,7 +100,25 @@ def auth_login_api(request):
         # return JsonResponse({"message": "Login successful", "username": user.username})
     else:
         return JsonResponse({"error": "Invalid username or password"}, status=401)
-    
+
+@login_required
+def reset_password_api(request):
+    user_id = request.GET.get("user_id")
+    if not user_id:
+        return JsonResponse({"error": "Missing user ID"}, status=400)
+    try:
+        user = User.objects.get(id=user_id)
+        userprofile = UserProfile.objects.get(user=user)
+        new_password = secrets.token_urlsafe(8)
+        user.set_password(new_password)
+        user.save()
+        userprofile.random_password = new_password
+        userprofile.encoded_credentials = base64.b64encode(f"{user.username}:{new_password}".encode()).decode()
+        userprofile.save()
+        return JsonResponse({"message": "Password reset successful", "new_password": new_password})
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"}, status=404)
+
 def download_sqlite(request):
     sqlite_path = os.path.join(settings.BASE_DIR, 'ag-proj01.sqlite3')
     if os.path.exists(sqlite_path):

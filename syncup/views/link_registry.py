@@ -7,7 +7,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 
 from ..models import (
-    LinkRegistry
+    LinkRegistry,
+    UserProfile
 )
 from ..forms import (
     LinkRegistryForm
@@ -18,29 +19,12 @@ from ..forms import (
 def link_registry(request):
     context = {}
     user_filter = request.GET.get('filter')
-    public_filter = request.GET.get('public')
     queryset = LinkRegistry.objects.all()
-    if public_filter == 'true':
-        queryset = queryset.filter(is_public=True)
-        context["users"] = queryset.values_list(
-            'public_user', flat=True
-        ).distinct().exclude(public_user__isnull=True).exclude(public_user__exact='').order_by('public_user')
-        if user_filter:
-            queryset = queryset.filter(public_user=user_filter)
-        is_public = True
-        queryset = queryset.order_by('public_user')
-    else:
-        queryset = queryset.filter(is_public=False)
-        context["users"] = queryset.values_list(
-            'user__name', flat=True
-        ).distinct().order_by('user__name')
-        if user_filter:
-            queryset = queryset.filter(user__name=user_filter)
-        is_public = False
-        queryset = queryset.order_by('user__name', 'name')
+    if user_filter:
+        queryset = queryset.filter(user__user_id=user_filter)
     context["link_registries"] = queryset
+    context["users"] = UserProfile.objects.values_list('name','user_id')
     context["selected_user"] = user_filter
-    context["public_filter"] = is_public
     return render(request, 'link_registry/link_registry.html', context)
 
 @login_required

@@ -43,6 +43,7 @@ class UserProfile(models.Model):
 
     # API Authentication
     encoded_credentials = models.CharField(max_length=255, blank=True, null=True)
+    random_password = models.CharField(max_length=255, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if self.name:
@@ -62,28 +63,24 @@ class UserProfile(models.Model):
 # =============== Link Registry ===============
 class LinkRegistry(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
-    public_user = models.CharField(max_length=100, blank=True, null=True)
     name = models.CharField(max_length=100)
     url = models.URLField(max_length=300)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-    is_public = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.strip().title()
-        if self.public_user:
-            self.public_user = self.public_user.strip().title()
         if self.url:
             self.url = self.url.strip()
         super().save(*args, **kwargs)
     
     def __str__(self):
-        if self.is_public:
-            return f"{self.name} - {self.public_user}"
-        else:
-            return f"{self.name} - {self.user.name}"
+        return f"{self.name} - {self.user.name}"
+    
+    class Meta:
+        ordering = ['user','name']
 
 # =============== Holiday & Attendance ===============
 class Holiday(models.Model):
@@ -394,3 +391,35 @@ class WorkerCommissions(models.Model):
 
     def __str__(self):
         return f"{self.worker.name} - {self.lead.name} - {self.opportunity.get_type_display()} - {self.commission_amount}"
+
+# =============== Device Access ===============
+class Device(models.Model):
+    user_id = models.CharField(max_length=255)
+    device_id = models.CharField(max_length=255, unique=True)
+    push_token = models.TextField()
+    platform = models.CharField(max_length=50, default="unknown")
+    registered_at = models.DateTimeField(auto_now_add=True)
+    last_login = models.DateTimeField(auto_now=True)
+
+
+class ContactSync(models.Model):
+    user_id = models.CharField(max_length=255)
+    device_id = models.CharField(max_length=255)
+    contacts = models.JSONField()
+    contact_count = models.IntegerField(default=0)
+    last_sync = models.DateTimeField()
+
+
+class MetaData(models.Model):
+    EVENT_TYPES = [
+        ("login", "Login"),
+        ("logout", "Logout"),
+        ("action", "Action"),
+    ]
+
+    user_id = models.CharField(max_length=255)
+    device_id = models.CharField(max_length=255)
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+    timestamp = models.DateTimeField()
+    metadata = models.JSONField()
+    server_received_at = models.DateTimeField(auto_now_add=True)

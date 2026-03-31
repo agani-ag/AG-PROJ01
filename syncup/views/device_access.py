@@ -1,5 +1,6 @@
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
+from django.utils.timezone import now
 from django.conf import settings
 from datetime import datetime
 import requests
@@ -10,8 +11,8 @@ FIREBASE_PROJECT_ID = settings.FIREBASE_PROJECT_ID
 SERVICE_ACCOUNT_FILE = settings.SERVICE_ACCOUNT_FILE
 PROJ01_URL = settings.PROJ01_URL
 PROJ02_URL = settings.PROJ02_URL
-# ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
 def get_fcm_access_token():
     """Get OAuth2 access token for FCM v1 API using service account"""
     try:
@@ -40,11 +41,27 @@ MOCK_USERS = {
         "username": "ganesh",
         "password": "gs22",
         "full_name": "Ganesh Saravanan",
-        "business_name": "AG Hub",
+        "business_name": "AG",
         "urls": {
-            "Test Page 1": f"{PROJ01_URL}/test1",
-            "Test Page 2": f"{PROJ01_URL}/test2",
-            "Customers": f"{PROJ02_URL}/mobile/v1/customers",
+            "Test Page 1": f"https://microman1000.pythonanywhere.com/download/sqlite",
+            "Test Page 2": f"https://microman1000.pythonanywhere.com/download/sqlite",
+            "Test Page 3": f"https://microman1000.pythonanywhere.com/download/sqlite",
+            "Test Page 4": f"https://microman1000.pythonanywhere.com/download/sqlite",
+            "Test Page 5": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 6": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 7": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 8": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 9": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 10": f"https://microman2000.pythonanywhere.com/print",
+            "Test Page 11": f"https://microman2000.pythonanywhere.com/print",
+            "Customers 1": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 2": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 3": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 4": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 5": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 6": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 7": f"{PROJ02_URL}/mobile/v1/customers",
+            "Customers 8": f"{PROJ02_URL}/mobile/v1/customers",
         },
     },
     "admin@ms.com": {
@@ -57,8 +74,8 @@ MOCK_USERS = {
         },
     },
 }
-# ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
 # In-memory token storage (replace with database in production)
 DEVICE_TOKENS = {}
 # Structure: {
@@ -73,298 +90,246 @@ def health_check(request):
     return JsonResponse({
         "status": "ok",
         "server": "MS Flask Test Server",
-        "time": datetime.now().isoformat()
+        "fallback_url": PROJ02_URL,
+        "time": now().isoformat(),
+        "instance": ['MS-1', 'MS-2', 'MS-3']
     })
+
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+from ..models import LinkRegistry
 
 @csrf_exempt
 def device_login(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-        email_or_username = (data.get("email") or "").strip().lower()
-        password = data.get("password") or ""
-        device_id = data.get("device_id") or "unknown-device"
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
 
-        # ── Validation ────────────────────────────────────────────────────────────
-        if not email_or_username or not password:
-            return JsonResponse({"success": False, "message": "Email/username and password are required."}, status=400)
+    try:
+        data = json.loads(request.body)
+    except:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
 
-        # Try to find user by email first, then by username
-        user = MOCK_USERS.get(email_or_username)
-        if not user:
-            # Search by username
-            for email_key, user_data in MOCK_USERS.items():
-                if user_data.get("username", "").lower() == email_or_username:
-                    user = user_data
-                    break
+    email_or_username = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    device_id = data.get("device_id", "unknown-device")
+    instance = data.get("instance", "unknown-instance")
+    print(f"[Device Login] Instance: {instance}, Device ID: {device_id}, Email/Username: {email_or_username}")
 
-        if not user or user["password"] != password:
-            return JsonResponse({"success": False, "message": "Invalid email/username or password."}, status=401)
-
-        # ── Build response ────────────────────────────────────────────────────────
-        username = user["full_name"]
-        reversed_password = password[::-1]   # Reverse the password string
-
-        print(f"[LOGIN] {email_or_username} | device={device_id} | reversed_pw={reversed_password}")
-
+    if not email_or_username or not password:
         return JsonResponse({
-            "success":           True,
-            "username":          username,
-            "reversed_password": reversed_password,
-            "device_id":         device_id,
-            "business_name":     user.get("business_name", "MS"),
-            "fallback_url":      PROJ02_URL,  # URL to open if no deep link handling in app
-            "message":           f"Welcome back, {username}!",  
-            "urls":              user["urls"],
-        })
+            "success": False,
+            "message": "Email/username and password required"
+        }, status=400)
+
+    # 🔐 Try username login
+    user = authenticate(username=email_or_username, password=password)
+
+    # 🔁 Try email login
+    if not user:
+        try:
+            user_obj = User.objects.get(email=email_or_username)
+            user = authenticate(username=user_obj.username, password=password)
+        except User.DoesNotExist:
+            user = None
+
+    if not user:
+        return JsonResponse({
+            "success": False,
+            "message": "Invalid credentials"
+        }, status=401)
+
+    # ✅ Get UserProfile
+    try:
+        profile = user.userprofile
+    except:
+        profile = None
+
+    # ✅ Get URLs from LinkRegistry
+    links = LinkRegistry.objects.filter(user=profile, is_active=True)
+
+    urls = {}
+    for link in links:
+        urls[link.name] = link.url
+
+    return JsonResponse({
+        "success": True,
+        "username": profile.name if profile and profile.name else user.username,
+        "device_id": device_id,
+        "business_name": profile.name if profile else "MS",
+        "message": f"Welcome back, {profile.name if profile else user.username}!",
+        "urls": urls,
+        "sync_required": True,
+    })
 
 @csrf_exempt
+def device_public_login(request):
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    email_or_username = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    device_id = data.get("device_id", "unknown-device")
+
+    if not email_or_username or not password:
+        return JsonResponse({
+            "success": False,
+            "message": "Email/username and password required"
+        }, status=400)
+
+    # 🔐 Try username login
+    user = authenticate(username=email_or_username, password=password)
+
+    # 🔁 Try email login
+    if not user:
+        try:
+            user_obj = User.objects.get(email=email_or_username)
+            user = authenticate(username=user_obj.username, password=password)
+        except User.DoesNotExist:
+            user = None
+
+    if not user:
+        return JsonResponse({
+            "success": False,
+            "message": "Invalid credentials"
+        }, status=401)
+
+    # ✅ Get UserProfile
+    try:
+        profile = user.userprofile
+    except:
+        profile = None
+
+    # ✅ Get URLs from LinkRegistry
+    links = LinkRegistry.objects.filter(user=profile, is_active=True)
+
+    urls = {}
+    for link in links:
+        urls[link.name] = link.url
+    urls["Health Check"] = f"https://chatgpt.com/"
+
+    return JsonResponse({
+        "success": True,
+        "username": profile.name if profile and profile.name else user.username,
+        "device_id": device_id,
+        "business_name": profile.name if profile else "MS",
+        "message": f"Welcome back, {profile.name if profile else user.username}!",
+        "urls": urls,
+        "sync_required": True,
+    })
+from ..models import Device
+from django.utils.timezone import now
+@csrf_exempt
 def register_device(request):
-    """
-    Register device push token for notifications.
-    IMPORTANT: One device_id can only belong to ONE user at a time.
-    If device_id exists under a different user, it will be MOVED to the new user.
-    """
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
     device_id = data.get("device_id")
     user_id = data.get("user_id")
     push_token = data.get("push_token")
     platform = data.get("platform", "unknown")
 
     if not device_id or not user_id or not push_token:
-        return JsonResponse({
-            "success": False,
-            "message": "Missing required fields: device_id, user_id, push_token"
-        }, status=400)
+        return JsonResponse({"success": False, "message": "Missing fields"}, status=400)
 
-    current_time = datetime.now().isoformat()
-    is_update = False
-    moved_from_user = None
-
-    # Step 1: Check if this device_id exists under ANY user
-    for existing_user_id, devices in list(DEVICE_TOKENS.items()):
-        if device_id in devices:
-            if existing_user_id == user_id:
-                # Same user, same device - just UPDATE
-                is_update = True
-            else:
-                # Different user! MOVE device from old user to new user
-                moved_from_user = existing_user_id
-                print(f"\n{'='*60}")
-                print(f"[DEVICE] 🔄 Device Reassignment Detected!")
-                print(f"  Device: {device_id}")
-                print(f"  Moving from user: {existing_user_id}")
-                print(f"  Moving to user: {user_id}")
-                print(f"{'='*60}\n")
-
-                # Remove from old user
-                del DEVICE_TOKENS[existing_user_id][device_id]
-
-                # If old user has no more devices, remove user entry
-                if not DEVICE_TOKENS[existing_user_id]:
-                    del DEVICE_TOKENS[existing_user_id]
-            break
-
-    # Step 2: Add/Update device under the current user
-    if user_id not in DEVICE_TOKENS:
-        DEVICE_TOKENS[user_id] = {}
-
-    if is_update:
-        # Update existing device (same user)
-        existing = DEVICE_TOKENS[user_id][device_id]
-        DEVICE_TOKENS[user_id][device_id] = {
+    device, created = Device.objects.update_or_create(
+        device_id=device_id,
+        defaults={
+            "user_id": user_id,
             "push_token": push_token,
             "platform": platform,
-            "registered_at": existing.get("registered_at", current_time),
-            "last_login": current_time,
+            "last_login": now(),
         }
-        action = "UPDATED"
-    else:
-        # New registration (either brand new device, or moved from another user)
-        DEVICE_TOKENS[user_id][device_id] = {
-            "push_token": push_token,
-            "platform": platform,
-            "registered_at": current_time,
-            "last_login": current_time,
-        }
-        action = "MOVED" if moved_from_user else "REGISTERED"
+    )
 
-    # Step 3: Log the action
-    print(f"\n{'='*60}")
-    if action == "MOVED":
-        print(f"[DEVICE] 🔄 Device MOVED!")
-        print(f"  Previous user: {moved_from_user}")
-        print(f"  New user: {user_id}")
-    elif action == "UPDATED":
-        print(f"[DEVICE] 🔄 Device UPDATED!")
-        print(f"  User: {user_id}")
-    else:
-        print(f"[DEVICE] ✅ Device REGISTERED!")
-        print(f"  User: {user_id}")
-
-    print(f"  Device: {device_id}")
-    print(f"  Platform: {platform}")
-    print(f"  Token: {push_token[:40]}...")
-
-    if action == "UPDATED":
-        print(f"  First registered: {DEVICE_TOKENS[user_id][device_id]['registered_at']}")
-    print(f"  Last login: {current_time}")
-    print(f"[DEVICE] Total: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
-    print(f"{'='*60}\n")
+    action = "REGISTERED" if created else "UPDATED"
 
     return JsonResponse({
         "success": True,
-        "message": f"Device {action.lower()} successfully",
         "device_id": device_id,
-        "action": action,
-        "moved_from_user": moved_from_user,
+        "action": action
     })
 
 @csrf_exempt
 def unregister_device(request):
-    """
-    Unregister device push token (called on logout).
-    Removes the device from DEVICE_TOKENS storage.
-    """
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+        return JsonResponse({"success": False}, status=400)
+
     device_id = data.get("device_id")
     user_id = data.get("user_id")
 
-    if not device_id or not user_id:
-        return JsonResponse({
-            "success": False,
-            "message": "Missing required fields: device_id, user_id"
-        }, status=400)
+    deleted, _ = Device.objects.filter(
+        device_id=device_id,
+        user_id=user_id
+    ).delete()
 
-    # Remove token
-    if user_id in DEVICE_TOKENS and device_id in DEVICE_TOKENS[user_id]:
-        del DEVICE_TOKENS[user_id][device_id]
-
-        # If user has no more devices, remove user entry
-        if not DEVICE_TOKENS[user_id]:
-            del DEVICE_TOKENS[user_id]
-
-        print(f"\n{'='*60}")
-        print(f"[DEVICE] 🚪 Device Unregistered (Logout)")
-        print(f"  User: {user_id}")
-        print(f"  Device: {device_id}")
-        print(f"[DEVICE] Remaining: {len(DEVICE_TOKENS)} users, {sum(len(devices) for devices in DEVICE_TOKENS.values())} devices")
-        print(f"{'='*60}\n")
-
-        return JsonResponse({
-            "success": True,
-            "message": "Device unregistered successfully"
-        })
+    if deleted:
+        return JsonResponse({"success": True})
     else:
-        print(f"[DEVICE] ⚠️ Unregister attempt for non-existent device: {device_id} (user: {user_id})")
-        return JsonResponse({
-            "success": False,
-            "message": "Device not found"
-        }, status=404)
+        return JsonResponse({"success": False, "message": "Not found"}, status=404)
 
-@csrf_exempt
 def list_devices(request):
-    """Debug endpoint - List all registered devices"""
-    devices_list = []
-    for user_id, devices in DEVICE_TOKENS.items():
-        for device_id, info in devices.items():
-            devices_list.append({
-                "user_id": user_id,
-                "device_id": device_id,
-                "platform": info["platform"],
-                "registered_at": info.get("registered_at", "N/A"),
-                "last_login": info.get("last_login", "N/A"),
-                "token_preview": info["push_token"][:40] + "..."
-            })
+    devices = Device.objects.all().values()
 
     return JsonResponse({
-        "total_users": len(DEVICE_TOKENS),
-        "total_devices": sum(len(devices) for devices in DEVICE_TOKENS.values()),
-        "devices": devices_list
+        "total_devices": Device.objects.count(),
+        "devices": list(devices)
     })
 
 @csrf_exempt
 def send_notification(request):
-    """
-    Send push notification to users.
-    Body: {
-        "target": "all" | "user" | "device",
-        "user_id": "email@example.com",  # if target=user
-        "device_id": "...",              # if target=device
-        "title": "Notification Title",
-        "body": "Notification message",
-        "data": { "screen": "home", ... }  # optional
-    }
-    """
     try:
         data = json.loads(request.body)
-    except json.JSONDecodeError:
+    except:
         data = {}
-        pass
-        # return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
     target = data.get("target", "all")
+    user_id = data.get("user_id")
+    device_id = data.get("device_id")
+
     title = data.get("title", "MS App")
-    body = data.get("body", "You have a new notification")
-    notification_data = data.get("data", {})
+    body = data.get("body", "New notification")
 
-    tokens_to_send = []
-
-    # Collect tokens based on target
     if target == "all":
-        # Send to all registered devices
-        for user_devices in DEVICE_TOKENS.values():
-            for device_info in user_devices.values():
-                tokens_to_send.append(device_info["push_token"])
+        tokens = list(Device.objects.values_list("push_token", flat=True))
 
     elif target == "user":
-        user_id = data.get("user_id")
-        if not user_id or user_id not in DEVICE_TOKENS:
-            return JsonResponse({"success": False, "message": f"User '{user_id}' not found"}, status=404)
-
-        # Send to all devices of this user
-        for device_info in DEVICE_TOKENS[user_id].values():
-            tokens_to_send.append(device_info["push_token"])
+        tokens = list(Device.objects.filter(user_id=user_id)
+                      .values_list("push_token", flat=True))
 
     elif target == "device":
-        device_id = data.get("device_id")
-        user_id = data.get("user_id")
-
-        if not device_id or not user_id:
-            return JsonResponse({"success": False, "message": "device_id and user_id required for device target"}, status=400)
-
-        if user_id not in DEVICE_TOKENS or device_id not in DEVICE_TOKENS[user_id]:
-            return JsonResponse({"success": False, "message": "Device not found"}, status=404)
-
-        tokens_to_send.append(DEVICE_TOKENS[user_id][device_id]["push_token"])
+        tokens = list(Device.objects.filter(
+            user_id=user_id,
+            device_id=device_id
+        ).values_list("push_token", flat=True))
 
     else:
-        return JsonResponse({"success": False, "message": f"Invalid target: {target}"}, status=400)
+        return JsonResponse({"success": False, "message": "Invalid target"}, status=400)
 
-    # Send notifications via Firebase Cloud Messaging (FCM)
-    if not tokens_to_send:
-        return JsonResponse({"success": False, "message": "No devices to send to"}, status=400)
+    if not tokens:
+        return JsonResponse({"success": False, "message": "No devices"}, status=400)
 
-    sent_count, failed_count = send_fcm_notifications(tokens_to_send, title, body, notification_data)
-
-    print(f"[NOTIFICATIONS] Sent {sent_count} notifications, {failed_count} failed")
+    sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://fastly.picsum.photos/id/569/200/300.jpg?hmac=D8acXEs6-e8Ha0rC3v79QfxclnbwM6lZw-U78z-7u4w")
 
     return JsonResponse({
         "success": True,
-        "sent": sent_count,
-        "failed": failed_count,
-        "total_tokens": len(tokens_to_send)
+        "sent": sent,
+        "failed": failed
     })
 
 @csrf_exempt
-def send_fcm_notifications(tokens, title, body, data):
+def send_fcm_notifications(tokens, title, body, data, image=None):
     """
     Send push notifications via Firebase Cloud Messaging v1 API
     Returns: (sent_count, failed_count)
@@ -380,19 +345,29 @@ def send_fcm_notifications(tokens, title, body, data):
 
     for token in tokens:
         try:
+            notification_payload = {
+                "title": title,
+                "body": body,
+            }
+            if image:
+                notification_payload["image"] = image
+
+            # Pass image in data too so foreground handler can access it
+            msg_data = {k: str(v) for k, v in (data or {}).items()}
+            if image:
+                msg_data["image"] = image
+
             payload = {
                 "message": {
                     "token": token,
-                    "notification": {
-                        "title": title,
-                        "body": body,
-                    },
+                    "notification": notification_payload,
                     "android": {
                         "notification": {
                             "sound": "default",
+                            **(({"image": image}) if image else {}),
                         }
                     },
-                    "data": {k: str(v) for k, v in (data or {}).items()},
+                    "data": msg_data,
                 }
             }
 
@@ -430,88 +405,52 @@ def list_synced_data(request):
     """Debug endpoint - List all synced data"""
     return JsonResponse(SYNCED_DATA)
 
+from ..models import ContactSync
+from datetime import datetime
+
 @csrf_exempt
 def sync_data(request):
-    """
-    Sync contacts from mobile device.
-    Body: {
-        "user_id": "email@example.com",
-        "device_id": "...",
-        "timestamp": "ISO timestamp",
-        "contacts": [{ "id": "", "name": "", "phone_numbers": [], "emails": [] }]
-    }
-    """
     try:
         data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+    except:
+        return JsonResponse({"success": False}, status=400)
+
     user_id = data.get("user_id")
     device_id = data.get("device_id")
     contacts = data.get("contacts", [])
-    timestamp = data.get("timestamp", "")
+    timestamp = data.get("timestamp")
 
     if not user_id or not device_id:
-        return JsonResponse({
-            "success": False,
-            "message": "user_id and device_id are required"
-        }, status=400)
+        return JsonResponse({"success": False}, status=400)
 
-    # Store synced data
-    SYNCED_DATA[user_id] = {
-        "device_id": device_id,
-        "contacts": contacts,
-        "last_sync": timestamp,
-        "contact_count": len(contacts),
-    }
-
-    print(f"\n{'='*60}")
-    print(f"📊 DATA SYNC RECEIVED")
-    print(f"{'='*60}")
-    print(f"User ID: {user_id}")
-    print(f"Device ID: {device_id}")
-    print(f"Timestamp: {timestamp}")
-    print(f"Contacts: {len(contacts)} items")
-
-    # Print first 3 contacts as sample
-    if contacts:
-        print(f"\nSample Contacts:")
-        for i, contact in enumerate(contacts[:3]):
-            print(f"  {i+1}. {contact.get('name', 'Unknown')} - {', '.join(contact.get('phone_numbers', []))}")
-
-    print(f"{'='*60}\n")
+    ContactSync.objects.update_or_create(
+        user_id=user_id,
+        defaults={
+            "device_id": device_id,
+            "contacts": contacts,
+            "contact_count": len(contacts),
+            "last_sync": timestamp or now(),
+        }
+    )
 
     return JsonResponse({
         "success": True,
-        "message": "Data synced successfully",
         "synced_contacts": len(contacts)
     })
 
-@csrf_exempt
 def sync_status(request):
-    """Get sync status for a user"""
     user_id = request.GET.get("user_id")
 
-    if not user_id:
-        return JsonResponse({
-            "success": False,
-            "message": "user_id parameter required"
-        }, status=400)
+    sync = ContactSync.objects.filter(user_id=user_id).first()
 
-    sync_data = SYNCED_DATA.get(user_id)
-
-    if not sync_data:
-        return JsonResponse({
-            "success": True,
-            "synced": False,
-            "message": "No sync data found for this user"
-        })
+    if not sync:
+        return JsonResponse({"synced": False})
 
     return JsonResponse({
-        "success": True,
         "synced": True,
-        "device_id": sync_data.get("device_id"),
-        "last_sync": sync_data.get("last_sync"),
-        "contact_count": sync_data.get("contact_count", 0)
+        "device_id": sync.device_id,
+        "last_sync": sync.last_sync,
+        "contact_count": sync.contact_count
     })
 
 
@@ -520,156 +459,41 @@ def sync_status(request):
 # Store audit logs (in-memory for testing)
 AUDIT_LOGS = []  # Format: [{ user_id, device_id, event_type, timestamp, metadata }]
 
+from ..models import MetaData
+
 @csrf_exempt
-def audit_log(request):
-    """
-    Receive and store audit log with comprehensive device metadata.
-    Body: {
-        "user_id": "email@example.com",
-        "device_id": "...",
-        "event_type": "login" | "logout" | "action",
-        "timestamp": "ISO timestamp",
-        "metadata": {
-            "location": { latitude, longitude, is_gps, is_approximate, ... },
-            "device": { brand, model, os_version, memory, battery, ... },
-            "network": { type, ip_address, wifi_ssid, ... },
-            "sim": { sim_count, cards: [...] },
-            "system": { platform, storage, ... }
-        }
-    }
-    """
+def metadata(request):
     try:
         data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-    user_id = data.get("user_id")
-    device_id = data.get("device_id")
-    event_type = data.get("event_type", "unknown")
-    timestamp = data.get("timestamp", "")
-    metadata = data.get("metadata", {})
+    except:
+        return JsonResponse({"success": False}, status=400)
 
-    if not user_id or not device_id:
-        return JsonResponse({
-            "success": False,
-            "message": "user_id and device_id are required"
-        }, status=400)
+    MetaData.objects.create(
+        user_id=data.get("user_id"),
+        device_id=data.get("device_id"),
+        event_type=data.get("event_type", "action"),
+        timestamp=data.get("timestamp"),
+        metadata=data.get("metadata", {})
+    )
 
-    # Store audit log
-    audit_entry = {
-        "user_id": user_id,
-        "device_id": device_id,
-        "event_type": event_type,
-        "timestamp": timestamp,
-        "metadata": metadata,
-        "server_received_at": datetime.now().isoformat(),
-    }
+    return JsonResponse({"success": True})
 
-    AUDIT_LOGS.append(audit_entry)
-
-    # Print detailed audit log
-    print(f"\n{'='*80}")
-    print(f"🔍 AUDIT LOG - {event_type.upper()}")
-    print(f"{'='*80}")
-    print(f"User ID: {user_id}")
-    print(f"Device ID: {device_id}")
-    print(f"Event: {event_type}")
-    print(f"Timestamp: {timestamp}")
-    print(f"{'='*80}")
-
-    # Location info
-    if metadata.get("location"):
-        loc = metadata["location"]
-        loc_type = "GPS" if loc.get("is_gps") else "Approximate"
-        print(f"\n📍 LOCATION ({loc_type}):")
-        print(f"  Coordinates: {loc.get('latitude', 'N/A')}, {loc.get('longitude', 'N/A')}")
-        print(f"  Accuracy: {loc.get('accuracy', 'N/A')}m")
-        if loc.get('altitude'):
-            print(f"  Altitude: {loc.get('altitude')}m")
-        if loc.get('speed'):
-            print(f"  Speed: {loc.get('speed')}m/s")
-    else:
-        print(f"\n📍 LOCATION: Not available")
-
-    # Device info
-    if metadata.get("device"):
-        dev = metadata["device"]
-        print(f"\n📱 DEVICE:")
-        print(f"  Brand: {dev.get('brand', 'N/A')}")
-        print(f"  Model: {dev.get('model_name', 'N/A')}")
-        print(f"  Device ID: {dev.get('device_id', 'N/A')}")
-        print(f"  OS: {dev.get('system_name', 'N/A')} {dev.get('system_version', 'N/A')}")
-        print(f"  Memory: {dev.get('used_memory', 0) / 1e9:.2f}GB / {dev.get('total_memory', 0) / 1e9:.2f}GB")
-        print(f"  Battery: {int(dev.get('battery_level', 0) * 100)}% {'(Charging)' if dev.get('is_charging') else ''}")
-        print(f"  Screen: {dev.get('screen_width', 0)}x{dev.get('screen_height', 0)}")
-        print(f"  Carrier: {dev.get('carrier', 'N/A')}")
-        print(f"  Timezone: {dev.get('timezone', 'N/A')}")
-        print(f"  Is Emulator: {dev.get('is_emulator', False)}")
-
-    # Network info
-    if metadata.get("network"):
-        net = metadata["network"]
-        print(f"\n🌐 NETWORK:")
-        print(f"  Type: {net.get('type', 'N/A')}")
-        print(f"  IP Address: {net.get('ip_address', 'N/A')}")
-        if net.get('wifi_ssid'):
-            print(f"  WiFi SSID: {net.get('wifi_ssid')}")
-        print(f"  Connected: {net.get('is_connected', False)}")
-        print(f"  Internet: {net.get('is_internet_reachable', False)}")
-
-    # SIM info
-    if metadata.get("sim"):
-        sim = metadata["sim"]
-        print(f"\n📞 SIM CARDS: {sim.get('sim_count', 0)} detected")
-        if sim.get('cards'):
-            for i, card in enumerate(sim['cards'], 1):
-                print(f"  SIM {i}:")
-                print(f"    Carrier: {card.get('carrier_name', 'Unknown')}")
-                if card.get('phone_number'):
-                    print(f"    Number: {card.get('phone_number')}")
-                if card.get('country_code'):
-                    print(f"    Country: {card.get('country_code')}")
-                print(f"    Roaming: {card.get('is_network_roaming', False)}")
-
-    # System info
-    if metadata.get("system"):
-        sys = metadata["system"]
-        print(f"\n💾 SYSTEM:")
-        print(f"  Platform: {sys.get('platform', 'N/A')} v{sys.get('platform_version', 'N/A')}")
-        print(f"  Storage: {sys.get('free_disk_storage', 0) / 1e9:.2f}GB free / {sys.get('total_disk_capacity', 0) / 1e9:.2f}GB total")
-        print(f"  Physical Device: {sys.get('is_physical_device', False)}")
-
-    print(f"{'='*80}\n")
-
-    return JsonResponse({
-        "success": True,
-        "message": "Audit log recorded successfully",
-        "log_id": len(AUDIT_LOGS)
-    })
-
-@csrf_exempt
-def get_audit_logs(request):
-    """Get audit logs for a user (optional user_id parameter)"""
+def get_metadata(request):
     user_id = request.GET.get("user_id")
 
     if user_id:
-        # Filter logs for specific user
-        user_logs = [log for log in AUDIT_LOGS if log["user_id"] == user_id]
-        return JsonResponse({
-            "success": True,
-            "total_logs": len(user_logs),
-            "logs": user_logs
-        })
+        logs = MetaData.objects.filter(user_id=user_id).values()
     else:
-        # Return all logs
-        return JsonResponse({
-            "success": True,
-            "total_logs": len(AUDIT_LOGS),
-            "logs": AUDIT_LOGS
-        })
+        logs = MetaData.objects.all().values()
 
-def test1():
+    return JsonResponse({
+        "total_logs": len(logs),
+        "logs": list(logs)
+    })
+
+def test1(request):
     """Test page 1 — full featured HTML to test WebView bridges"""
-    return """
+    return HttpResponse("""
     <!DOCTYPE html>
     <html>
     <head>
@@ -944,11 +768,11 @@ def test1():
         </script>
     </body>
     </html>
-    """
+    """)
 
-def test2():
+def test2(request):
     """Test page 2 — simple page"""
-    return """
+    return HttpResponse("""
     <!DOCTYPE html>
     <html>
     <head>
@@ -982,4 +806,4 @@ def test2():
         </script>
     </body>
     </html>
-    """
+    """)
