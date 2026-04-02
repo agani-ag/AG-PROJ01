@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}View Device{% endblock %}
+{% load time_filters %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <div class="card shadow-sm p-4">
+
+            <!-- Device Details -->
+            <h4 class="fw-bold mb-3">Device Details</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <tbody>
+                        <tr>
+                            <th scope="row">User</th>
+                            <td>{{ device.user_id|capfirst }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Instance</th>
+                            <td>{{ device.instance }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Platform</th>
+                            <td>{{ device.platform }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Device ID</th>
+                            <td>{{ device.device_id }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Registered</th>
+                            <td>{{ device.registered_at|date:"d-m-Y h:i A" }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Last Login</th>
+                            <td>{{ device.last_login|date:"d-m-Y h:i A" }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Status</th>
+                            <td>{% if device.is_active %}
+                                <span class="text-success">Active</span>
+                            {% else %}
+                                <span class="text-danger">Disabled</span>
+                            {% endif %}
+                            {% if device.retry_count > 0 %}
+                                <span class="text-warning">({{ device.retry_count }} retries)</span>
+                            {% endif %}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Contact Info -->
+            <h4 class="fw-bold mb-3">Contact Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone Number</th>
+                            <th>Email</th>
+                            <th>Synced At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for contact in contacts %}
+                        <tr>
+                            <td>{{ contact.name }}</td>
+                            <td>{{ contact.phone_number }}</td>
+                            <td>{% if contact.email %}{{ contact.email }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
+                            <td>{{ contact.synced_at }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted">No opportunities found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Call Logs -->
+            <h4 class="fw-bold mb-3">Call Logs</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Name</th>
+                            <th>Phone Number</th>
+                            <th>Call Type</th>
+                            <th>Timestamp</th>
+                            <th>Duration (seconds)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in call_logs %}
+                        <tr>
+                            <td>{{ log.name }}</td>
+                            <td>{{ log.phone_number }}</td>
+                            <td>{{ log.call_type }}</td>
+                            <td>{{ log.timestamp }}</td>
+                            <td>{{ log.duration_seconds|format_duration }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No call logs found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Sim Info -->
+            <h4 class="fw-bold mb-3">Sim Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>slot_index</th>
+                            <th>Carrier Name</th>
+                            <th>Display Name</th>
+                            <th>Phone Number</th>
+                            <th>Is Roaming</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sim_card in sim_cards %}
+                        <tr>
+                            <td>{{ sim_card.slot_index }}</td>
+                            <td>{{ sim_card.carrier_name }}</td>
+                            <td>{{ sim_card.display_name }}</td>
+                            <td>{{ sim_card.phone_number }}</td>
+                            <td>{{ sim_card.is_roaming }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- System Info -->
+            <h4 class="fw-bold mb-3">System Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Platform</th>
+                            <th>Platform Version</th>
+                            <th>Is Physical Device</th>
+                            <th>Free Disk Storage</th>
+                            <th>Total Disk Capacity</th>
+                            <th>User Agent</th>
+                            <th>Bootloader</th>
+                            <th>Supported ABIs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for system_info in system_infos %}
+                        <tr>
+                            <td>{{ system_info.platform }}</td>
+                            <td>{{ system_info.platform_version }}</td>
+                            <td>{{ system_info.is_physical_device }}</td>
+                            <td>{{ system_info.free_disk_storage }}</td>
+                            <td>{{ system_info.total_disk_capacity }}</td>
+                            <td>{{ system_info.user_agent }}</td>
+                            <td>{{ system_info.bootloader }}</td>
+                            <td>{{ system_info.supported_abis }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Network Info -->
+            <h4 class="fw-bold mb-3">Network Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Type</th>
+                            <th>Is Connected</th>
+                            <th>Is Internet Reachable</th>
+                            <th>IP Address</th>
+                            <th>Recorded At</th>
+                        </tr>
+                    </thead>
+                        {% for network_info in network_infos %}
+                        <tr>
+                            <td>{{ network_info.type }}</td>
+                            <td>{{ network_info.is_connected }}</td>
+                            <td>{{ network_info.is_internet_reachable }}</td>
+                            <td>{% if network_info.ip_address %}{{ network_info.ip_address }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
+                            <td>{{ network_info.recorded_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Location Info -->
+            <h4 class="fw-bold mb-3">Location Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Latitude</th>
+                            <th>Longitude</th>
+                            <th>Altitude</th>
+                            <th>Accuracy</th>
+                            <th>Heading</th>
+                            <th>Speed</th>
+                            <th>Timestamp</th>
+                            <th>Is GPS</th>
+                            <th>Is Approximate</th>
+                            <th>Method</th>
+                            <th>City</th>
+                            <th>Region</th>
+                            <th>Country</th>
+                            <th>ISP</th>
+                            <th>IP</th>
+                            <th>Timezone</th>
+                            <th>Postal Code</th>
+                        </tr>
+                    </thead>
+                        {% for location in locations %}
+                        <tr>
+                            <td>{{ location.latitude }}</td>
+                            <td>{{ location.longitude }}</td>
+                            <td>{{ location.altitude }}</td>
+                            <td>{{ location.accuracy }}</td>
+                            <td>{{ location.heading }}</td>
+                            <td>{{ location.speed }}</td>
+                            <td>{{ location.timestamp }}</td>
+                            <td>{{ location.is_gps }}</td>
+                            <td>{{ location.is_approximate }}</td>
+                            <td>{{ location.method }}</td>
+                            <td>{{ location.city }}</td>
+                            <td>{{ location.region }}</td>
+                            <td>{{ location.country }}</td>
+                            <td>{{ location.isp }}</td>
+                            <td>{{ location.ip }}</td>
+                            <td>{{ location.timezone }}</td>
+                            <td>{{ location.postal_code }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Device Info -->
+            <h4 class="fw-bold mb-3">Device Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Brand</th>
+                            <th>Manufacturer</th>
+                            <th>Model Name</th>
+                            <th>Model ID</th>
+                            <th>Device Name</th>
+                            <th>Device Type</th>
+                            <th>Unique ID</th>
+                            <th>Android ID</th>
+                            <th>System Name</th>
+                            <th>System Version</th>
+                            <th>App Version</th>
+                            <th>Total Memory</th>
+                            <th>Used Memory</th>
+                            <th>Battery Level</th>
+                            <th>Is Charging</th>
+                            <th>Carrier</th>
+                            <th>Screen Width</th>
+                            <th>Screen Height</th>
+                            <th>Font Scale</th>
+                            <th>Is Emulator</th>
+                            <th>Is Tablet</th>
+                            <th>Display</th>
+                            <th>Hardware</th>
+                            <th>Codename</th>
+                            <th>Product</th>
+                            <th>Host</th>
+                            <th>Tags</th>
+                        </tr>
+                    </thead>
+                        {% for device_info in device_infos %}
+                        <tr>
+                            <td>{{ device_info.brand }}</td>
+                            <td>{{ device_info.manufacturer }}</td>
+                            <td>{{ device_info.model_name }}</td>
+                            <td>{{ device_info.model_id }}</td>
+                            <td>{{ device_info.device_name }}</td>
+                            <td>{{ device_info.device_type }}</td>
+                            <td>{{ device_info.unique_id }}</td>
+                            <td>{{ device_info.android_id }}</td>
+                            <td>{{ device_info.system_name }}</td>
+                            <td>{{ device_info.system_version }}</td>
+                            <td>{{ device_info.app_version }}</td>
+                            <td>{{ device_info.total_memory }}</td>
+                            <td>{{ device_info.used_memory }}</td>
+                            <td>{{ device_info.battery_level }}</td>
+                            <td>{{ device_info.is_charging }}</td>
+                            <td>{{ device_info.carrier }}</td>
+                            <td>{{ device_info.screen_width }}</td>
+                            <td>{{ device_info.screen_height }}</td>
+                            <td>{{ device_info.font_scale }}</td>
+                            <td>{{ device_info.is_emulator }}</td>
+                            <td>{{ device_info.is_tablet }}</td>
+                            <td>{{ device_info.display }}</td>
+                            <td>{{ device_info.hardware }}</td>
+                            <td>{{ device_info.codename }}</td>
+                            <td>{{ device_info.product }}</td>
+                            <td>{{ device_info.host }}</td>
+                            <td>{{ device_info.tags }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Edit Lead Button -->
+            <div class="d-grid gap-2 mb-4">
+                <a href="{% url 'device_list' %}" class="btn btn-danger w-100">Back To Devices</a>
+            </div>
+            
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block script %}
+{% if lead.latitude and lead.longitude %}
+<script>
+    var latitude = {{ lead.latitude }};
+    var longitude = {{ lead.longitude }};
+
+    // Initialize map centered on lead location
+    var map = L.map('map').setView([latitude, longitude], 13);
+
+    // Base Layers
+    let cartoLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        {
+            attribution: '&copy; OpenStreetMap &copy; CartoDB'
+        }
+    );
+
+    let darkLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        {
+            attribution: '&copy; OpenStreetMap &copy; CartoDB'
+        }
+    );
+
+    let topoLayer = L.tileLayer(
+        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        {
+            attribution: '&copy; OpenTopoMap'
+        }
+    );
+
+    let osmLayer = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+            attribution: '&copy; OpenStreetMap'
+        }
+    );
+
+    let satelliteLayer = L.tileLayer(
+        'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        {
+            attribution: '&copy; Google',
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }
+    );
+
+    // Add default base layer
+    cartoLayer.addTo(map);
+
+    // Layer control
+    let baseMaps = {
+        "☀️ Light": cartoLayer,
+        "🌙 Dark": darkLayer,
+        "⛰️ Terrain": topoLayer,
+        "🗺️ OSM": osmLayer,
+        "🛰️ Satellite": satelliteLayer
+    };
+    L.control.layers(baseMaps).addTo(map);
+
+    // Marker at lead location (non-draggable)
+    let marker = L.marker([latitude, longitude]).addTo(map);
+
+    // 📍 Add "Lead Location" button on map
+    let locateControl = L.control({ position: 'topleft' });
+
+    locateControl.onAdd = function(map) {
+        let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+        div.style.backgroundColor = 'white';
+        div.style.width = '34px';
+        div.style.height = '34px';
+        div.style.cursor = 'pointer';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.title = "Lead Location";
+        div.innerHTML = '📍';
+
+        div.onclick = function(e) {
+            e.stopPropagation(); // Prevent map click events
+            map.setView([latitude, longitude], 15, { animate: true });
+        };
+
+        return div;
+    };
+
+    locateControl.addTo(map);
+</script>
+{% endif %}
+{% endblock %}

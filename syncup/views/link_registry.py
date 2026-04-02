@@ -7,11 +7,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 
 from ..models import (
-    LinkRegistry,
+    LinkRegistry, InstanceInfo,
     UserProfile
 )
 from ..forms import (
-    LinkRegistryForm
+    LinkRegistryForm, InstanceInfoForm
 )
 
 # =============== LINK REGISTRY VIEWS ===============
@@ -74,3 +74,58 @@ def link_registry_delete(request, link_registry_id):
     else:
         messages.error(request, 'Link Registry not found.')
     return redirect('link_registry')
+
+# =============== INSTANCE INFO VIEWS ===============
+@login_required
+def instance_info(request):
+    context = {}
+    context["instances"] = InstanceInfo.objects.all()
+    return render(request, 'link_registry/instances.html', context)
+
+@login_required
+def instance_info_add(request):
+    context = {}
+    if request.method == 'POST':
+        form = InstanceInfoForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Instance Info added successfully.')
+            return redirect('instance_info')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = InstanceInfoForm()
+    context['form'] = form
+    return render(request, 'link_registry/instance_info_edit.html', context)
+
+@login_required
+def instance_info_edit(request, instance_info_id):
+    context = {}
+    instance_info = InstanceInfo.objects.filter(id=instance_info_id).first()
+    if not instance_info:
+        messages.error(request, 'Instance Info not found.')
+        return redirect('instance_info')
+    if request.method == 'POST':
+        form = InstanceInfoForm(request.POST, instance=instance_info)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Instance Info updated successfully.')
+            return redirect('instance_info')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = InstanceInfoForm(instance=instance_info)
+    context['form'] = form
+    context['instance_info'] = instance_info
+    context['is_edit'] = True
+    return render(request, 'link_registry/instance_info_edit.html', context)
+
+@login_required
+def instance_info_delete(request, instance_info_id):
+    instance_info = InstanceInfo.objects.filter(id=instance_info_id).first()
+    if instance_info:
+        instance_info.delete()
+        messages.success(request, 'Instance Info deleted successfully.')
+    else:
+        messages.error(request, 'Instance Info not found.')
+    return redirect('instance_info')

@@ -82,6 +82,25 @@ class LinkRegistry(models.Model):
     class Meta:
         ordering = ['user','name']
 
+class InstanceInfo(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    base_url = models.URLField(max_length=300)
+    endpoint = models.CharField(max_length=255)
+    auth_key = models.CharField(max_length=255, null=True, blank=True)
+    auth_value = models.CharField(max_length=255, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+    
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().upper()
+        super().save(*args, **kwargs)
+
 # =============== Holiday & Attendance ===============
 class Holiday(models.Model):
     date = models.DateField(unique=True)
@@ -398,28 +417,127 @@ class Device(models.Model):
     device_id = models.CharField(max_length=255, unique=True)
     push_token = models.TextField()
     platform = models.CharField(max_length=50, default="unknown")
+    instance = models.CharField(max_length=255, blank=True, null=True)
     registered_at = models.DateTimeField(auto_now_add=True)
     last_login = models.DateTimeField(auto_now=True)
+    retry_count = models.IntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
+    def __str__(self):
+        return f"{self.user_id} - {self.device_id}"
 
-class ContactSync(models.Model):
-    user_id = models.CharField(max_length=255)
-    device_id = models.CharField(max_length=255)
-    contacts = models.JSONField()
-    contact_count = models.IntegerField(default=0)
-    last_sync = models.DateTimeField()
+    class Meta:
+        ordering = ['-last_login']
 
+class Contact(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="contacts", db_index=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    phone_number = models.CharField(max_length=20)
+    email = models.EmailField(null=True, blank=True)
+    synced_at = models.DateTimeField(auto_now=True)
 
-class MetaData(models.Model):
-    EVENT_TYPES = [
-        ("login", "Login"),
-        ("logout", "Logout"),
-        ("action", "Action"),
-    ]
+    def __str__(self):
+        return f"{self.name} ({self.phone_number})"
+    
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["device", "phone_number"],
+                name="unique_device_contact"
+            )
+        ]
 
-    user_id = models.CharField(max_length=255)
-    device_id = models.CharField(max_length=255)
-    event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
+class Location(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="locations", db_index=True)
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    altitude = models.FloatField(null=True, blank=True)
+    accuracy = models.FloatField(null=True, blank=True)
+    heading = models.FloatField(null=True, blank=True)
+    speed = models.FloatField(null=True, blank=True)
+    method = models.CharField(max_length=50, null=True, blank=True)
+    city = models.CharField(max_length=100, null=True, blank=True)
+    region = models.CharField(max_length=100, null=True, blank=True)
+    country = models.CharField(max_length=100, null=True, blank=True)
+    isp = models.CharField(max_length=100, null=True, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    timezone = models.CharField(max_length=50, null=True, blank=True)
+    postal_code = models.CharField(max_length=20, null=True, blank=True)
     timestamp = models.DateTimeField()
-    metadata = models.JSONField()
-    server_received_at = models.DateTimeField(auto_now_add=True)
+    is_gps = models.BooleanField(default=True)
+    is_approximate = models.BooleanField(default=False)
+
+class DeviceInfo(models.Model):
+    device = models.OneToOneField(Device, on_delete=models.CASCADE, related_name="info", db_index=True)
+    
+    brand = models.CharField(max_length=100)
+    manufacturer = models.CharField(max_length=100)
+    model_name = models.CharField(max_length=100)
+    model_id = models.CharField(max_length=100, null=True, blank=True)
+    device_name = models.CharField(max_length=100)
+    device_type = models.CharField(max_length=50)
+    unique_id = models.CharField(max_length=255, null=True, blank=True)
+    android_id = models.CharField(max_length=255, null=True, blank=True)
+    
+    system_name = models.CharField(max_length=50)
+    system_version = models.CharField(max_length=50)
+    app_version = models.CharField(max_length=50)
+
+    total_memory = models.BigIntegerField(null=True, blank=True)
+    used_memory = models.BigIntegerField(null=True, blank=True)
+    battery_level = models.FloatField(null=True, blank=True)
+    is_charging = models.BooleanField(default=False)
+
+    carrier = models.CharField(max_length=100, null=True, blank=True)
+    screen_width = models.FloatField(null=True, blank=True)
+    screen_height = models.FloatField(null=True, blank=True)
+    font_scale = models.FloatField(null=True, blank=True)
+    is_emulator = models.BooleanField(default=False)
+    is_tablet = models.BooleanField(default=False)
+    display = models.CharField(max_length=255, null=True, blank=True)
+    hardware = models.CharField(max_length=100, null=True, blank=True)
+    codename = models.CharField(max_length=50, null=True, blank=True)
+    product = models.CharField(max_length=100, null=True, blank=True)
+    host = models.CharField(max_length=100, null=True, blank=True)
+    tags = models.CharField(max_length=100, null=True, blank=True)
+
+class NetworkInfo(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="networks", db_index=True)
+    type = models.CharField(max_length=50)
+    is_connected = models.BooleanField()
+    is_internet_reachable = models.BooleanField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+class SIMCard(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="sim_cards", db_index=True)
+    
+    slot_index = models.IntegerField()
+    carrier_name = models.CharField(max_length=100)
+    display_name = models.CharField(max_length=100)
+    phone_number = models.CharField(max_length=20, null=True, blank=True)
+    is_roaming = models.BooleanField(default=False)
+
+class SystemInfo(models.Model):
+    device = models.OneToOneField(Device, on_delete=models.CASCADE, related_name="system_info", db_index=True)
+    platform = models.CharField(max_length=50)
+    platform_version = models.IntegerField()
+    is_physical_device = models.BooleanField()
+    free_disk_storage = models.BigIntegerField(null=True, blank=True)
+    total_disk_capacity = models.BigIntegerField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    bootloader = models.CharField(max_length=100, null=True, blank=True)
+    supported_abis = models.JSONField(null=True, blank=True)
+
+class CallLog(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="call_logs", db_index=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    phone_number = models.CharField(max_length=20)
+    call_type = models.CharField(max_length=20)  # incoming, outgoing, missed
+    timestamp = models.DateTimeField()
+    duration_seconds = models.IntegerField()
+    date_time = models.DateTimeField()
+    raw_type = models.CharField(max_length=50, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.phone_number}) - {self.call_type} at {self.timestamp}"

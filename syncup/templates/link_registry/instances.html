@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="row align-items-center mb-3">
+    <div class="col">
+        <h2 class="mb-0">Instances</h2>
+    </div>
+
+    <div class="col-auto">
+        <a href="{% url 'instance_info_add' %}" 
+           class="btn btn-primary btn-sm btn-curve" 
+           title="Add Instance Info">
+            <i class="fas fa-plus"></i>
+        </a>
+    </div>
+</div>
+
+<table class="table table-striped table-bordered" id="instance-info-table">
+	<thead class="table-dark">
+		<tr>
+			<th>Name</th>
+			<th>Link</th>
+			<th>Active</th>
+		</tr>
+	</thead>
+	<tbody class="two-col-form">
+		{% for instance in instances %}
+		<tr onclick="window.location='{% url 'instance_info_edit' instance.id %}'" style="cursor: pointer;">
+            <td>{{ instance.name }}</td>
+			<td>{{ instance.base_url }}</td>
+			<td>{% if instance.is_active %}
+				<span class="text-success font-weight-bold">Yes</span>
+				{% else %}
+				<span class="text-danger font-weight-bold">No</span>
+				{% endif %}
+			</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}
+
+{% block script %}
+<script>
+function initDataTable() {
+    var isMobile = window.innerWidth <= 768;
+    $('#instance-info-table').DataTable({
+        destroy: true,
+        "order": [],
+        "columnDefs": [],
+        "paging": true,
+        "lengthChange": !isMobile,
+        "searching": true,
+        "ordering": true,
+    });
+}
+
+$(document).ready(function () {
+    initDataTable();
+
+    $(window).on('resize', function () {
+        initDataTable();
+    });
+});
+</script>
+{% endblock %}

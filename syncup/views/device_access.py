@@ -1,160 +1,96 @@
-from django.views.decorators.csrf import csrf_exempt
-from django.http import HttpResponse, JsonResponse
-from django.utils.timezone import now
+from django.db.models import F
 from django.conf import settings
-from datetime import datetime
-import requests
-import os
+from django.db import transaction
+from django.utils import timezone
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.contrib.auth import authenticate
+from django.utils.timezone import datetime, now
+from django.views.decorators.csrf import csrf_exempt
+# Python standard libraries
+import re
 import json
+import requests
+import phonenumbers
+from ..utils import get_fcm_token
+from phonenumbers import NumberParseException
 
-FIREBASE_PROJECT_ID = settings.FIREBASE_PROJECT_ID
-SERVICE_ACCOUNT_FILE = settings.SERVICE_ACCOUNT_FILE
+# Models
+from ..models import (
+    CallLog, Contact, SystemInfo, User,
+    LinkRegistry, InstanceInfo,
+    Device, Location, SIMCard, DeviceInfo, NetworkInfo
+)
+
+# Variables
 PROJ01_URL = settings.PROJ01_URL
 PROJ02_URL = settings.PROJ02_URL
+FIREBASE_PROJECT_ID = settings.FIREBASE_PROJECT_ID
+INSTANCE = ['S1']
 
-# ─────────────────────────────────────────────────────────────────────────────
-def get_fcm_access_token():
-    """Get OAuth2 access token for FCM v1 API using service account"""
-    try:
-        from google.oauth2 import service_account
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
-        )
-        credentials.refresh(google_auth_request())
-        return credentials.token
-    except FileNotFoundError:
-        print(f"[FCM] firebase-service-account.json not found at: {SERVICE_ACCOUNT_FILE}")
-        return None
-    except Exception as e:
-        print(f"[FCM] Failed to get access token: {e}")
-        return None
-
-def google_auth_request():
-    """Create a google-auth compatible request object"""
-    import google.auth.transport.requests
-    return google.auth.transport.requests.Request()
-
-# ── Mock user store (replace with real DB in Django) ──────────────────────────
-MOCK_USERS = {
-    "test@example.com": {
-        "username": "ganesh",
-        "password": "gs22",
-        "full_name": "Ganesh Saravanan",
-        "business_name": "AG",
-        "urls": {
-            "Test Page 1": f"https://microman1000.pythonanywhere.com/download/sqlite",
-            "Test Page 2": f"https://microman1000.pythonanywhere.com/download/sqlite",
-            "Test Page 3": f"https://microman1000.pythonanywhere.com/download/sqlite",
-            "Test Page 4": f"https://microman1000.pythonanywhere.com/download/sqlite",
-            "Test Page 5": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 6": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 7": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 8": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 9": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 10": f"https://microman2000.pythonanywhere.com/print",
-            "Test Page 11": f"https://microman2000.pythonanywhere.com/print",
-            "Customers 1": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 2": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 3": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 4": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 5": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 6": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 7": f"{PROJ02_URL}/mobile/v1/customers",
-            "Customers 8": f"{PROJ02_URL}/mobile/v1/customers",
-        },
-    },
-    "admin@ms.com": {
-        "username": "admin",
-        "password": "admin123",
-        "full_name": "Admin User",
-        "business_name": "MS Admin",
-        "urls": {
-            "Admin Panel": "https://www.google.com",
-        },
-    },
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# In-memory token storage (replace with database in production)
-DEVICE_TOKENS = {}
-# Structure: {
-#   "user_id": {
-#       "device_id_1": { "push_token": "...", "platform": "android", "registered_at": "..." },
-#       "device_id_2": { "push_token": "...", "platform": "ios", "registered_at": "..." }
-#   }
-# }
-
-
+# ==================== DEVICE ACCESS ENDPOINTS ====================
 def health_check(request):
+    instances = ['S1'] + list(
+        InstanceInfo.objects.filter(is_active=True)
+        .values_list('name', flat=True)
+    )
     return JsonResponse({
         "status": "ok",
-        "server": "MS Flask Test Server",
+        "server": "AG-PROJ01-SyncUp",
         "fallback_url": PROJ02_URL,
         "time": now().isoformat(),
-        "instance": ['MS-1', 'MS-2', 'MS-3']
+        "instance": instances
     })
 
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-import json
-from ..models import LinkRegistry
-
+# ==================== AUTH ENDPOINTS ====================
 @csrf_exempt
 def device_login(request):
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
-
     try:
         data = json.loads(request.body)
     except:
         return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
     email_or_username = (data.get("email") or "").strip()
     password = data.get("password") or ""
     device_id = data.get("device_id", "unknown-device")
     instance = data.get("instance", "unknown-instance")
-    print(f"[Device Login] Instance: {instance}, Device ID: {device_id}, Email/Username: {email_or_username}")
-
     if not email_or_username or not password:
         return JsonResponse({
             "success": False,
             "message": "Email/username and password required"
         }, status=400)
+    if instance == "S1":
+        return syncup_user(email_or_username, password, device_id)
+    else:
+        payload = {
+            "authuser": email_or_username,
+            "password": password
+        }
+        return fetch_user_from_external(instance, payload, device_id)
 
-    # 🔐 Try username login
+def syncup_user(email_or_username, password, device_id):
     user = authenticate(username=email_or_username, password=password)
-
-    # 🔁 Try email login
     if not user:
         try:
-            user_obj = User.objects.get(email=email_or_username)
+            user_obj = User.objects.get(email=email_or_username, is_active=True)
             user = authenticate(username=user_obj.username, password=password)
         except User.DoesNotExist:
             user = None
-
     if not user:
         return JsonResponse({
             "success": False,
-            "message": "Invalid credentials"
+            "message": "User not found or incorrect password"
         }, status=401)
-
-    # ✅ Get UserProfile
     try:
         profile = user.userprofile
     except:
         profile = None
-
-    # ✅ Get URLs from LinkRegistry
     links = LinkRegistry.objects.filter(user=profile, is_active=True)
-
     urls = {}
     for link in links:
         urls[link.name] = link.url
-
-    return JsonResponse({
+    data = {
         "success": True,
         "username": profile.name if profile and profile.name else user.username,
         "device_id": device_id,
@@ -162,97 +98,66 @@ def device_login(request):
         "message": f"Welcome back, {profile.name if profile else user.username}!",
         "urls": urls,
         "sync_required": True,
-    })
+    }
+    return JsonResponse(data)
 
-@csrf_exempt
-def device_public_login(request):
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-
-    try:
-        data = json.loads(request.body)
-    except:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
-    email_or_username = (data.get("email") or "").strip()
-    password = data.get("password") or ""
-    device_id = data.get("device_id", "unknown-device")
-
-    if not email_or_username or not password:
-        return JsonResponse({
-            "success": False,
-            "message": "Email/username and password required"
-        }, status=400)
-
-    # 🔐 Try username login
-    user = authenticate(username=email_or_username, password=password)
-
-    # 🔁 Try email login
-    if not user:
+def fetch_user_from_external(instance, payload, device_id):
+    if InstanceInfo.objects.filter(name=instance, is_active=True).exists():
         try:
-            user_obj = User.objects.get(email=email_or_username)
-            user = authenticate(username=user_obj.username, password=password)
-        except User.DoesNotExist:
-            user = None
+            instance_info = InstanceInfo.objects.get(name=instance)
+            payload['base_url'] = instance_info.base_url
+            URL = instance_info.base_url + instance_info.endpoint
+            headers = {"Content-Type": "application/json"}
+            if instance_info.auth_key:
+                headers[instance_info.auth_key] = instance_info.auth_value
+            response = requests.post(URL, json=payload, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                data["device_id"] = device_id
+                data["sync_required"] = True
+                data["success"] = True
+                return JsonResponse(data)
+            return JsonResponse({
+                "success": False,
+                "message": "External instance returned error",
+                "status_code": response.status_code,
+                "response": response.text,
+                "url": URL
+            }, status=502)
+        except Exception as e:
+            return JsonResponse({
+                "success": False,
+                "message": "Error connecting to external instance",
+                "error": str(e),
+                "url": URL
+            }, status=500)
+    else:
+        return JsonResponse({"success": False, "message": "Instance not found or inactive"}, status=404)
 
-    if not user:
-        return JsonResponse({
-            "success": False,
-            "message": "Invalid credentials"
-        }, status=401)
-
-    # ✅ Get UserProfile
-    try:
-        profile = user.userprofile
-    except:
-        profile = None
-
-    # ✅ Get URLs from LinkRegistry
-    links = LinkRegistry.objects.filter(user=profile, is_active=True)
-
-    urls = {}
-    for link in links:
-        urls[link.name] = link.url
-    urls["Health Check"] = f"https://chatgpt.com/"
-
-    return JsonResponse({
-        "success": True,
-        "username": profile.name if profile and profile.name else user.username,
-        "device_id": device_id,
-        "business_name": profile.name if profile else "MS",
-        "message": f"Welcome back, {profile.name if profile else user.username}!",
-        "urls": urls,
-        "sync_required": True,
-    })
-from ..models import Device
-from django.utils.timezone import now
 @csrf_exempt
 def register_device(request):
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
     device_id = data.get("device_id")
     user_id = data.get("user_id")
     push_token = data.get("push_token")
     platform = data.get("platform", "unknown")
-
+    instance = data.get("instance", "unknown-instance")
     if not device_id or not user_id or not push_token:
         return JsonResponse({"success": False, "message": "Missing fields"}, status=400)
-
     device, created = Device.objects.update_or_create(
         device_id=device_id,
         defaults={
             "user_id": user_id,
             "push_token": push_token,
             "platform": platform,
+            "instance": instance,
             "last_login": now(),
         }
     )
-
     action = "REGISTERED" if created else "UPDATED"
-
     return JsonResponse({
         "success": True,
         "device_id": device_id,
@@ -264,28 +169,28 @@ def unregister_device(request):
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({"success": False}, status=400)
-
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     device_id = data.get("device_id")
     user_id = data.get("user_id")
-
     deleted, _ = Device.objects.filter(
         device_id=device_id,
-        user_id=user_id
+        user_id=user_id,
     ).delete()
-
     if deleted:
         return JsonResponse({"success": True})
     else:
         return JsonResponse({"success": False, "message": "Not found"}, status=404)
 
 def list_devices(request):
-    devices = Device.objects.all().values()
-
-    return JsonResponse({
-        "total_devices": Device.objects.count(),
-        "devices": list(devices)
-    })
+    context = {}
+    user_filter = request.GET.get('filter')
+    queryset = Device.objects.all()
+    if user_filter:
+        queryset = queryset.filter(user_id=user_filter)
+    context["devices"] = queryset
+    context["users"] = Device.objects.values_list('user_id', flat=True).distinct()
+    context["selected_user"] = user_filter
+    return render(request, 'device_access/list_devices.html', context)
 
 @csrf_exempt
 def send_notification(request):
@@ -293,56 +198,47 @@ def send_notification(request):
         data = json.loads(request.body)
     except:
         data = {}
-
     target = data.get("target", "all")
     user_id = data.get("user_id")
     device_id = data.get("device_id")
-
     title = data.get("title", "MS App")
     body = data.get("body", "New notification")
-
     if target == "all":
-        tokens = list(Device.objects.values_list("push_token", flat=True))
-
+        tokens = list(Device.objects.filter(is_active=True).values_list("push_token", flat=True))
     elif target == "user":
-        tokens = list(Device.objects.filter(user_id=user_id)
+        tokens = list(Device.objects.filter(user_id=user_id, is_active=True)
                       .values_list("push_token", flat=True))
-
     elif target == "device":
         tokens = list(Device.objects.filter(
             user_id=user_id,
-            device_id=device_id
+            device_id=device_id,
+            is_active=True
         ).values_list("push_token", flat=True))
-
     else:
         return JsonResponse({"success": False, "message": "Invalid target"}, status=400)
-
     if not tokens:
         return JsonResponse({"success": False, "message": "No devices"}, status=400)
-
-    sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://fastly.picsum.photos/id/569/200/300.jpg?hmac=D8acXEs6-e8Ha0rC3v79QfxclnbwM6lZw-U78z-7u4w")
-
+    sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://picsum.photos/400/300")
+    if failed:
+        Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
+        Device.objects.filter(push_token__in=failed).update(retry_count=F('retry_count') + 1)
     return JsonResponse({
         "success": True,
-        "sent": sent,
-        "failed": failed
+        "sent": len(sent),
+        "failed": len(failed)
     })
 
-@csrf_exempt
 def send_fcm_notifications(tokens, title, body, data, image=None):
     """
     Send push notifications via Firebase Cloud Messaging v1 API
     Returns: (sent_count, failed_count)
     """
-    access_token = get_fcm_access_token()
+    access_token = get_fcm_token()
     if not access_token:
-        print("[FCM] Failed to get access token. Check firebase-service-account.json")
         return 0, len(tokens)
-
-    sent = 0
-    failed = 0
+    sent = []
+    failed = []
     url = f"https://fcm.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/messages:send"
-
     for token in tokens:
         try:
             notification_payload = {
@@ -351,12 +247,10 @@ def send_fcm_notifications(tokens, title, body, data, image=None):
             }
             if image:
                 notification_payload["image"] = image
-
             # Pass image in data too so foreground handler can access it
             msg_data = {k: str(v) for k, v in (data or {}).items()}
             if image:
                 msg_data["image"] = image
-
             payload = {
                 "message": {
                     "token": token,
@@ -364,13 +258,14 @@ def send_fcm_notifications(tokens, title, body, data, image=None):
                     "android": {
                         "notification": {
                             "sound": "default",
+                            "vibrate_timings": ["0.2s", "0.2s", "0.2s"],  # vibration pattern
+                            "default_vibrate_timings": True,  # optional fallback
                             **(({"image": image}) if image else {}),
                         }
                     },
                     "data": msg_data,
                 }
             }
-
             response = requests.post(
                 url,
                 headers={
@@ -379,87 +274,33 @@ def send_fcm_notifications(tokens, title, body, data, image=None):
                 },
                 json=payload,
             )
-
             if response.status_code == 200:
-                sent += 1
-                print(f"[FCM] Sent to {token[:30]}...")
+                sent.append(token)
             else:
-                failed += 1
-                error_msg = response.json().get("error", {}).get("message", response.text[:100])
-                print(f"[FCM] Failed for {token[:30]}... Error: {error_msg}")
-
+                failed.append(token)
         except Exception as e:
-            failed += 1
-            print(f"[FCM] Exception: {e}")
-
+            failed.append(token)
     return sent, failed
 
-
-# ==================== SYNC ENDPOINTS ====================
-
-# Store synced data (in-memory for testing)
-SYNCED_DATA = {}  # Format: { user_id: { contacts: [...], last_sync: "timestamp" } }
-
-@csrf_exempt
-def list_synced_data(request):
-    """Debug endpoint - List all synced data"""
-    return JsonResponse(SYNCED_DATA)
-
-from ..models import ContactSync
-from datetime import datetime
-
-@csrf_exempt
-def sync_data(request):
+# ==================== SYNC & METADATA ENDPOINTS ====================
+def normalize_phone(phone, region="IN"):
+    if not phone:
+        return None
     try:
-        data = json.loads(request.body)
-    except:
-        return JsonResponse({"success": False}, status=400)
+        parsed = phonenumbers.parse(phone, region)
+        if not phonenumbers.is_valid_number(parsed):
+            return None
+        return phonenumbers.format_number(
+            parsed,
+            phonenumbers.PhoneNumberFormat.E164
+        )
+    except NumberParseException:
+        return None
 
-    user_id = data.get("user_id")
-    device_id = data.get("device_id")
-    contacts = data.get("contacts", [])
-    timestamp = data.get("timestamp")
-
-    if not user_id or not device_id:
-        return JsonResponse({"success": False}, status=400)
-
-    ContactSync.objects.update_or_create(
-        user_id=user_id,
-        defaults={
-            "device_id": device_id,
-            "contacts": contacts,
-            "contact_count": len(contacts),
-            "last_sync": timestamp or now(),
-        }
-    )
-
-    return JsonResponse({
-        "success": True,
-        "synced_contacts": len(contacts)
-    })
-
-def sync_status(request):
-    user_id = request.GET.get("user_id")
-
-    sync = ContactSync.objects.filter(user_id=user_id).first()
-
-    if not sync:
-        return JsonResponse({"synced": False})
-
-    return JsonResponse({
-        "synced": True,
-        "device_id": sync.device_id,
-        "last_sync": sync.last_sync,
-        "contact_count": sync.contact_count
-    })
-
-
-# ==================== AUDIT LOG ENDPOINTS ====================
-
-# Store audit logs (in-memory for testing)
-AUDIT_LOGS = []  # Format: [{ user_id, device_id, event_type, timestamp, metadata }]
-
-from ..models import MetaData
+def extract_value(val):
+    if isinstance(val, dict):
+        return val.get("_j")
+    return val
 
 @csrf_exempt
 def metadata(request):
@@ -467,343 +308,186 @@ def metadata(request):
         data = json.loads(request.body)
     except:
         return JsonResponse({"success": False}, status=400)
+    device_id = data.get("device_id")
+    try:
+        device = Device.objects.get(device_id=device_id)
+    except Device.DoesNotExist:
+        return JsonResponse({"success": False, "error": "Device not found"}, status=404)
 
-    MetaData.objects.create(
-        user_id=data.get("user_id"),
-        device_id=data.get("device_id"),
-        event_type=data.get("event_type", "action"),
-        timestamp=data.get("timestamp"),
-        metadata=data.get("metadata", {})
-    )
+    metadata = data.get("metadata", {})
+    contacts = metadata.get("contacts", [])
+
+    with transaction.atomic():
+
+        # ================= LOCATION =================
+        loc = metadata.get("location", {})
+        if loc:
+            Location.objects.create(
+                device=device,
+                latitude=loc.get("latitude"),
+                longitude=loc.get("longitude"),
+                altitude=loc.get("altitude"),  # None is okay
+                accuracy=loc.get("accuracy"),
+                heading=loc.get("heading"),
+                speed=loc.get("speed"),
+                method = loc.get("method"),
+                city = loc.get("city"),
+                region = loc.get("region"),
+                country = loc.get("country"),
+                isp = loc.get("isp"),
+                ip = loc.get("ip"),
+                timezone = loc.get("timezone"),
+                postal_code = loc.get("postal_code"),
+                timestamp=loc.get("timestamp"),
+                is_gps=loc.get("is_gps", True),
+                is_approximate=loc.get("is_approximate", False)
+            )
+
+        # ================= DEVICE INFO =================
+        d = metadata.get("device", {})
+        if d:
+            DeviceInfo.objects.update_or_create(
+                device=device,
+                defaults={
+                    "brand": d.get("brand"),
+                    "manufacturer": d.get("manufacturer"),
+                    "model_name": d.get("model_name"),
+                    "model_id": d.get("model_id"),  # <- include null fields
+                    "device_name": d.get("device_name"),
+                    "device_type": str(d.get("device_type")),  # cast to string if integer
+                    "unique_id": d.get("unique_id"),
+                    "android_id": d.get("android_id"),
+                    "system_name": extract_value(d.get("system_name")),
+                    "system_version": extract_value(d.get("system_version")),
+                    "app_version": extract_value(d.get("app_version")),
+                    "total_memory": d.get("total_memory"),
+                    "used_memory": d.get("used_memory"),
+                    "battery_level": d.get("battery_level"),
+                    "is_charging": extract_value(d.get("is_charging")) or False,
+                    "carrier": d.get("carrier"),
+                    "screen_width": d.get("screen_width"),
+                    "screen_height": d.get("screen_height"),
+                    "font_scale": d.get("font_scale"),
+                    "is_emulator": extract_value(d.get("is_emulator")) or False,
+                    "is_tablet": extract_value(d.get("is_tablet")) or False,
+                    "display": d.get("display"),
+                    "hardware": d.get("hardware"),
+                    "codename": d.get("codename"),
+                    "product": d.get("product"),
+                    "host": d.get("host"),
+                    "tags": d.get("tags"),
+                }
+            )
+
+        # ================= NETWORK =================
+        net = metadata.get("network", {})
+        if net:
+            NetworkInfo.objects.create(
+                device=device,
+                type=net.get("type"),
+                is_connected=net.get("is_connected"),
+                is_internet_reachable=net.get("is_internet_reachable"),
+                ip_address=net.get("ip_address")  # can be None
+            )
+
+        # ================= SIM =================
+        sim = metadata.get("sim", {})
+        cards = sim.get("cards", [])
+        for card in cards:
+            SIMCard.objects.update_or_create(
+                device=device,
+                slot_index=card.get("slot_index"),
+                defaults={
+                    "carrier_name": card.get("carrier_name"),
+                    "display_name": card.get("display_name"),
+                    "phone_number": card.get("phone_number"),  # can be None
+                    "is_roaming": card.get("is_network_roaming", False)
+                }
+            )
+
+        # ================= SYSTEM =================
+        sys = metadata.get("system", {})
+        if sys:
+            SystemInfo.objects.update_or_create(
+                device=device,
+                defaults={
+                    "platform": sys.get("platform"),
+                    "platform_version": sys.get("platform_version"),
+                    "is_physical_device": sys.get("is_physical_device"),
+                    "free_disk_storage": sys.get("free_disk_storage"),
+                    "total_disk_capacity": sys.get("total_disk_capacity"),
+                    "user_agent": sys.get("user_agent"),
+                    "bootloader": sys.get("bootloader"),
+                    "supported_abis": sys.get("supported_abis", [])
+                }
+            )
+        
+        # ================= CONTACTS =================
+        contacts = metadata.get("contacts", [])
+        if contacts:
+            for contact in contacts:
+                name = contact.get("name")
+                emails = contact.get("emails", [])
+                phone_numbers = contact.get("phone_numbers", [])
+                for raw_phone in phone_numbers:
+                    phone = normalize_phone(raw_phone)
+                    # fallback if normalization fails
+                    if not phone and raw_phone:
+                        phone = re.sub(r"[^\d]", "", str(raw_phone))
+                    if not phone:
+                        continue
+                    Contact.objects.update_or_create(
+                        device=device,
+                        phone_number=phone,
+                        defaults={
+                            "name": name,
+                            "email": emails[0] if emails else None
+                        }
+                    )
+        
+        # ================= CALL LOGS =================
+        call_logs = metadata.get("call_logs", [])
+        for log in call_logs:
+            ts = log.get("timestamp")
+
+            # Convert milliseconds → seconds → datetime
+            if ts:
+                ts = timezone.make_aware(datetime.fromtimestamp(int(ts) / 1000))
+            else:
+                ts = None
+
+            # Convert date_time string
+            dt_str = log.get("date_time")
+            if dt_str:
+                dt = datetime.strptime(dt_str, "%d %b %Y %I:%M:%S %p")
+                dt = timezone.make_aware(dt)
+            else:
+                dt = None
+
+            CallLog.objects.update_or_create(
+                device=device,
+                phone_number=log.get("phone_number"),
+                timestamp=ts,
+                defaults={
+                    "name": log.get("name"),
+                    "call_type": log.get("type"),
+                    "duration_seconds": log.get("duration"),
+                    "raw_type": log.get("raw_type"),
+                    "date_time": dt
+                }
+            )
 
     return JsonResponse({"success": True})
 
-def get_metadata(request):
-    user_id = request.GET.get("user_id")
-
-    if user_id:
-        logs = MetaData.objects.filter(user_id=user_id).values()
-    else:
-        logs = MetaData.objects.all().values()
-
-    return JsonResponse({
-        "total_logs": len(logs),
-        "logs": list(logs)
-    })
-
-def test1(request):
-    """Test page 1 — full featured HTML to test WebView bridges"""
-    return HttpResponse("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Test Page 1</title>
-        <style>
-            body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-            h1 { color: #1a1a2e; }
-            button {
-                padding: 12px 24px; margin: 8px 4px; border: none;
-                border-radius: 8px; background: #1a1a2e; color: white;
-                font-size: 16px; cursor: pointer;
-            }
-            button:active { background: #333; }
-            .section {
-                background: white; padding: 16px; margin: 16px 0;
-                border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            a { color: #4a90e2; text-decoration: none; font-size: 18px; display: block; margin: 8px 0; }
-            #preview { max-width: 100%; margin-top: 12px; border-radius: 8px; }
-        </style>
-    </head>
-    <body>
-        <h1>🧪 WebView Test Page</h1>
-
-        <div class="section">
-            <h3>🔗 Deep Links</h3>
-            <a href="tel:+1234567890">📞 Click to Call</a>
-            <a href="sms:+1234567890">💬 Send SMS</a>
-            <a href="https://wa.me/1234567890">📱 WhatsApp</a>
-            <a href="upi://pay?pa=test@upi&pn=TestName&am=10">💰 UPI Payment</a>
-        </div>
-
-        <div class="section">
-            <h3>📍 Geolocation</h3>
-            <button onclick="getLocation()">Get My Location</button>
-            <p id="location"></p>
-        </div>
-
-        <div class="section">
-            <h3>📸 Camera</h3>
-            <button onclick="takePhoto()">Take Photo</button>
-            <button onclick="recordVideo()">Record Video</button>
-            <p id="camera-result"></p>
-            <img id="preview" style="display:none;" />
-        </div>
-
-        <div class="section">
-            <h3>🔔 Notification</h3>
-            <button onclick="showNotification()">Show Notification</button>
-        </div>
-
-        <div class="section">
-            <h3>📄 File Picker</h3>
-            <button onclick="pickFile()">Pick File</button>
-            <p id="file-result"></p>
-        </div>
-
-        <div class="section">
-            <h3>📱 Live QR Code Generator</h3>
-            <input type="text" id="qr-input" placeholder="Enter text or URL"
-                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 12px;">
-            <button onclick="generateQR()">Generate QR Code</button>
-            <button onclick="generateDeviceQR()">Generate Device ID QR</button>
-            <button onclick="generateTimestampQR()">Generate Timestamp QR</button>
-            <div id="qr-display" style="text-align: center; margin-top: 16px;"></div>
-        </div>
-
-        <div class="section">
-            <h3>📷 Live QR Code Scanner</h3>
-            <button id="start-scan-btn" onclick="startScanner()">Start Scanner</button>
-            <button id="stop-scan-btn" onclick="stopScanner()" style="display:none; background: #d32f2f;">Stop Scanner</button>
-            <div id="scanner-container" style="display:none; margin-top: 12px;">
-                <div id="reader" style="width: 100%; max-width: 500px; margin: 0 auto; border: 2px solid #1a1a2e; border-radius: 8px;"></div>
-            </div>
-            <div id="scan-result" style="margin-top: 16px; padding: 12px; background: #e8f5e9; border-radius: 8px; display: none;">
-                <h4 style="margin: 0 0 8px 0; color: #2e7d32;">✅ Scanned Successfully!</h4>
-                <p id="scan-result-text" style="margin: 0; color: #1b5e20; word-break: break-all; font-family: monospace;"></p>
-                <button onclick="copyScanResult()" style="margin-top: 8px; background: #4caf50;">Copy Result</button>
-            </div>
-        </div>
-
-        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-        <script>
-            function getLocation() {
-                navigator.geolocation.getCurrentPosition(
-                    pos => {
-                        document.getElementById('location').innerHTML =
-                            `Lat: ${pos.coords.latitude}<br>Lng: ${pos.coords.longitude}`;
-                    },
-                    err => alert('Location error: ' + err.message)
-                );
-            }
-
-            function takePhoto() {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.capture = 'camera';
-
-                input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                            const preview = document.getElementById('preview');
-                            preview.src = event.target.result;
-                            preview.style.display = 'block';
-                            document.getElementById('camera-result').innerHTML =
-                                `Photo captured: ${file.name} (${(file.size/1024).toFixed(2)} KB)`;
-                        };
-                        reader.readAsDataURL(file);
-                    }
-                };
-
-                input.click();
-            }
-
-            function recordVideo() {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'video/*';
-                input.capture = 'camcorder';
-
-                input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        document.getElementById('camera-result').innerHTML =
-                            `Video recorded: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
-                        document.getElementById('preview').style.display = 'none';
-                    }
-                };
-
-                input.click();
-            }
-
-            function showNotification() {
-                new Notification('Test Notification', {
-                    body: 'This is a test notification from WebView!'
-                });
-            }
-
-            function pickFile() {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'OPEN_FILE_PICKER',
-                    accept: '*/*'
-                }));
-
-                document.addEventListener('ms_file_picked', (e) => {
-                    document.getElementById('file-result').innerHTML =
-                        `File: ${e.detail.name}<br>Size: ${e.detail.size} bytes`;
-                }, { once: true });
-            }
-
-            // QR Code Functions
-            function generateQR() {
-                const text = document.getElementById('qr-input').value;
-                if (!text) {
-                    alert('Please enter text or URL');
-                    return;
-                }
-                displayQRCode(text);
-            }
-
-            function generateDeviceQR() {
-                const deviceId = 'DEVICE-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-                document.getElementById('qr-input').value = deviceId;
-                displayQRCode(deviceId);
-            }
-
-            function generateTimestampQR() {
-                const timestamp = new Date().toISOString();
-                document.getElementById('qr-input').value = timestamp;
-                displayQRCode(timestamp);
-            }
-
-            function displayQRCode(text) {
-                const encodedText = encodeURIComponent(text);
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodedText}`;
-
-                const display = document.getElementById('qr-display');
-                display.innerHTML = `
-                    <img src="${qrUrl}" alt="QR Code" style="max-width: 100%; height: auto; border: 2px solid #ddd; border-radius: 8px; margin-top: 12px;">
-                    <p style="margin-top: 12px; color: #666; font-size: 14px; word-break: break-all;">${text}</p>
-                `;
-            }
-
-            // QR Scanner Functions
-            let html5QrcodeScanner = null;
-
-            function startScanner() {
-                document.getElementById('scanner-container').style.display = 'block';
-                document.getElementById('start-scan-btn').style.display = 'none';
-                document.getElementById('stop-scan-btn').style.display = 'inline-block';
-                document.getElementById('scan-result').style.display = 'none';
-
-                html5QrcodeScanner = new Html5QrcodeScanner(
-                    "reader",
-                    {
-                        fps: 10,
-                        qrbox: { width: 250, height: 250 },
-                        aspectRatio: 1.0
-                    },
-                    false
-                );
-
-                html5QrcodeScanner.render(onScanSuccess, onScanError);
-            }
-
-            function stopScanner() {
-                if (html5QrcodeScanner) {
-                    html5QrcodeScanner.clear();
-                    html5QrcodeScanner = null;
-                }
-                document.getElementById('scanner-container').style.display = 'none';
-                document.getElementById('start-scan-btn').style.display = 'inline-block';
-                document.getElementById('stop-scan-btn').style.display = 'none';
-            }
-
-            function onScanSuccess(decodedText, decodedResult) {
-                console.log(`QR Code scanned: ${decodedText}`, decodedResult);
-
-                // Display result
-                document.getElementById('scan-result').style.display = 'block';
-                document.getElementById('scan-result-text').textContent = decodedText;
-
-                // Vibrate if supported
-                if (navigator.vibrate) {
-                    navigator.vibrate(200);
-                }
-
-                // Auto-stop scanner after successful scan
-                stopScanner();
-            }
-
-            function onScanError(error) {
-                // Ignore scanning errors (they're common while scanning)
-                // console.warn(`QR scan error: ${error}`);
-            }
-
-            function copyScanResult() {
-                const text = document.getElementById('scan-result-text').textContent;
-
-                // Try modern clipboard API first
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(text).then(() => {
-                        alert('Copied to clipboard!');
-                    }).catch(() => {
-                        fallbackCopy(text);
-                    });
-                } else {
-                    fallbackCopy(text);
-                }
-            }
-
-            function fallbackCopy(text) {
-                // Fallback for older browsers
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                textarea.style.position = 'fixed';
-                textarea.style.opacity = '0';
-                document.body.appendChild(textarea);
-                textarea.select();
-                try {
-                    document.execCommand('copy');
-                    alert('Copied to clipboard!');
-                } catch (err) {
-                    alert('Failed to copy. Text: ' + text);
-                }
-                document.body.removeChild(textarea);
-            }
-        </script>
-    </body>
-    </html>
-    """)
-
-def test2(request):
-    """Test page 2 — simple page"""
-    return HttpResponse("""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Test Page 2</title>
-        <style>
-            body {
-                font-family: Arial; padding: 40px; background: #e3f2fd;
-                text-align: center;
-            }
-            h1 { color: #1976d2; font-size: 48px; margin-bottom: 20px; }
-            p { font-size: 20px; color: #555; line-height: 1.6; }
-            .card {
-                background: white; padding: 24px; margin: 20px auto;
-                max-width: 400px; border-radius: 12px;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            }
-        </style>
-    </head>
-    <body>
-        <h1>✅ Test Page 2</h1>
-        <div class="card">
-            <p>WebView is working correctly!</p>
-            <p>Navigation, back button, and all features are functional.</p>
-            <p><strong>Current Time:</strong> <span id="time"></span></p>
-        </div>
-        <script>
-            setInterval(() => {
-                document.getElementById('time').textContent = new Date().toLocaleTimeString();
-            }, 1000);
-        </script>
-    </body>
-    </html>
-    """)
+# ==================== DEVICE VIEW VIEWS ====================
+def device_view(request, id):
+    context = {}
+    context['device'] = Device.objects.filter(id=id).first()
+    context['contacts'] = Contact.objects.filter(device=context['device']) if context['device'] else None
+    context['locations'] = Location.objects.filter(device=context['device']).order_by('-timestamp') if context['device'] else None
+    context['device_infos'] = DeviceInfo.objects.filter(device=context['device']) if context['device'] else None
+    context['network_infos'] = NetworkInfo.objects.filter(device=context['device']) if context['device'] else None
+    context['sim_cards'] = SIMCard.objects.filter(device=context['device']) if context['device'] else None
+    context['system_infos'] = SystemInfo.objects.filter(device=context['device']) if context['device'] else None
+    context['call_logs'] = CallLog.objects.filter(device=context['device']).order_by('-timestamp') if context['device'] else None
+    return render(request, 'device_access/device_view.html', context)

@@ -7,7 +7,7 @@ from django.contrib.auth.forms import (
 )
 from .models import (
     ActivityLog, MaterialRequest, UserProfile,
-    Worker, Leads, LinkRegistry,
+    Worker, Leads, LinkRegistry, InstanceInfo,
     Opportunity, WorkerCommissions
 
 )
@@ -93,6 +93,46 @@ class LinkRegistryForm(ModelForm):
             url = 'https://' + url
 
         return url
+
+class InstanceInfoForm(ModelForm):
+    class Meta:
+        model = InstanceInfo
+        fields = ['name', 'base_url', 'endpoint', 'description', 'auth_key', 'auth_value', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'base_url': forms.URLInput(attrs={'class': 'form-control'}),
+            'endpoint': forms.TextInput(attrs={'class': 'form-control'}),
+            'auth_key': forms.TextInput(attrs={'class': 'form-control'}),
+            'auth_value': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
+    def clean_base_url(self):
+        base_url = self.cleaned_data.get('base_url')
+        if not base_url:
+            return base_url
+        # If scheme is missing, add https://
+        parsed = urlparse(base_url)
+        if not parsed.scheme:
+            base_url = 'https://' + base_url
+        return base_url
+
+    def clean_name(self):
+        name = self.cleaned_data.get('name')
+        if not name:
+            return name
+        normalized_name = name.strip().upper()
+        # Block reserved name
+        if normalized_name == 'S1':
+            raise forms.ValidationError("The name 'S1' is not accepted.")
+        # Exclude current instance (THIS IS THE FIX)
+        qs = InstanceInfo.objects.filter(name=normalized_name)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError("Instance with this name already exists.")
+        return normalized_name
 
 class WorkerForm(ModelForm):
     leads = forms.ModelMultipleChoiceField(

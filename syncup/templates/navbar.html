@@ -36,22 +36,39 @@
                         <li><a class="dropdown-item" href="{% url 'material_request' %}">Material Requests</a></li>
                     </ul>
                 </li>
+                {% endif %}
 
+                <!-- Devices Dropdown -->
+                {% if user.is_superuser %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="devicesDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Devices
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="devicesDropdown">
+                        <h6 class="dropdown-header">Access Control</h6>
+                        <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
+                        <li><a class="dropdown-item" href="{% url 'instance_info' %}">Instance Info</a></li>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Device Access</h6>
+                        <li><a class="dropdown-item" href="{% url 'device_list' %}">Device List</a></li>
+                    </ul>
+                </li>
+                {% endif %}
+                
                 <!-- Settings Dropdown -->
+                {% if user.is_superuser or user.is_staff %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="settingsDropdown"
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Settings
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
-                        {% if user.is_superuser %}
-                            <h6 class="dropdown-header">Admin</h6>
-                            <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                            <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
-                            <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
-                            <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
-                            <div class="dropdown-divider"></div>
-                        {% endif %}
+                        <h6 class="dropdown-header">Members</h6>
+                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
+                        <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
+                        <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
+                        <div class="dropdown-divider"></div>
                         {% if user.is_staff %}
                             <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
                         {% endif %}

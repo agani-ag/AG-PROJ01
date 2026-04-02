@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     auth, views, link_registry,
     profile, attendance, crm,
-    device_access
+    device_access, test
 )
 
 urlpatterns = [
@@ -30,6 +30,12 @@ urlpatterns = [
     path('link-registry/add', link_registry.link_registry_add, name='link_registry_add'),
     path('link-registry/edit/<int:link_registry_id>', link_registry.link_registry_edit, name='link_registry_edit'),
     path('link-registry/delete/<int:link_registry_id>', link_registry.link_registry_delete, name='link_registry_delete'),
+
+    # Instance Info URL
+    path('instances', link_registry.instance_info, name='instance_info'),
+    path('instance/add', link_registry.instance_info_add, name='instance_info_add'),
+    path('instance/edit/<int:instance_info_id>', link_registry.instance_info_edit, name='instance_info_edit'),
+    path('instance/delete/<int:instance_info_id>', link_registry.instance_info_delete, name='instance_info_delete'),
 
     # Attendance URLs
     path('attendances', attendance.attendances, name='attendances'),
@@ -75,19 +81,17 @@ urlpatterns = [
 
     # Device Access URLs
     path('device/api/metadata', device_access.metadata, name='metadata'),
-    path('device/api/sync-data', device_access.sync_data, name='sync_data'),
     path('device/api/login', device_access.device_login, name='device_login'),
     path('device/api/health', device_access.health_check, name='device_health_check'),
     path('device/api/register', device_access.register_device, name='device_register'),
     path('device/api/unregister', device_access.unregister_device, name='device_unregister'),
     # Device Management URLs
-    path('device/api/list', device_access.list_devices, name='device_list'),
-    path('device/api/metadatas', device_access.get_metadata, name='metadatas'),
-    path('device/api/sync/status', device_access.sync_status, name='sync_status'),
-    path('device/api/synced', device_access.list_synced_data, name='list_synced_data'),
-    path('device/api/public/login', device_access.device_public_login, name='device_public_login'),
+    path('device/list', device_access.list_devices, name='device_list'),
+    path('device/view/<int:id>', device_access.device_view, name='device_view'),
+    # Device Notification URL
     path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
-    # Test Device URLs
-    path('device/test1', device_access.test1, name='test1'),
-    path('device/test2', device_access.test2, name='test2'),
+    
+    # Test URLs
+    path('device/test1', test.test1, name='test1'),
+    path('device/test2', test.test2, name='test2'),
 ]
