@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% load static %}
+{% if not user.is_authenticated %}
+    {% block navbar %}{% endblock %}
+{% endif %}
+{% block title %}Add Public User{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+        {% if user.is_authenticated %}
+		<div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Public User</h2>
+            {% else %}
+			    <h2 class="fw-bold">Add Public User</h2>
+            {% endif %}
+		</div>
+        {% else %}
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Public User</h2>
+		</div>
+        {% endif %}
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- Username & Password -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Username</label>
+                    {{ form.username }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Password</label>
+                    {{ form.password }}
+                </div>
+            </div>
+
+            <!-- Name & Business Name -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Name</label>
+                    {{ form.name }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Business Name</label>
+                    {{ form.business_name }}
+                </div>
+            </div>
+
+            <!-- Phone & Email -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Phone</label>
+                    {{ form.phone }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Email</label>
+                    {{ form.email }}
+                </div>
+            </div>
+
+            <!-- Address -->
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <label class="form-label">Address</label>
+                    {{ form.address }}
+                </div>
+            </div>
+
+            <!-- Pincode & Active -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Pincode</label>
+                    {{ form.pincode }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Active</label>
+                    {{ form.is_active }}
+                </div>
+            </div>
+
+            {% if user.is_authenticated %}
+            <!-- URLs -->
+            <div class="row">
+                <div class="mb-3">
+                    <label class="form-label">URLS</label>
+
+                    <table class="table table-bordered" id="urls-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Urls</th>
+                                <th>
+                                    <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+</button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="urls-body">
+                        </tbody>
+                    </table>
+
+                    <!-- Hidden field -->
+                    <input type="hidden" name="urls" id="urls-data">
+                </div>
+            </div>
+            {% endif %}
+
+            {% if not user.is_authenticated %}
+            <input type="hidden" name="public_user" value="True">
+            {% endif %}
+
+            <!-- Submit -->
+			<div class="d-flex gap-2 mt-4">
+				<button type="submit" class="btn btn-primary btn-lg flex-fill">
+					<i class="fas fa-check me-2"></i>
+				</button>
+                
+                {% if user.is_authenticated %}
+                {% if is_edit %}
+                <a href="{% url 'public_user_delete' public_user.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+					<i class="fas fa-trash me-2"></i>
+				</a>
+                {% endif %}
+
+                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
+					<i class="fas fa-arrow-left me-2"></i>
+				</a>
+                {% endif %}
+			</div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+    function showDeleteAlert() {
+        swal.fire({
+            title: 'Link Deleted',
+            text: 'Do You want to delete this link?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{% url 'public_user_delete' public_user.id %}";
+            }
+        });
+    }
+
+{% if user.is_authenticated %}
+    // Existing data from Django (for edit page) as a dictionary
+    let existingData = {{ form.instance.urls|default:"{}"|safe }};
+
+    // Load existing rows
+    window.onload = function () {
+        if (existingData && Object.keys(existingData).length > 0) {
+            // Iterate over dictionary entries
+            for (const [name, url] of Object.entries(existingData)) {
+                addRow(name, url);
+            }
+        } else {
+            addRow(); // empty row for new form
+        }
+    };
+
+    function addRow(name = "", url = "") {
+        let table = document.getElementById("urls-body");
+
+        let row = `
+            <tr>
+                <td><input type="text" class="form-control name" value="${name}"></td>
+                <td><input type="text" class="form-control url" value="${url}"></td>
+                <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">-</button></td>
+            </tr>
+        `;
+        table.insertAdjacentHTML('beforeend', row);
+    }
+
+    function removeRow(btn) {
+        let row = btn.closest("tr");
+        row.remove();
+    }
+
+    // Convert table → JSON before submit
+    document.querySelector("form").addEventListener("submit", function (event) {
+        let data = {};
+
+        document.querySelectorAll("#urls-body tr").forEach(row => {
+            let name = row.querySelector(".name").value.trim();
+            let url = row.querySelector(".url").value.trim();
+
+            if (name && url) {
+                data[name] = url; // use name as key, url as value
+            }
+        });
+
+        document.getElementById("urls-data").value = JSON.stringify(data);
+    });
+{% endif %}
+</script>
+{% endif %}
+{% endblock %}

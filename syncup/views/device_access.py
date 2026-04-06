@@ -1,15 +1,18 @@
-from django.db.models import F
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from django.db.models import F, Q
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.contrib.auth import authenticate
 from django.utils.timezone import datetime, now
 from django.views.decorators.csrf import csrf_exempt
+from django.core.exceptions import ObjectDoesNotExist
 # Python standard libraries
 import re
 import json
+import random
+import string
 import requests
 import phonenumbers
 from ..utils import get_fcm_token
@@ -18,7 +21,7 @@ from phonenumbers import NumberParseException
 # Models
 from ..models import (
     CallLog, Contact, SystemInfo, User,
-    LinkRegistry, InstanceInfo,
+    LinkRegistry, InstanceInfo, PublicUser,
     Device, Location, SIMCard, DeviceInfo, NetworkInfo
 )
 
@@ -62,6 +65,8 @@ def device_login(request):
         }, status=400)
     if instance == "S1":
         return syncup_user(email_or_username, password, device_id)
+    elif instance == "S10":
+        return syncup_public_user(email_or_username, password, device_id)
     else:
         payload = {
             "authuser": email_or_username,
@@ -84,18 +89,94 @@ def syncup_user(email_or_username, password, device_id):
         }, status=401)
     try:
         profile = user.userprofile
-    except:
+    except ObjectDoesNotExist:
         profile = None
     links = LinkRegistry.objects.filter(user=profile, is_active=True)
     urls = {}
     for link in links:
         urls[link.name] = link.url
+    urls["SyncUp"] = f"{PROJ01_URL}/api/auth/login?data={profile.encoded_credentials}"
     data = {
         "success": True,
         "username": profile.name if profile and profile.name else user.username,
         "device_id": device_id,
         "business_name": profile.name if profile else "MS",
         "message": f"Welcome back, {profile.name if profile else user.username}!",
+        "urls": urls,
+        "sync_required": True,
+    }
+    return JsonResponse(data)
+
+def generate_random_username():
+    length = 8  # Set the length of the username
+    characters = string.ascii_lowercase + string.digits  # Characters to use in the username
+    random_username = ''.join(random.choice(characters) for i in range(length))
+    return random_username
+
+def identify_identifier_type(identifier):
+    """ Determine if the identifier is an email, phone number, or username. """
+    
+    # Proper email validation using regular expression
+    email_regex = r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)"
+    if re.match(email_regex, identifier):
+        return "email"
+    
+    # Proper phone number validation: 7 to 15 digits, optional leading '+'
+    phone_regex = r"^\+?\d{7,15}$"
+    if re.match(phone_regex, identifier):
+        return "phone"
+    
+    # Default case for username (if it doesn't match email or phone pattern)
+    return "username"
+
+def syncup_public_user(email_or_username, password, device_id):
+    try:
+        # Try to get user by email, username, or phone
+        user = PublicUser.objects.get(
+            Q(email=email_or_username) | Q(username=email_or_username) | Q(phone=email_or_username)
+        )
+        if not user.password == password.strip().lower():
+            return JsonResponse({
+                "success": False,
+                "message": "User is available but password is incorrect, please check and try again"
+            }, status=401)
+    except ObjectDoesNotExist:
+        identifier_type = identify_identifier_type(email_or_username)
+        if identifier_type == "email":
+            user = PublicUser.objects.create(
+                email=email_or_username,
+                password=password.strip().lower(),
+                username=generate_random_username(),
+                is_active=True
+            )
+        elif identifier_type == "phone":
+            user = PublicUser.objects.create(
+                phone=email_or_username,
+                password=password.strip().lower(),
+                username=generate_random_username(),
+                is_active=True
+            )
+        else:  # Username is provided
+            user = PublicUser.objects.create(
+                username=email_or_username,
+                password=password.strip().lower(),
+                is_active=True
+            )
+    
+    if not user.is_active:
+        return JsonResponse({
+            "success": False,
+            "message": "User is inactive, please contact support"
+        }, status=403)
+
+    urls = user.urls if user.urls else {}
+    urls["SyncUp"] = f"{PROJ01_URL}/public-user/edit/{user.id}"
+    data = {
+        "success": True,
+        "username": user.name if user.name else user.username,
+        "device_id": device_id,
+        "business_name": "SyncUp Public",
+        "message": f"Welcome back, {user.username}!",
         "urls": urls,
         "sync_required": True,
     }
@@ -196,8 +277,8 @@ def list_devices(request):
 def send_notification(request):
     try:
         data = json.loads(request.body)
-    except:
-        data = {}
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     target = data.get("target", "all")
     user_id = data.get("user_id")
     device_id = data.get("device_id")
@@ -218,7 +299,12 @@ def send_notification(request):
         return JsonResponse({"success": False, "message": "Invalid target"}, status=400)
     if not tokens:
         return JsonResponse({"success": False, "message": "No devices"}, status=400)
-    sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://picsum.photos/400/300")
+    if data.get("data_only"):
+        sent, failed = send_fcm_notifications_data_only(tokens, title, body)
+        print(f"Data-only notification sent to {len(sent)} devices, failed for {len(failed)} devices")
+    else:
+        sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://picsum.photos/400/300")
+        print(f"Notification sent to {len(sent)} devices, failed for {len(failed)} devices")
     if failed:
         Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
         Device.objects.filter(push_token__in=failed).update(retry_count=F('retry_count') + 1)
@@ -264,6 +350,46 @@ def send_fcm_notifications(tokens, title, body, data, image=None):
                         }
                     },
                     "data": msg_data,
+                }
+            }
+            response = requests.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            if response.status_code == 200:
+                sent.append(token)
+            else:
+                failed.append(token)
+        except Exception as e:
+            failed.append(token)
+    return sent, failed
+
+def send_fcm_notifications_data_only(tokens, title, body):
+    """
+    Send push notifications via Firebase Cloud Messaging v1 API
+    Returns: (sent_count, failed_count)
+    """
+    access_token = get_fcm_token()
+    if not access_token:
+        return 0, len(tokens)
+    sent = []
+    failed = []
+    url = f"https://fcm.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/messages:send"
+    for token in tokens:
+        try:
+            data = {
+                "title": "Metadata Update",
+                "body": body,
+                "push": "metadata",
+            }
+            payload = {
+                "message": {
+                    "token": token,
+                    "data": data,
                 }
             }
             response = requests.post(
@@ -456,14 +582,6 @@ def metadata(request):
             else:
                 ts = None
 
-            # Convert date_time string
-            dt_str = log.get("date_time")
-            if dt_str:
-                dt = datetime.strptime(dt_str, "%d %b %Y %I:%M:%S %p")
-                dt = timezone.make_aware(dt)
-            else:
-                dt = None
-
             CallLog.objects.update_or_create(
                 device=device,
                 phone_number=log.get("phone_number"),
@@ -473,7 +591,7 @@ def metadata(request):
                     "call_type": log.get("type"),
                     "duration_seconds": log.get("duration"),
                     "raw_type": log.get("raw_type"),
-                    "date_time": dt
+                    "date_time": log.get("date_time")
                 }
             )
 

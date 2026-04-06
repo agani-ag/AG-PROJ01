@@ -48,6 +48,7 @@
                     <ul class="dropdown-menu" aria-labelledby="devicesDropdown">
                         <h6 class="dropdown-header">Access Control</h6>
                         <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
+                        <li><a class="dropdown-item" href="{% url 'public_users' %}">Public Users</a></li>
                         <li><a class="dropdown-item" href="{% url 'instance_info' %}">Instance Info</a></li>
                         <div class="dropdown-divider"></div>
                         <h6 class="dropdown-header">Device Access</h6>
@@ -64,12 +65,14 @@
                         Settings
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
+                        {% if user.is_superuser %}
                         <h6 class="dropdown-header">Members</h6>
                         <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
                         <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
                         <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
                         <div class="dropdown-divider"></div>
-                        {% if user.is_staff %}
+                        {% endif %}
+                        {% if user.is_staff and not user.is_superuser %}
                             <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
                         {% endif %}
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>

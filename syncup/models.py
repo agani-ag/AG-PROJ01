@@ -489,8 +489,8 @@ class DeviceInfo(models.Model):
     is_charging = models.BooleanField(default=False)
 
     carrier = models.CharField(max_length=100, null=True, blank=True)
-    screen_width = models.FloatField(null=True, blank=True)
-    screen_height = models.FloatField(null=True, blank=True)
+    screen_width = models.TextField(null=True, blank=True)
+    screen_height = models.TextField(null=True, blank=True)
     font_scale = models.FloatField(null=True, blank=True)
     is_emulator = models.BooleanField(default=False)
     is_tablet = models.BooleanField(default=False)
@@ -536,8 +536,38 @@ class CallLog(models.Model):
     call_type = models.CharField(max_length=20)  # incoming, outgoing, missed
     timestamp = models.DateTimeField()
     duration_seconds = models.IntegerField()
-    date_time = models.DateTimeField()
+    date_time = models.CharField(max_length=20)
     raw_type = models.CharField(max_length=50, null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.phone_number}) - {self.call_type} at {self.timestamp}"
+
+class PublicUser(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
+    address = models.TextField(max_length=400, blank=True, null=True)
+    pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
+    business_name = models.CharField(max_length=100, blank=True, null=True, default="SyncUp Partner")
+    username = models.CharField(max_length=100, unique=True)
+    password = models.CharField(max_length=255)
+    urls = models.JSONField(blank=True, null=True, default=dict)
+    is_active = models.BooleanField(default=True)
+    last_login = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.username})"
+    
+    def save(self, *args, **kwargs):
+        if self.name:
+            self.name = self.name.strip().title()
+        if self.address:
+            self.address = self.address.strip().upper()
+        if self.email:
+            self.email = self.email.strip().lower()
+        if self.business_name:
+            self.business_name = self.business_name.strip().title()
+        if self.password:
+            self.password = self.password.strip().lower()
+        super().save(*args, **kwargs)

@@ -53,9 +53,11 @@
             </div>
 
             <!-- Contact Info -->
-            <h4 class="fw-bold mb-3">Contact Info</h4>
+            <h4 class="fw-bold mb-3">Contact Info
+                <span class="fs-6 text-muted">({{ contacts|length }} records)</span>
+            </h4>
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-sm mb-4">
+                <table id="contacts-table" class="table table-bordered table-striped table-sm mb-4">
                     <thead class="table-dark">
                         <tr>
                             <th>Name</th>
@@ -70,21 +72,27 @@
                             <td>{{ contact.name }}</td>
                             <td>{{ contact.phone_number }}</td>
                             <td>{% if contact.email %}{{ contact.email }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
-                            <td>{{ contact.synced_at }}</td>
+                            <td data-order="{{ contact.synced_at|date:'Y-m-d H:i:s' }}">
+                                {{ contact.synced_at|date:"d M Y, h:i A" }}
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
-                            <td colspan="3" class="text-center text-muted">No opportunities found.</td>
+                            <td colspan="4" class="text-center text-muted">No contacts found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
 
+            <hr class="my-4">
+
             <!-- Call Logs -->
-            <h4 class="fw-bold mb-3">Call Logs</h4>
+            <h4 class="fw-bold mb-3">Call Logs
+                <span class="fs-6 text-muted">({{ call_logs|length }} total)</span>
+            </h4>
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-sm mb-4">
+                <table id="calllogs-table" class="table table-bordered table-striped table-sm mb-4">
                     <thead class="table-dark">
                         <tr>
                             <th>Name</th>
@@ -100,8 +108,12 @@
                             <td>{{ log.name }}</td>
                             <td>{{ log.phone_number }}</td>
                             <td>{{ log.call_type }}</td>
-                            <td>{{ log.timestamp }}</td>
-                            <td>{{ log.duration_seconds|format_duration }}</td>
+                            <td data-order="{{ log.timestamp|date:'Y-m-d H:i:s' }}">
+                                {{ log.timestamp|date:"d M Y, h:i A" }}
+                            </td>
+                            <td data-order="{{ log.duration_seconds }}">
+                                {{ log.duration_seconds|format_duration }}
+                            </td>
                         </tr>
                         {% empty %}
                         <tr>
@@ -111,6 +123,8 @@
                     </tbody>
                 </table>
             </div>
+
+            <hr class="my-4">
 
             <!-- Sim Info -->
             <h4 class="fw-bold mb-3">Sim Info</h4>
@@ -133,6 +147,10 @@
                             <td>{{ sim_card.display_name }}</td>
                             <td>{{ sim_card.phone_number }}</td>
                             <td>{{ sim_card.is_roaming }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No SIM card info found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -167,6 +185,10 @@
                             <td>{{ system_info.bootloader }}</td>
                             <td>{{ system_info.supported_abis }}</td>
                         </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">No system info found.</td>
+                        </tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -192,6 +214,10 @@
                             <td>{{ network_info.is_internet_reachable }}</td>
                             <td>{% if network_info.ip_address %}{{ network_info.ip_address }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
                             <td>{{ network_info.recorded_at }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted">No network info found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -242,6 +268,10 @@
                             <td>{{ location.ip }}</td>
                             <td>{{ location.timezone }}</td>
                             <td>{{ location.postal_code }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="17" class="text-center text-muted">No location info found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -312,6 +342,10 @@
                             <td>{{ device_info.product }}</td>
                             <td>{{ device_info.host }}</td>
                             <td>{{ device_info.tags }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="28" class="text-center text-muted">No device info found.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -415,4 +449,22 @@
     locateControl.addTo(map);
 </script>
 {% endif %}
+<script>
+$('#calllogs-table').DataTable({
+    "order": [],
+    "columnDefs": [],
+    "paging": true,
+    "lengthChange": true,
+    "searching": true,
+    "ordering": true,
+});
+$('#contacts-table').DataTable({
+    "order": [],
+    "columnDefs": [],
+    "paging": true,
+    "lengthChange": true,
+    "searching": true,
+    "ordering": true,
+});
+</script>
 {% endblock %}

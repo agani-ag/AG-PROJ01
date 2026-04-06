@@ -8,7 +8,7 @@ from django.contrib.auth.forms import (
 from .models import (
     ActivityLog, MaterialRequest, UserProfile,
     Worker, Leads, LinkRegistry, InstanceInfo,
-    Opportunity, WorkerCommissions
+    Opportunity, WorkerCommissions, PublicUser
 
 )
 from urllib.parse import urlparse
@@ -68,6 +68,23 @@ class UserProfileEditForm(ModelForm):
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
+        }
+
+class PublicUserForm(ModelForm):
+    class Meta:
+        model = PublicUser
+        fields = ['name', 'email', 'phone', 'address', 'pincode', 
+                  'business_name', 'username', 'password', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'pincode': forms.NumberInput(attrs={'class': 'form-control'}),
+            'business_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'username': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
+            'password': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
 
 class LinkRegistryForm(ModelForm):

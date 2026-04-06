@@ -25,6 +25,12 @@ urlpatterns = [
     path('profile/delete/<int:user_id>/', profile.profile_delete, name='profile_delete'),
     path('profile/admin/edit/<int:user_id>/', profile.admin_profile_edit, name='profile_admin_edit'),
 
+    # Public User URLs
+    path('public-users', profile.public_users, name='public_users'),
+    path('public-user/add', profile.public_user_add, name='public_user_add'),
+    path('public-user/edit/<int:public_user_id>', profile.public_user_edit, name='public_user_edit'),
+    path('public-user/delete/<int:public_user_id>', profile.public_user_delete, name='public_user_delete'),
+
     # Link Registry URL
     path('link-registry', link_registry.link_registry, name='link_registry'),
     path('link-registry/add', link_registry.link_registry_add, name='link_registry_add'),

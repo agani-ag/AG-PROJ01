@@ -1,4 +1,6 @@
 # Django imports
+import json
+
 from django.contrib import messages
 from django.shortcuts import (
     render, redirect, get_object_or_404
@@ -8,9 +10,11 @@ from django.contrib.auth.decorators import login_required
 
 # Imports
 from ..forms import (
+    PublicUserForm,
     UserProfileEditForm
 )
 from ..models import (
+    PublicUser,
     UserProfile
 )
 
@@ -70,3 +74,67 @@ def profile_delete(request, user_id):
         user.delete()
         messages.success(request, "User deleted successfully!")
     return redirect('profiles')
+
+# =============== PUBLIC USER VIEWS ===============
+@login_required
+def public_users(request):
+    context = {}
+    context["public_users"] = PublicUser.objects.all()
+    return render(request, 'profile/public_users.html', context)
+
+@login_required
+def public_user_add(request):
+    context = {}
+    if request.method == 'POST':
+        form =  PublicUserForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Public User added successfully.')
+            return redirect('public_users')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = PublicUserForm()
+    context['form'] = form
+    return render(request, 'profile/public_user_edit.html', context)
+
+# @login_required
+def public_user_edit(request, public_user_id):
+    context = {}
+    public_user = PublicUser.objects.filter(id=public_user_id).first()
+    if not public_user:
+        messages.error(request, 'Public User not found.')
+        return redirect('public_users')
+    if request.method == 'POST':
+        form = PublicUserForm(request.POST, instance=public_user)
+        redirection = True
+        if request.POST.get('public_user') == 'True' and not request.user.is_authenticated:
+            messages.warning(request, 'The page is edited by public user.')
+            redirection = False
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if redirection:
+                urls_data = request.POST.get('urls')
+                obj.urls = json.loads(urls_data) if urls_data else {}
+            obj.save()
+            messages.success(request, 'Public User updated successfully.')
+            if redirection:
+                return redirect('public_users')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = PublicUserForm(instance=public_user)
+    context['form'] = form
+    context['public_user'] = public_user
+    context['is_edit'] = True
+    return render(request, 'profile/public_user_edit.html', context)
+
+@login_required
+def public_user_delete(request, public_user_id):
+    public_user = PublicUser.objects.filter(id=public_user_id).first()
+    if public_user:
+        public_user.delete()
+        messages.success(request, 'Public User deleted successfully.')
+    else:
+        messages.error(request, 'Public User not found.')
+    return redirect('public_users')
