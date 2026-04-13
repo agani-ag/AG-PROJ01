@@ -330,3 +330,37 @@ img {
         width: 100% !important;
     }
 }
+
+/* Beautiful PIN boxes */
+.pin-container {
+    display: flex !important;
+    gap: 12px !important;
+    justify-content: center !important;
+    margin: 25px 0 !important;
+}
+
+.pin-input {
+    width: 60px !important;
+    height: 60px !important;
+    font-size: 24px !important;
+    font-weight: bold !important;
+    text-align: center !important;
+    border: 3px solid #e0e6ed !important;
+    border-radius: 12px !important;
+    background: linear-gradient(145deg, #ffffff, #f8f9fa) !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    outline: none !important;
+    caret-color: transparent !important;
+}
+
+.pin-input:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15) !important;
+    transform: translateY(-2px) !important;
+    background: linear-gradient(145deg, #fff, #f0f7ff) !important;
+}
+
+.pin-input:valid {
+    border-color: #059669 !important;
+}

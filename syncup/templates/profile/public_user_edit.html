@@ -203,6 +203,8 @@
 
         document.getElementById("urls-data").value = JSON.stringify(data);
     });
+{% else %}
+    document.getElementById("id_username").readOnly = true;
 {% endif %}
 </script>
 {% endif %}

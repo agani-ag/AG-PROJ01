@@ -357,98 +357,14 @@
                 <a href="{% url 'device_list' %}" class="btn btn-danger w-100">Back To Devices</a>
             </div>
             
+            <div id="map" style="height: 500px;"></div>
+
         </div>
     </div>
 </div>
 {% endblock %}
+
 {% block script %}
-{% if lead.latitude and lead.longitude %}
-<script>
-    var latitude = {{ lead.latitude }};
-    var longitude = {{ lead.longitude }};
-
-    // Initialize map centered on lead location
-    var map = L.map('map').setView([latitude, longitude], 13);
-
-    // Base Layers
-    let cartoLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let darkLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let topoLayer = L.tileLayer(
-        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenTopoMap'
-        }
-    );
-
-    let osmLayer = L.tileLayer(
-        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenStreetMap'
-        }
-    );
-
-    let satelliteLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-        {
-            attribution: '&copy; Google',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-
-    // Add default base layer
-    cartoLayer.addTo(map);
-
-    // Layer control
-    let baseMaps = {
-        "☀️ Light": cartoLayer,
-        "🌙 Dark": darkLayer,
-        "⛰️ Terrain": topoLayer,
-        "🗺️ OSM": osmLayer,
-        "🛰️ Satellite": satelliteLayer
-    };
-    L.control.layers(baseMaps).addTo(map);
-
-    // Marker at lead location (non-draggable)
-    let marker = L.marker([latitude, longitude]).addTo(map);
-
-    // 📍 Add "Lead Location" button on map
-    let locateControl = L.control({ position: 'topleft' });
-
-    locateControl.onAdd = function(map) {
-        let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        div.style.backgroundColor = 'white';
-        div.style.width = '34px';
-        div.style.height = '34px';
-        div.style.cursor = 'pointer';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'center';
-        div.title = "Lead Location";
-        div.innerHTML = '📍';
-
-        div.onclick = function(e) {
-            e.stopPropagation(); // Prevent map click events
-            map.setView([latitude, longitude], 15, { animate: true });
-        };
-
-        return div;
-    };
-
-    locateControl.addTo(map);
-</script>
-{% endif %}
 <script>
 $('#calllogs-table').DataTable({
     "order": [],
@@ -467,4 +383,191 @@ $('#contacts-table').DataTable({
     "ordering": true,
 });
 </script>
+{% if locations %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    var locations = [
+        {% for location in locations %}
+        {
+            latitude: {{ location.latitude }},
+            longitude: {{ location.longitude }}
+        },
+        {% endfor %}
+    ];
+
+    // ✅ Initialize map
+    var map = L.map('map').setView([locations[0].latitude, locations[0].longitude], 6);
+
+    // =========================
+    // 🌍 BASE LAYERS
+    // =========================
+    let cartoLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        { attribution: '&copy; OpenStreetMap &copy; CartoDB' }
+    );
+
+    let darkLayer = L.tileLayer(
+        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        { attribution: '&copy; OpenStreetMap &copy; CartoDB' }
+    );
+
+    let topoLayer = L.tileLayer(
+        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        { attribution: '&copy; OpenTopoMap' }
+    );
+
+    let osmLayer = L.tileLayer(
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        { attribution: '&copy; OpenStreetMap' }
+    );
+
+    let googleLayer = L.tileLayer(
+        'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+        { 
+            attribution: '&copy; Google Maps',
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }
+    );
+    let satelliteLayer = L.tileLayer(
+        'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+        {
+            attribution: '&copy; Google',
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }
+    );
+    googleLayer.addTo(map);
+
+    let baseMaps = {
+        "☀️ Light": cartoLayer,
+        "🌙 Dark": darkLayer,
+        "🗺️ Google": googleLayer,
+        "⛰️ Terrain": topoLayer,
+        "🗺️ OSM": osmLayer,
+        "🛰️ Satellite": satelliteLayer
+    };
+
+    L.control.layers(baseMaps).addTo(map);
+
+    // =========================
+    // 📍 TIMELINE MARKERS + PATH
+    // =========================
+    let latlngs = [];
+
+    locations.forEach((loc, index) => {
+        let latlng = [loc.latitude, loc.longitude];
+        latlngs.push(latlng);
+
+        // 🔢 Numbered marker
+        L.marker(latlng, {
+            icon: L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="
+                    background:#007bff;
+                    color:white;
+                    border-radius:50%;
+                    width:28px;
+                    height:28px;
+                    text-align:center;
+                    line-height:28px;
+                    font-weight:bold;">
+                    ${index + 1}
+                </div>`
+            })
+        })
+        .addTo(map)
+        .bindPopup("Stop " + (index + 1));
+    });
+
+    // 🔵 Draw path
+    let polyline = L.polyline(latlngs, {
+        color: 'blue',
+        weight: 4
+    }).addTo(map);
+
+    map.fitBounds(polyline.getBounds());
+
+    // =========================
+    // ▶️ TIMELINE ANIMATION
+    // =========================
+    let i = 0;
+    let playing = false;
+
+    function playTimeline() {
+        if (playing) return;
+        playing = true;
+        i = 0;
+
+        function step() {
+            if (i >= latlngs.length) {
+                playing = false;
+                return;
+            }
+
+            map.setView(latlngs[i], 10, { animate: true });
+
+            i++;
+            setTimeout(step, 1500);
+        }
+
+        step();
+    }
+
+    // =========================
+    // 🎛️ CUSTOM CONTROLS
+    // =========================
+
+    // ▶️ Play button
+    let playControl = L.control({ position: 'topleft' });
+
+    playControl.onAdd = function() {
+        let div = L.DomUtil.create('div', 'leaflet-bar');
+        div.style.background = 'white';
+        div.style.width = '34px';
+        div.style.height = '34px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.cursor = 'pointer';
+        div.title = "Play Timeline";
+        div.innerHTML = '▶️';
+
+        div.onclick = function(e) {
+            e.stopPropagation();
+            playTimeline();
+        };
+
+        return div;
+    };
+
+    playControl.addTo(map);
+
+    // 📍 Go to start button
+    let startControl = L.control({ position: 'topleft' });
+
+    startControl.onAdd = function() {
+        let div = L.DomUtil.create('div', 'leaflet-bar');
+        div.style.background = 'white';
+        div.style.width = '34px';
+        div.style.height = '34px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.cursor = 'pointer';
+        div.title = "Go to Start";
+        div.innerHTML = '📍';
+
+        div.onclick = function(e) {
+            e.stopPropagation();
+            map.setView(latlngs[0], 10, { animate: true });
+        };
+
+        return div;
+    };
+
+    startControl.addTo(map);
+
+});
+</script>
+{% endif %}
 {% endblock %}
