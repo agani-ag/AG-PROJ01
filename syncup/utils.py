@@ -32,7 +32,10 @@ def send_telegram_message(chatID: int, message):
     params = {'chat_id': GROUPS[chatID],'text': message,'parse_mode': 'MarkdownV2'}
     session = requests.Session()
     response = session.get(url, params=params)
-    return response.json()
+    data = response.json()
+    if not data.get('ok'):
+        raise Exception(data.get('description', 'Unknown Telegram error'))
+    return data
 
 # =============== Attendance Generation ===============
 def generate_attendance(user, year, month):
