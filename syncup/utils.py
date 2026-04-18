@@ -30,7 +30,9 @@ BOT = settings.TELEGRAM_BOT_TOKEN
 def send_telegram_message(chatID: int, message):
     url = f'https://api.telegram.org/bot{BOT}/sendMessage'
     params = {'chat_id': GROUPS[chatID],'text': message,'parse_mode': 'MarkdownV2'}
-    response = requests.get(url, params=params)
+    session = requests.Session()
+    session.trust_env = False
+    response = session.get(url, params=params)
     return response.json()
 
 # =============== Attendance Generation ===============

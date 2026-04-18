@@ -253,11 +253,11 @@ def unregister_device(request):
         return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     device_id = data.get("device_id")
     user_id = data.get("user_id")
-    deleted, _ = Device.objects.filter(
+    updated, _ = Device.objects.filter(
         device_id=device_id,
         user_id=user_id,
-    ).delete()
-    if deleted:
+    ).update(is_active=False)
+    if updated:
         return JsonResponse({"success": True})
     else:
         return JsonResponse({"success": False, "message": "Not found"}, status=404)

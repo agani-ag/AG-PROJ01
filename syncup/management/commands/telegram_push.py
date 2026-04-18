@@ -30,7 +30,17 @@ class Command(BaseCommand):
         cheque_data = cheque1.json()
         collection_data = collection_days1.json()
         # Telegram Push
-        send_telegram_message(0, data1['markdown'])
-        send_telegram_message(0, data2['markdown'])
-        send_telegram_message(0, cheque_data['markdown'])
-        send_telegram_message(0, collection_data['markdown'])
+        messages = [
+            ('overdue_90', data1.get('markdown')),
+            ('overdue_120', data2.get('markdown')),
+            ('cheque_reminder', cheque_data.get('markdown')),
+            ('collection_days', collection_data.get('markdown')),
+        ]
+        for label, msg in messages:
+            if not msg:
+                self.stderr.write(f'[{label}] No markdown content, skipping.')
+                continue
+            try:
+                send_telegram_message(0, msg)
+            except Exception as e:
+                self.stderr.write(f'[{label}] Failed to send Telegram message: {e}')
