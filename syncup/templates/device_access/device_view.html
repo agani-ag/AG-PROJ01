@@ -224,60 +224,6 @@
                 </table>
             </div>
 
-            <!-- Location Info -->
-            <h4 class="fw-bold mb-3">Location Info</h4>
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Latitude</th>
-                            <th>Longitude</th>
-                            <th>Altitude</th>
-                            <th>Accuracy</th>
-                            <th>Heading</th>
-                            <th>Speed</th>
-                            <th>Timestamp</th>
-                            <th>Is GPS</th>
-                            <th>Is Approximate</th>
-                            <th>Method</th>
-                            <th>City</th>
-                            <th>Region</th>
-                            <th>Country</th>
-                            <th>ISP</th>
-                            <th>IP</th>
-                            <th>Timezone</th>
-                            <th>Postal Code</th>
-                        </tr>
-                    </thead>
-                        {% for location in locations %}
-                        <tr>
-                            <td>{{ location.latitude }}</td>
-                            <td>{{ location.longitude }}</td>
-                            <td>{{ location.altitude }}</td>
-                            <td>{{ location.accuracy }}</td>
-                            <td>{{ location.heading }}</td>
-                            <td>{{ location.speed }}</td>
-                            <td>{{ location.timestamp }}</td>
-                            <td>{{ location.is_gps }}</td>
-                            <td>{{ location.is_approximate }}</td>
-                            <td>{{ location.method }}</td>
-                            <td>{{ location.city }}</td>
-                            <td>{{ location.region }}</td>
-                            <td>{{ location.country }}</td>
-                            <td>{{ location.isp }}</td>
-                            <td>{{ location.ip }}</td>
-                            <td>{{ location.timezone }}</td>
-                            <td>{{ location.postal_code }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="17" class="text-center text-muted">No location info found.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
             <!-- Device Info -->
             <h4 class="fw-bold mb-3">Device Info</h4>
             <div class="table-responsive">
@@ -352,13 +298,68 @@
                 </table>
             </div>
 
+            <!-- Location Info -->
+            <h4 class="fw-bold mb-3">Location Info</h4>
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm mb-4">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Latitude</th>
+                            <th>Longitude</th>
+                            <th>Altitude</th>
+                            <th>Accuracy</th>
+                            <th>Heading</th>
+                            <th>Speed</th>
+                            <th>Timestamp</th>
+                            <th>Is GPS</th>
+                            <th>Is Approximate</th>
+                            <th>Method</th>
+                            <th>City</th>
+                            <th>Region</th>
+                            <th>Country</th>
+                            <th>ISP</th>
+                            <th>IP</th>
+                            <th>Timezone</th>
+                            <th>Postal Code</th>
+                        </tr>
+                    </thead>
+                        {% for location in locations %}
+                        <tr>
+                            <td>{{ location.latitude }}</td>
+                            <td>{{ location.longitude }}</td>
+                            <td>{{ location.altitude }}</td>
+                            <td>{{ location.accuracy }}</td>
+                            <td>{{ location.heading }}</td>
+                            <td>{{ location.speed }}</td>
+                            <td>{{ location.timestamp }}</td>
+                            <td>{{ location.is_gps }}</td>
+                            <td>{{ location.is_approximate }}</td>
+                            <td>{{ location.method }}</td>
+                            <td>{{ location.city }}</td>
+                            <td>{{ location.region }}</td>
+                            <td>{{ location.country }}</td>
+                            <td>{{ location.isp }}</td>
+                            <td>{{ location.ip }}</td>
+                            <td>{{ location.timezone }}</td>
+                            <td>{{ location.postal_code }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="17" class="text-center text-muted">No location info found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="map" style="height: 500px;"></div>
+            <hr class="my-4">
+
             <!-- Edit Lead Button -->
             <div class="d-grid gap-2 mb-4">
                 <a href="{% url 'device_list' %}" class="btn btn-danger w-100">Back To Devices</a>
             </div>
             
-            <div id="map" style="height: 500px;"></div>
-
         </div>
     </div>
 </div>
