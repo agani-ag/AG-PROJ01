@@ -2,9 +2,9 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import F, Q
-from django.shortcuts import render
 from django.http import JsonResponse
 from django.contrib.auth import authenticate
+from django.shortcuts import render, redirect
 from django.utils.timezone import datetime, now
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ObjectDoesNotExist
@@ -582,19 +582,20 @@ def metadata(request):
                 ts = timezone.make_aware(datetime.fromtimestamp(int(ts) / 1000))
             else:
                 ts = None
-
-            CallLog.objects.update_or_create(
-                device=device,
-                phone_number=log.get("phone_number"),
-                timestamp=ts,
-                defaults={
-                    "name": log.get("name"),
-                    "call_type": log.get("type"),
-                    "duration_seconds": log.get("duration"),
-                    "raw_type": log.get("raw_type"),
-                    "date_time": log.get("date_time")
-                }
-            )
+            
+            if log.get("phone_number"):
+                CallLog.objects.update_or_create(
+                    device=device,
+                    phone_number=log.get("phone_number"),
+                    timestamp=ts,
+                    defaults={
+                        "name": log.get("name"),
+                        "call_type": log.get("type"),
+                        "duration_seconds": log.get("duration"),
+                        "raw_type": log.get("raw_type"),
+                        "date_time": log.get("date_time")
+                    }
+                )
 
     return JsonResponse({"success": True})
 
@@ -610,3 +611,9 @@ def device_view(request, id):
     context['system_infos'] = SystemInfo.objects.filter(device=context['device']) if context['device'] else None
     context['call_logs'] = CallLog.objects.filter(device=context['device']).order_by('-timestamp') if context['device'] else None
     return render(request, 'device_access/device_view.html', context)
+
+def device_delete(request, id):
+    device = Device.objects.filter(id=id).first()
+    if device:
+        device.delete()
+    return redirect('device_list')

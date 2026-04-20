@@ -356,8 +356,9 @@
             <hr class="my-4">
 
             <!-- Edit Lead Button -->
-            <div class="d-grid gap-2 mb-4">
-                <a href="{% url 'device_list' %}" class="btn btn-danger w-100">Back To Devices</a>
+            <div class="d-flex gap-2">
+                <a href="{% url 'device_delete' device.id %}" class="btn btn-danger w-50">Delete Device</a>
+                <a href="{% url 'device_list' %}" class="btn btn-secondary w-50">Back To Devices</a>
             </div>
             
         </div>

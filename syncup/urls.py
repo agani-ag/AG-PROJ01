@@ -94,6 +94,7 @@ urlpatterns = [
     # Device Management URLs
     path('device/list', device_access.list_devices, name='device_list'),
     path('device/view/<int:id>', device_access.device_view, name='device_view'),
+    path('device/delete/<int:id>', device_access.device_delete, name='device_delete'),
     # Device Notification URL
     path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
     
