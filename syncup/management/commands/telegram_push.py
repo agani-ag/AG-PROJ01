@@ -9,6 +9,7 @@ class Command(BaseCommand):
     help = "Sends a test message via the Telegram bot"
 
     def handle(self, *args, **kwargs):
+        messages = []
         try:
             resp1 = requests.post(f'{BASEURL}/api/reports/overdue', json={
                 'user_ids': [1],
@@ -28,18 +29,18 @@ class Command(BaseCommand):
             # Process responses
             data1 = resp1.json()
             data2 = resp2.json()
+            messages.append(('overdue_90', data1.get('markdown')))
+            messages.append(('overdue_120', data2.get('markdown')))
             cheque_data = cheque1.json()
+            if cheque_data.get('count') != 0:
+                messages.append(('cheque_leaf_reminder', cheque_data.get('markdown')))
             collection_data = collection_days1.json()
+            if collection_data.get('count') != 0:
+                messages.append(('collection_days', collection_data.get('markdown')))
         except Exception as e:
             self.stderr.write(f'Error fetching report data: {e}')
             return
         # Telegram Push
-        messages = [
-            ('overdue_90', data1.get('markdown')),
-            ('overdue_120', data2.get('markdown')),
-            ('cheque_reminder', cheque_data.get('markdown')),
-            ('collection_days', collection_data.get('markdown')),
-        ]
         for label, msg in messages:
             if not msg:
                 self.stderr.write(f'[{label}] No markdown content, skipping.')

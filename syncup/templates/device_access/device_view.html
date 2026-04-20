@@ -25,7 +25,7 @@
                             <th scope="row">Platform</th>
                             <td>{{ device.platform }}</td>
                         </tr>
-                        <tr>
+                        <tr onclick="testNotification()" style="cursor: pointer;">
                             <th scope="row">Device ID</th>
                             <td>{{ device.device_id }}</td>
                         </tr>
@@ -390,10 +390,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var locations = [
         {% for location in locations %}
-        {
-            latitude: {{ location.latitude }},
-            longitude: {{ location.longitude }}
-        },
+            {
+                latitude: {{ location.latitude }},
+                longitude: {{ location.longitude }}
+            },
         {% endfor %}
     ];
 
@@ -569,6 +569,46 @@ document.addEventListener("DOMContentLoaded", function () {
     startControl.addTo(map);
 
 });
+
+function testNotification() {
+    url = "{% url 'send_notification' %}";
+    Swal.fire({
+        title: 'Test Notification',
+        text: `This will send a test notification to {{ device.user_id|capfirst }}. Are you sure?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Send it!'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: url,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    title: "Test Notification",
+                    body: "This is a test",
+                    target: "user",
+                    user_id: "{{ device.user_id }}"
+
+                }),
+                success: function(response) {
+                    Swal.fire(
+                        'Sent!',
+                        `Sent: ${response.sent}, Failed: ${response.failed}`,
+                        'success'
+                    ).then(() => location.reload());
+                },
+                error: function() {
+                    Swal.fire(
+                        'Error!',
+                        'Failed to send notification.',
+                        'error'
+                    );
+                }
+            });
+        }
+    });
+}
 </script>
 {% endif %}
 {% endblock %}
