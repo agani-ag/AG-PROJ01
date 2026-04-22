@@ -237,6 +237,7 @@ def register_device(request):
             "platform": platform,
             "instance": instance,
             "last_login": now(),
+            "is_active": True
         }
     )
     action = "REGISTERED" if created else "UPDATED"
@@ -438,6 +439,8 @@ def metadata(request):
     device_id = data.get("device_id")
     try:
         device = Device.objects.get(device_id=device_id)
+        device.last_background_sync = timezone.now()
+        device.save()
     except Device.DoesNotExist:
         return JsonResponse({"success": False, "error": "Device not found"}, status=404)
 

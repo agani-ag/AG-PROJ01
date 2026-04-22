@@ -38,6 +38,10 @@
                             <td>{{ device.last_login|date:"d-m-Y h:i A" }}</td>
                         </tr>
                         <tr>
+                            <th scope="row">Last Background Sync</th>
+                            <td>{{ device.last_background_sync|date:"d-m-Y h:i A" }}</td>
+                        </tr>
+                        <tr>
                             <th scope="row">Status</th>
                             <td>{% if device.is_active %}
                                 <span class="text-success">Active</span>
