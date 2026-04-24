@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Audit Errors <span class="badge bg-secondary" id="total-badge">{{ errors|length }}</span></h2>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-danger btn-sm" onclick="clearAll()" title="Clear All">
+            <i class="fas fa-trash-alt"></i> Clear All
+        </button>
+    </div>
+</div>
+
+<div class="card section-card">
+    <div class="card-header d-flex justify-content-between align-items-center" style="background:#f8f9fa;">
+        <span class="fw-semibold">Errors</span>
+        <div class="d-flex gap-2 align-items-center">
+            <input type="text" id="quick-search" class="form-control form-control-sm" placeholder="Search..." style="width:200px;">
+            <button class="btn btn-outline-secondary btn-sm" onclick="exportGridCsv()" title="Export CSV">
+                <i class="fas fa-download"></i>
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="resetFilters()" title="Reset Filters">
+                <i class="fas fa-filter-circle-xmark"></i>
+            </button>
+        </div>
+    </div>
+    <div class="smart-table-wrapper">
+        <div id="errors-grid" class="ag-theme-alpine" style="height:560px; width:100%;"></div>
+    </div>
+    <div class="smart-table-footer d-flex justify-content-between align-items-center px-3 py-2">
+        <span class="st-count" id="row-count">0 rows</span>
+        <span class="text-muted small">Click a row to expand details</span>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="errorDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-error-id">Error Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modal-body">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+const errorsData = {{ errors_json|safe }};
+let gridApi = null;
+
+const columnDefs = [
+    { headerName: '#', valueGetter: 'node.rowIndex + 1', maxWidth: 60, flex: 0, filter: false, sortable: false },
+    { field: 'error_id', headerName: 'Error ID', minWidth: 180, flex: 1,
+        cellRenderer: params => {
+            if (!params.value) return '';
+            const short = params.value.length > 22 ? params.value.substring(0, 22) + '…' : params.value;
+            return `<span class="text-primary" style="cursor:pointer;" title="${params.value}">${short}</span>`;
+        }
+    },
+    { field: 'timestamp', headerName: 'Timestamp', minWidth: 160, flex: 1,
+        valueFormatter: p => p.value ? new Date(p.value).toLocaleString() : '' },
+    { field: 'user_id', headerName: 'User', minWidth: 100, flex: 1 },
+    { field: 'device_id', headerName: 'Device', minWidth: 100, flex: 1,
+        cellRenderer: params => {
+            if (!params.value) return '';
+            const short = params.value.length > 12 ? '…' + params.value.slice(-10) : params.value;
+            return `<span class="badge bg-info text-dark" title="${params.value}">${short}</span>`;
+        }
+    },
+    { field: 'source', headerName: 'Source', minWidth: 100, flex: 1 },
+    { field: 'event_type', headerName: 'Event', minWidth: 110, flex: 1 },
+    { field: 'error_type', headerName: 'Error Type', minWidth: 120, flex: 1,
+        cellRenderer: params => params.value ? `<span class="badge bg-danger">${params.value}</span>` : '' },
+    { field: 'http_status', headerName: 'HTTP', maxWidth: 80, flex: 0,
+        cellRenderer: params => {
+            if (!params.value) return '';
+            const cls = params.value >= 500 ? 'bg-danger' : params.value >= 400 ? 'bg-warning text-dark' : 'bg-secondary';
+            return `<span class="badge ${cls}">${params.value}</span>`;
+        }
+    },
+    { field: 'error_message', headerName: 'Message', minWidth: 200, flex: 2,
+        cellRenderer: params => {
+            if (!params.value) return '';
+            const msg = params.value.length > 60 ? params.value.substring(0, 60) + '…' : params.value;
+            return `<span title="${params.value.replace(/"/g, '&quot;')}">${msg}</span>`;
+        }
+    },
+    { field: 'platform', headerName: 'Platform', maxWidth: 100, flex: 0 },
+    { field: 'app_version', headerName: 'Version', maxWidth: 90, flex: 0 },
+];
+
+function initGrid() {
+    const gridDiv = document.querySelector('#errors-grid');
+    const gridOptions = {
+        columnDefs: columnDefs,
+        rowData: errorsData,
+        defaultColDef: {
+            resizable: true,
+            sortable: true,
+            filter: true,
+            floatingFilter: true,
+            minWidth: 60,
+            flex: 1,
+        },
+        pagination: true,
+        paginationPageSize: 50,
+        paginationPageSizeSelector: [25, 50, 100, 500],
+        animateRows: true,
+        onRowClicked: params => showDetail(params.data),
+        onModelUpdated: () => updateRowCount(),
+    };
+    gridApi = agGrid.createGrid(gridDiv, gridOptions);
+    updateRowCount();
+}
+
+function updateRowCount() {
+    if (!gridApi) return;
+    const displayed = gridApi.getDisplayedRowCount();
+    const total = errorsData.length;
+    document.getElementById('row-count').textContent =
+        displayed === total ? `${total} rows` : `${displayed} of ${total} rows`;
+}
+
+function resetFilters() {
+    if (!gridApi) return;
+    gridApi.setFilterModel(null);
+    document.getElementById('quick-search').value = '';
+    gridApi.setGridOption('quickFilterText', '');
+}
+
+function exportGridCsv() {
+    if (!gridApi) return;
+    gridApi.exportDataAsCsv({ fileName: 'audit_errors.csv' });
+}
+
+document.getElementById('quick-search').addEventListener('input', function () {
+    if (gridApi) gridApi.setGridOption('quickFilterText', this.value);
+});
+
+function showDetail(data) {
+    if (!data) return;
+    document.getElementById('modal-error-id').textContent = data.error_id || 'Error Details';
+
+    let html = `
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <h6 class="text-muted mb-2">Context</h6>
+            <table class="table table-sm table-bordered mb-0">
+                <tr><th width="35%">Source</th><td>${data.source || '-'}</td></tr>
+                <tr><th>Event Type</th><td>${data.event_type || '-'}</td></tr>
+                <tr><th>User ID</th><td>${data.user_id || '-'}</td></tr>
+                <tr><th>Device ID</th><td><small>${data.device_id || '-'}</small></td></tr>
+                <tr><th>API URL</th><td><small class="text-break">${data.api_url || '-'}</small></td></tr>
+                <tr><th>App Version</th><td>${data.app_version || '-'}</td></tr>
+                <tr><th>Platform</th><td>${data.platform || '-'}</td></tr>
+                <tr><th>OS Version</th><td>${data.os_version || '-'}</td></tr>
+                <tr><th>Task Elapsed</th><td>${data.task_elapsed_seconds != null ? data.task_elapsed_seconds + 's' : '-'}</td></tr>
+            </table>
+        </div>
+        <div class="col-md-6">
+            <h6 class="text-muted mb-2">Error</h6>
+            <table class="table table-sm table-bordered mb-0">
+                <tr><th width="35%">Type</th><td><span class="badge bg-danger">${data.error_type || '-'}</span></td></tr>
+                <tr><th>HTTP Status</th><td>${data.http_status || '-'} ${data.http_status_text || ''}</td></tr>
+                <tr><th>Message</th><td class="text-break">${data.error_message || '-'}</td></tr>
+            </table>
+        </div>
+    </div>`;
+
+    if (data.response_snippet) {
+        html += `<h6 class="text-muted mb-2">Response Snippet</h6>
+        <pre class="bg-light p-2 rounded small" style="max-height:150px; overflow:auto;">${escapeHtml(data.response_snippet)}</pre>`;
+    }
+    if (data.stack) {
+        html += `<h6 class="text-muted mb-2">Stack Trace</h6>
+        <pre class="bg-dark text-light p-2 rounded small" style="max-height:200px; overflow:auto;">${escapeHtml(data.stack)}</pre>`;
+    }
+    if (data.payload_summary) {
+        html += `<h6 class="text-muted mb-2">Payload Summary</h6>
+        <pre class="bg-light p-2 rounded small" style="max-height:150px; overflow:auto;">${escapeHtml(JSON.stringify(data.payload_summary, null, 2))}</pre>`;
+    }
+    if (data.payload_preview) {
+        html += `<h6 class="text-muted mb-2">Payload Preview</h6>
+        <pre class="bg-light p-2 rounded small" style="max-height:200px; overflow:auto;">${escapeHtml(JSON.stringify(data.payload_preview, null, 2))}</pre>`;
+    }
+
+    html += `<div class="text-muted small mt-2">Received: ${data.created_at ? new Date(data.created_at).toLocaleString() : '-'}</div>`;
+
+    document.getElementById('modal-body').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('errorDetailModal')).show();
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function clearAll() {
+    if (!errorsData.length) return;
+    Swal.fire({
+        title: 'Clear All Audit Errors?',
+        text: `This will delete all ${errorsData.length} error records permanently.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        confirmButtonText: 'Yes, delete all',
+    }).then(result => {
+        if (result.isConfirmed) {
+            fetch('{% url "audit_errors_clear" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Cleared', `${data.deleted} records deleted.`, 'success')
+                        .then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.message || 'Failed', 'error');
+                }
+            });
+        }
+    });
+}
+
+$(document).ready(function () {
+    initGrid();
+});
+</script>
+{% endblock %}

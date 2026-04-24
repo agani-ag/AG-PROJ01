@@ -1163,6 +1163,43 @@ def audit_errors(request):
         "action": "CREATED" if created else "UPDATED"
     })
 
+def audit_errors_list(request):
+    errors = AuditError.objects.all()
+    errors_json = json.dumps([
+        {
+            'error_id': e.error_id,
+            'timestamp': e.timestamp.isoformat() if e.timestamp else None,
+            'source': e.source,
+            'event_type': e.event_type,
+            'user_id': e.user_id,
+            'device_id': e.device_id,
+            'api_url': e.api_url,
+            'app_version': e.app_version,
+            'platform': e.platform,
+            'os_version': e.os_version,
+            'task_elapsed_seconds': e.task_elapsed_seconds,
+            'error_type': e.error_type,
+            'error_message': e.error_message,
+            'http_status': e.http_status,
+            'http_status_text': e.http_status_text,
+            'response_snippet': e.response_snippet,
+            'stack': e.stack,
+            'payload_summary': e.payload_summary,
+            'payload_preview': e.payload_preview,
+            'created_at': e.created_at.isoformat() if e.created_at else None,
+        } for e in errors
+    ])
+    return render(request, 'device_access/audit_errors.html', {
+        'errors': errors,
+        'errors_json': errors_json,
+    })
+
+def audit_errors_clear(request):
+    if request.method != 'POST':
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+    count, _ = AuditError.objects.all().delete()
+    return JsonResponse({"success": True, "deleted": count})
+
 def device_view(request, id):
     context = {}
     context['device'] = Device.objects.filter(id=id).first()
