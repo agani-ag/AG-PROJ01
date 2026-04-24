@@ -35,13 +35,51 @@
         border-radius: 12px 12px 0 0 !important;
     }
     #live-map { height: 600px; border-radius: 0 0 12px 12px; }
-    .network-graph-container { height: 650px; border-radius: 0; background: #1a1a2e; }
+    .network-graph-container { height: 650px; border-radius: 0; background: radial-gradient(ellipse at center, #1e1e3a 0%, #141428 50%, #0d0d1a 100%); position: relative; overflow: hidden; }
+    .network-graph-container::before { content:''; position:absolute; inset:0; background-image: radial-gradient(circle, rgba(102,126,234,0.06) 1px, transparent 1px); background-size: 24px 24px; pointer-events:none; z-index:0; }
+    .network-graph-container svg { position:relative; z-index:1; }
+    .graph-stats-overlay { position:absolute; top:12px; left:12px; z-index:2; display:flex; gap:8px; pointer-events:none; }
+    .graph-stats-overlay .gs-pill { background:rgba(255,255,255,0.08); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.1); border-radius:20px; padding:4px 12px; font-size:0.7rem; font-weight:600; color:rgba(255,255,255,0.7); display:flex; align-items:center; gap:5px; }
+    .graph-stats-overlay .gs-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .graph-label-toggle { display:flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600; color:#888; cursor:pointer; white-space:nowrap; user-select:none; }
+    .graph-label-toggle .form-check-input { width:14px; height:14px; cursor:pointer; }
+    .graph-label-toggle .form-check-input:checked { background-color:#667eea; border-color:#667eea; }
+    .network-graph-container.labels-hidden .node-label { display: none; }
+
+    /* Fullscreen network graph */
+    .network-fullscreen {
+        position: fixed !important;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 9998;
+        border-radius: 0 !important;
+        height: 100vh !important;
+        width: 100vw !important;
+        margin: 0;
+    }
+    .network-fullscreen .network-graph-container { height: calc(100vh - 46px) !important; border-radius: 0 !important; }
+    .network-fullscreen .card-header { border-radius: 0 !important; position:relative; z-index:1; }
+    .network-fullscreen .card-body { display: none; }
+    .btn-fullscreen-graph { background:#fff; border:1px solid #667eea; color:#667eea; border-radius:6px; padding:4px 10px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; display:inline-flex; align-items:center; gap:4px; }
+    .btn-fullscreen-graph:hover { background:#667eea; color:#fff; }
+    @keyframes dashFlow { to { stroke-dashoffset: -24; } }
+    @keyframes pulseGlow { 0%,100% { opacity:0.4; } 50% { opacity:0.8; } }
     #networkSubTabs .nav-link { color: #667eea; font-weight: 600; border-radius: 0; }
-    #networkSubTabs .nav-link.active { background: #1a1a2e; color: #fff; border-bottom-color: #1a1a2e; }
+    #networkSubTabs .nav-link.active { background: #141428; color: #fff; border-bottom-color: #141428; }
     .badge-call-incoming { background: #28a745; }
     .badge-call-outgoing { background: #007bff; }
     .badge-call-missed { background: #dc3545; }
-    .filter-bar { background: #f8f9fa; border-radius: 12px; padding: 15px 20px; margin-bottom: 1.5rem; border: 1px solid #e9ecef; }
+    .badge-call-rejected { background: #fd7e14; }
+    .badge-call-blocked { background: #6c757d; }
+    .filter-bar { background: #f8f9fa; border-radius: 12px; padding: 10px 16px; margin-bottom: 1.5rem; border: 1px solid #e9ecef; }
+    .filter-bar .filter-group { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
+    .filter-bar .filter-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .filter-bar .filter-lbl { font-size: 0.72rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
+    .filter-bar .filter-sep { width: 1px; height: 28px; background: #dee2e6; flex-shrink: 0; }
+    .filter-bar .select2-container { min-width: 160px; }
+    .filter-bar .select2-container--bootstrap-5 .select2-selection { min-height: 31px; font-size: 0.82rem; }
+    .filter-bar .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__rendered { flex-wrap: nowrap; overflow: hidden; }
+    .filter-bar .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice { display: none; }
+    .filter-bar .s2-summary { font-size: 0.8rem; color: #333; padding: 2px 0; }
     .nav-pills .nav-link.active { background: #667eea; }
     .nav-pills .nav-link { color: #667eea; border: 1px solid #667eea; margin: 0 4px; }
     .device-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 20px; color: #fff; }
@@ -93,6 +131,7 @@
     .device-detail-section h6 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #667eea; margin-bottom: 8px; }
     .detail-table th { width: 140px; font-weight: 500; font-size: 0.82rem; color: #555; background: #f8f9fa; }
     .detail-table td { font-size: 0.82rem; }
+
     /* Custom Contact Detail Modal */
     .cd-overlay { position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,30,0.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;transition:opacity 0.3s ease,visibility 0.3s ease; }
     .cd-overlay.cd-active { opacity:1;visibility:visible; }
@@ -122,6 +161,31 @@
     .cd-chip-green { background:#e8f5e9;color:#2e7d32; }
     .cd-chip-blue { background:#e3f2fd;color:#1565c0; }
     .cd-chip-grey { background:#f5f5f5;color:#888; }
+
+    /* Smart Table Styles */
+    .smart-table-wrapper { border-radius: 0 0 12px 12px; overflow: hidden; }
+    .smart-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:10px 14px; background:#f8f9fa; border-bottom:1px solid #e9ecef; }
+    .smart-table-toolbar .st-search { position:relative; }
+    .smart-table-toolbar .st-search input { padding:5px 10px 5px 30px; border:1px solid #dee2e6; border-radius:8px; font-size:0.8rem; width:220px; transition:border-color 0.2s; }
+    .smart-table-toolbar .st-search input:focus { outline:none; border-color:#667eea; box-shadow:0 0 0 2px rgba(102,126,234,0.15); }
+    .smart-table-toolbar .st-search i { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#aaa; font-size:0.75rem; }
+    .smart-table-toolbar .st-actions { display:flex; gap:6px; align-items:center; }
+    .smart-table-toolbar .st-btn { padding:4px 10px; border:1px solid #dee2e6; border-radius:6px; background:#fff; font-size:0.72rem; font-weight:600; color:#555; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; gap:4px; }
+    .smart-table-toolbar .st-btn:hover { border-color:#667eea; color:#667eea; background:#f0f0ff; }
+    .smart-table-toolbar .st-btn.active { background:#667eea; color:#fff; border-color:#667eea; }
+    .smart-table-footer { display:flex; align-items:center; justify-content:space-between; padding:8px 14px; background:#f8f9fa; border-top:1px solid #e9ecef; font-size:0.75rem; color:#888; }
+    .smart-table-footer .st-count { font-weight:600; }
+    .smart-table-footer .st-page-info { display:flex; align-items:center; gap:8px; }
+    .smart-table-footer .st-page-btn { width:28px; height:28px; border:1px solid #dee2e6; border-radius:6px; background:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:0.7rem; color:#555; transition:all 0.15s; }
+    .smart-table-footer .st-page-btn:hover { border-color:#667eea; color:#667eea; }
+    .smart-table-footer .st-page-btn:disabled { opacity:0.4; cursor:default; }
+    .ag-theme-alpine .ag-header { background:#f8f9fa !important; border-bottom:2px solid #e2e5ea !important; }
+    .ag-theme-alpine .ag-header-cell { font-size:0.78rem !important; font-weight:700 !important; color:#444 !important; text-transform:uppercase !important; letter-spacing:0.3px !important; }
+    .ag-theme-alpine .ag-cell { font-size:0.82rem !important; }
+    .ag-theme-alpine .ag-row-even { background:#fff !important; }
+    .ag-theme-alpine .ag-row-odd { background:#fafbfc !important; }
+    .ag-theme-alpine .ag-row:hover { background:#f0f0ff !important; }
+    .ag-theme-alpine .ag-paging-panel { font-size:0.78rem !important; }
 </style>
 {% endblock %}
 
@@ -186,19 +250,20 @@
     <!-- Filter Bar -->
     <div class="filter-bar">
         <form method="GET" id="filterForm">
-            <div class="row g-3 align-items-end">
-                <div class="col-12 col-md-3">
-                    <label class="form-label fw-semibold mb-1"><i class="fas fa-server me-1"></i>Instance</label>
-                    <select id="instanceSelect" class="form-select" multiple>
+            <div class="filter-group">
+                <div class="filter-item">
+                    <span class="filter-lbl"><i class="fas fa-server me-1"></i>Instance</span>
+                    <select id="instanceSelect" class="form-select form-select-sm" multiple style="width:180px;">
                         {% regroup all_devices by instance as instance_list %}
                         {% for inst in instance_list %}
                         <option value="{{ inst.grouper }}">{{ inst.grouper|capfirst }} ({{ inst.list|length }})</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-12 col-md-4">
-                    <label class="form-label fw-semibold mb-1"><i class="fas fa-mobile-alt me-1"></i>Devices</label>
-                    <select name="devices" id="deviceSelect" class="form-select" multiple>
+                <div class="filter-sep"></div>
+                <div class="filter-item" style="flex:1;min-width:0;">
+                    <span class="filter-lbl"><i class="fas fa-mobile-alt me-1"></i>Devices</span>
+                    <select name="devices" id="deviceSelect" class="form-select form-select-sm" multiple style="width:100%;">
                         {% for dev in all_devices %}
                         <option value="{{ dev.id }}"
                             {% if dev.id in selected_ids %}selected{% endif %}
@@ -210,17 +275,16 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fw-semibold mb-1"><i class="fas fa-calendar me-1"></i>From</label>
-                    <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}">
+                <div class="filter-sep"></div>
+                <div class="filter-item">
+                    <span class="filter-lbl"><i class="fas fa-calendar me-1"></i>From</span>
+                    <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}" style="width:145px;">
                 </div>
-                <div class="col-6 col-md-2">
-                    <label class="form-label fw-semibold mb-1">To</label>
-                    <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}">
+                <div class="filter-item">
+                    <span class="filter-lbl">To</span>
+                    <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}" style="width:145px;">
                 </div>
-                <div class="col-auto d-flex align-items-end">
-                    <a href="{% url 'device_dashboard' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-times me-1"></i>Clear All</a>
-                </div>
+                <a href="{% url 'device_dashboard' %}" class="btn btn-outline-secondary btn-sm" title="Clear All Filters"><i class="fas fa-times"></i></a>
             </div>
         </form>
     </div>
@@ -285,31 +349,23 @@
         <!-- ==================== TAB: LOCATION LOG ==================== -->
         <div class="tab-pane fade" id="tab-locations">
             <div class="card section-card">
-                <div class="card-header">
-                    <i class="fas fa-map-pin me-2"></i>Location History ({{ total_locations }} records)
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table id="locations-table" class="table table-bordered table-striped table-sm" style="width:100%;">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Device</th>
-                                    <th>City</th>
-                                    <th>Region</th>
-                                    <th>Lat</th>
-                                    <th>Lng</th>
-                                    <th>Accuracy</th>
-                                    <th>Method</th>
-                                    <th>ISP</th>
-                                    <th>IP</th>
-                                    <th>Timestamp</th>
-                                    <th>Go</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-map-pin me-2"></i>Location History <span class="badge bg-primary ms-1" id="loc-total-badge">{{ total_locations }}</span></span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="st-search" style="position:relative;">
+                            <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:0.75rem;"></i>
+                            <input type="text" id="loc-search" placeholder="Quick search..." style="padding:5px 10px 5px 30px;border:1px solid #dee2e6;border-radius:8px;font-size:0.8rem;width:200px;">
+                        </div>
+                        <button class="st-btn" id="loc-export-csv" title="Export CSV"><i class="fas fa-download"></i> CSV</button>
+                        <button class="st-btn" id="loc-reset-filters" title="Reset all filters"><i class="fas fa-filter-circle-xmark"></i> Reset</button>
                     </div>
+                </div>
+                <div class="smart-table-wrapper">
+                    <div id="locations-grid" class="ag-theme-alpine" style="height:520px; width:100%;"></div>
+                </div>
+                <div class="smart-table-footer">
+                    <span class="st-count" id="loc-row-count"></span>
+                    <span class="text-muted" style="font-size:0.7rem;"><i class="fas fa-info-circle me-1"></i>Click column headers to sort &bull; Type in header filters to search</span>
                 </div>
             </div>
         </div>
@@ -332,17 +388,22 @@
             <div class="tab-content">
                 <!-- ===== CONTACTS NETWORK ===== -->
                 <div class="tab-pane fade show active" id="net-contacts">
-                    <div class="card section-card" style="border-radius: 0 0 12px 12px;">
+                    <div class="card section-card" id="net-contacts-card" style="border-radius: 0 0 12px 12px;">
                         <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:0;">
                             <span><i class="fas fa-address-book me-2"></i>Contact-Based Relationship Network</span>
-                            <div class="d-flex gap-2">
+                            <div class="d-flex gap-2 align-items-center">
                                 <select id="contactNetFilter" class="form-select form-select-sm" style="width:auto;">
                                     <option value="all">All Contacts</option>
                                     <option value="top20">Top 20 (by connections)</option>
                                     <option value="top50">Top 50 (by connections)</option>
+                                    <option value="top100">Top 100 (by connections)</option>
                                     <option value="bridges">Shared Contacts Only</option>
                                 </select>
-                                <button class="btn btn-sm btn-outline-light btn-reset-graph" data-target="contacts"><i class="fas fa-redo"></i></button>
+                                <label class="graph-label-toggle mb-0" title="Toggle node labels">
+                                    <input type="checkbox" id="contactLabelsToggle" class="form-check-input" style="margin:0;"> <span>Labels</span>
+                                </label>
+                                <button class="btn btn-sm btn-outline-secondary btn-reset-graph" data-target="contacts"><i class="fas fa-redo"></i></button>
+                                <button class="btn-fullscreen-graph" data-target="net-contacts-card" title="Fullscreen"><i class="fas fa-expand"></i></button>
                             </div>
                         </div>
                         <div id="network-graph-contacts" class="network-graph-container"></div>
@@ -358,20 +419,27 @@
                 </div>
                 <!-- ===== CALL LOGS NETWORK ===== -->
                 <div class="tab-pane fade" id="net-calllogs">
-                    <div class="card section-card" style="border-radius: 0 0 12px 12px;">
+                    <div class="card section-card" id="net-calllogs-card" style="border-radius: 0 0 12px 12px;">
                         <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:0;">
                             <span><i class="fas fa-phone-alt me-2"></i>Call Logs-Based Relationship Network</span>
-                            <div class="d-flex gap-2">
+                            <div class="d-flex gap-2 align-items-center">
                                 <select id="callNetFilter" class="form-select form-select-sm" style="width:auto;">
                                     <option value="all">All Calls</option>
                                     <option value="top20">Top 20 (by calls)</option>
                                     <option value="top50">Top 50 (by calls)</option>
+                                    <option value="top100">Top 100 (by calls)</option>
                                     <option value="bridges">Shared Numbers Only</option>
                                     <option value="incoming">Incoming Calls</option>
                                     <option value="outgoing">Outgoing Calls</option>
                                     <option value="missed">Missed Calls</option>
+                                    <option value="rejected">Rejected Calls</option>
+                                    <option value="blocked">Blocked Calls</option>
                                 </select>
-                                <button class="btn btn-sm btn-outline-light btn-reset-graph" data-target="calllogs"><i class="fas fa-redo"></i></button>
+                                <label class="graph-label-toggle mb-0" title="Toggle node labels">
+                                    <input type="checkbox" id="callLabelsToggle" class="form-check-input" style="margin:0;"> <span>Labels</span>
+                                </label>
+                                <button class="btn btn-sm btn-outline-secondary btn-reset-graph" data-target="calllogs"><i class="fas fa-redo"></i></button>
+                                <button class="btn-fullscreen-graph" data-target="net-calllogs-card" title="Fullscreen"><i class="fas fa-expand"></i></button>
                             </div>
                         </div>
                         <div id="network-graph-calllogs" class="network-graph-container"></div>
@@ -391,26 +459,23 @@
         <!-- ==================== TAB: CALL LOGS ==================== -->
         <div class="tab-pane fade" id="tab-calls">
             <div class="card section-card">
-                <div class="card-header">
-                    <i class="fas fa-phone-alt me-2"></i>Call Logs ({{ total_calls }} records)
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table id="calllogs-table" class="table table-bordered table-striped table-sm" style="width:100%;">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Device</th>
-                                    <th>Name</th>
-                                    <th>Phone</th>
-                                    <th>Type</th>
-                                    <th>Timestamp</th>
-                                    <th>Duration</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-phone-alt me-2"></i>Call Logs <span class="badge bg-primary ms-1" id="call-total-badge">{{ total_calls }}</span></span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="st-search" style="position:relative;">
+                            <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:0.75rem;"></i>
+                            <input type="text" id="call-search" placeholder="Quick search..." style="padding:5px 10px 5px 30px;border:1px solid #dee2e6;border-radius:8px;font-size:0.8rem;width:200px;">
+                        </div>
+                        <button class="st-btn" id="call-export-csv" title="Export CSV"><i class="fas fa-download"></i> CSV</button>
+                        <button class="st-btn" id="call-reset-filters" title="Reset all filters"><i class="fas fa-filter-circle-xmark"></i> Reset</button>
                     </div>
+                </div>
+                <div class="smart-table-wrapper">
+                    <div id="calllogs-grid" class="ag-theme-alpine" style="height:520px; width:100%;"></div>
+                </div>
+                <div class="smart-table-footer">
+                    <span class="st-count" id="call-row-count"></span>
+                    <span class="text-muted" style="font-size:0.7rem;"><i class="fas fa-info-circle me-1"></i>Click column headers to sort &bull; Type in header filters to search</span>
                 </div>
             </div>
         </div>
@@ -418,25 +483,23 @@
         <!-- ==================== TAB: CONTACTS ==================== -->
         <div class="tab-pane fade" id="tab-contacts">
             <div class="card section-card">
-                <div class="card-header">
-                    <i class="fas fa-address-book me-2"></i>Contacts ({{ total_contacts }} records)
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table id="contacts-table" class="table table-bordered table-striped table-sm" style="width:100%;">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Device</th>
-                                    <th>Name</th>
-                                    <th>Phone</th>
-                                    <th>Email</th>
-                                    <th>Synced At</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-address-book me-2"></i>Contacts <span class="badge bg-primary ms-1" id="contact-total-badge">{{ total_contacts }}</span></span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <div class="st-search" style="position:relative;">
+                            <i class="fas fa-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#aaa;font-size:0.75rem;"></i>
+                            <input type="text" id="contact-search" placeholder="Quick search..." style="padding:5px 10px 5px 30px;border:1px solid #dee2e6;border-radius:8px;font-size:0.8rem;width:200px;">
+                        </div>
+                        <button class="st-btn" id="contact-export-csv" title="Export CSV"><i class="fas fa-download"></i> CSV</button>
+                        <button class="st-btn" id="contact-reset-filters" title="Reset all filters"><i class="fas fa-filter-circle-xmark"></i> Reset</button>
                     </div>
+                </div>
+                <div class="smart-table-wrapper">
+                    <div id="contacts-grid" class="ag-theme-alpine" style="height:520px; width:100%;"></div>
+                </div>
+                <div class="smart-table-footer">
+                    <span class="st-count" id="contact-row-count"></span>
+                    <span class="text-muted" style="font-size:0.7rem;"><i class="fas fa-info-circle me-1"></i>Click column headers to sort &bull; Type in header filters to search</span>
                 </div>
             </div>
         </div>
@@ -445,147 +508,130 @@
         <div class="tab-pane fade" id="tab-devices">
             <div class="row g-3">
                 {% for dd in device_details %}
-                <div class="col-lg-6">
-                    <div class="card section-card h-100">
+                <div class="col-12">
+                    <div class="card section-card">
                         <div class="card-header d-flex justify-content-between align-items-center">
-                            <span><i class="fas fa-mobile-alt me-2"></i>{{ dd.device.user_id|capfirst }}</span>
-                            <div>
+                            <span>
+                                <i class="fas fa-mobile-alt me-2"></i><strong>{{ dd.device.user_id|capfirst }}</strong>
+                                <span class="text-muted ms-2" style="font-size:0.8rem;">{{ dd.device.device_id|truncatechars:24 }}</span>
+                            </span>
+                            <div class="d-flex gap-2">
                                 {% if dd.device.is_active %}
                                     <span class="badge bg-success">Active</span>
                                 {% else %}
                                     <span class="badge bg-danger">Disabled</span>
                                 {% endif %}
-                                <span class="badge bg-secondary ms-1">{{ dd.device.platform }}</span>
+                                <span class="badge bg-secondary">{{ dd.device.platform|capfirst }}</span>
+                                {% if dd.device.instance %}
+                                <span class="badge bg-primary">{{ dd.device.instance|capfirst }}</span>
+                                {% endif %}
+                                <a href="{% url 'device_view' dd.device.id %}" class="btn btn-sm btn-outline-primary py-0">
+                                    <i class="fas fa-eye me-1"></i>View
+                                </a>
                             </div>
                         </div>
-                        <div class="card-body p-0">
-                            <!-- Basic Info -->
-                            <div class="device-detail-section mx-3 mt-3">
-                                <h6><i class="fas fa-info-circle me-1"></i>General Information</h6>
-                                <table class="table table-sm table-bordered detail-table mb-0">
-                                    <tr><th>User ID</th><td>{{ dd.device.user_id }}</td></tr>
-                                    <tr><th>Instance</th><td>{{ dd.device.instance }}</td></tr>
-                                    <tr><th>Platform</th><td>{{ dd.device.platform }}</td></tr>
-                                    <tr><th>Device ID</th><td><small class="text-muted">{{ dd.device.device_id }}</small></td></tr>
-                                    <tr><th>Registered</th><td>{{ dd.device.registered_at|date:"d M Y, h:i A" }}</td></tr>
-                                    <tr><th>Last Login</th><td>{{ dd.device.last_login|date:"d M Y, h:i A"|default:"-" }}</td></tr>
-                                    <tr><th>Last Sync</th><td>{{ dd.device.last_background_sync|date:"d M Y, h:i A"|default:"-" }}</td></tr>
-                                    <tr><th>Retries</th><td>{{ dd.device.retry_count }}</td></tr>
-                                    <tr><th>Stats</th><td>
-                                        <span class="badge bg-primary me-1">{{ dd.contact_count }} Contacts</span>
-                                        <span class="badge bg-warning me-1">{{ dd.call_count }} Calls</span>
-                                        <span class="badge bg-info">{{ dd.location_count }} Locations</span>
-                                    </td></tr>
-                                </table>
-                            </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- General Info -->
+                                <div class="col-md-6 col-lg-3 mb-3">
+                                    <div class="device-detail-section">
+                                        <h6><i class="fas fa-info-circle me-1"></i>General</h6>
+                                        <table class="table table-sm detail-table mb-0">
+                                            <tr><th>User ID</th><td>{{ dd.device.user_id }}</td></tr>
+                                            <tr><th>Platform</th><td>{{ dd.device.platform|capfirst }}</td></tr>
+                                            <tr><th>Instance</th><td>{{ dd.device.instance|default:"-"|capfirst }}</td></tr>
+                                            <tr><th>Registered</th><td>{{ dd.device.registered_at|date:"d M Y, h:i A" }}</td></tr>
+                                            <tr><th>Last Login</th><td>{{ dd.device.last_login|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                            <tr><th>Last Sync</th><td>{{ dd.device.last_background_sync|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                            <tr><th>Contacts</th><td><span class="badge bg-primary">{{ dd.contact_count }}</span></td></tr>
+                                            <tr><th>Call Logs</th><td><span class="badge bg-danger">{{ dd.call_count }}</span></td></tr>
+                                            <tr><th>Locations</th><td><span class="badge bg-success">{{ dd.location_count }}</span></td></tr>
+                                        </table>
+                                    </div>
+                                </div>
 
-                            {% if dd.device_info %}
-                            <!-- Hardware Info -->
-                            <div class="device-detail-section mx-3">
-                                <h6><i class="fas fa-microchip me-1"></i>Hardware Information</h6>
-                                <table class="table table-sm table-bordered detail-table mb-0">
-                                    <tr><th>Brand</th><td>{{ dd.device_info.brand|default:"-" }}</td></tr>
-                                    <tr><th>Manufacturer</th><td>{{ dd.device_info.manufacturer|default:"-" }}</td></tr>
-                                    <tr><th>Model</th><td>{{ dd.device_info.model_name|default:"-" }}</td></tr>
-                                    <tr><th>Device Name</th><td>{{ dd.device_info.device_name|default:"-" }}</td></tr>
-                                    <tr><th>OS</th><td>{{ dd.device_info.system_name|default:"-" }} {{ dd.device_info.system_version|default:"" }}</td></tr>
-                                    <tr><th>App Version</th><td>{{ dd.device_info.app_version|default:"-" }}</td></tr>
-                                    <tr><th>Battery</th><td>
-                                        {% if dd.device_info.battery_level is not None %}
-                                            <div class="progress" style="height:18px;">
-                                                <div class="progress-bar {% if dd.device_info.battery_level > 50 %}bg-success{% elif dd.device_info.battery_level > 20 %}bg-warning{% else %}bg-danger{% endif %}"
-                                                     style="width:{{ dd.device_info.battery_level }}%;">
-                                                    {{ dd.device_info.battery_level|floatformat:0 }}%
-                                                </div>
-                                            </div>
-                                            {% if dd.device_info.is_charging %}<small class="text-success"><i class="fas fa-bolt"></i> Charging</small>{% endif %}
-                                        {% else %}-{% endif %}
-                                    </td></tr>
-                                    <tr><th>Screen</th><td>{{ dd.device_info.screen_width|default:"-" }} × {{ dd.device_info.screen_height|default:"" }}</td></tr>
-                                </table>
-                            </div>
-                            {% endif %}
+                                {% if dd.device_info %}
+                                <!-- Hardware Info -->
+                                <div class="col-md-6 col-lg-3 mb-3">
+                                    <div class="device-detail-section">
+                                        <h6><i class="fas fa-microchip me-1"></i>Hardware</h6>
+                                        <table class="table table-sm detail-table mb-0">
+                                            <tr><th>Brand</th><td>{{ dd.device_info.brand|default:"-" }}</td></tr>
+                                            <tr><th>Model</th><td>{{ dd.device_info.model_name|default:"-" }}</td></tr>
+                                            <tr><th>Device Name</th><td>{{ dd.device_info.device_name|default:"-" }}</td></tr>
+                                            <tr><th>OS</th><td>{{ dd.device_info.system_name|default:"-" }} {{ dd.device_info.system_version|default:"" }}</td></tr>
+                                            <tr><th>App Version</th><td>{{ dd.device_info.app_version|default:"-" }}</td></tr>
+                                            <tr><th>Type</th><td>{% if dd.device_info.is_tablet %}<span class="badge bg-info">Tablet</span>{% else %}<span class="badge bg-secondary">Phone</span>{% endif %}{% if dd.device_info.is_emulator %} <span class="badge bg-warning">Emulator</span>{% endif %}</td></tr>
+                                            <tr><th>Screen</th><td>{{ dd.device_info.screen_width|default:"-" }} × {{ dd.device_info.screen_height|default:"" }}</td></tr>
+                                            {% if dd.device_info.battery_level is not None %}
+                                            <tr><th>Battery</th><td>{{ dd.device_info.battery_level|floatformat:0 }}%{% if dd.device_info.is_charging %} <i class="fas fa-bolt text-success"></i>{% endif %}</td></tr>
+                                            {% endif %}
+                                            {% if dd.device_info.total_memory %}<tr><th>Memory</th><td>{{ dd.device_info.total_memory|filesizeformat }}</td></tr>{% endif %}
+                                            {% if dd.device_info.carrier %}<tr><th>Carrier</th><td>{{ dd.device_info.carrier }}</td></tr>{% endif %}
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
 
-                            {% if dd.network_info %}
-                            <!-- Network Info -->
-                            <div class="device-detail-section mx-3">
-                                <h6><i class="fas fa-wifi me-1"></i>Network Information</h6>
-                                <table class="table table-sm table-bordered detail-table mb-0">
-                                    <tr><th>Type</th><td>{{ dd.network_info.type|default:"-" }}</td></tr>
-                                    <tr><th>Connected</th><td>
-                                        {% if dd.network_info.is_connected %}
-                                            <span class="badge bg-success">Yes</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">No</span>
-                                        {% endif %}
-                                    </td></tr>
-                                    <tr><th>Internet</th><td>
-                                        {% if dd.network_info.is_internet_reachable %}
-                                            <span class="badge bg-success">Reachable</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">Unreachable</span>
-                                        {% endif %}
-                                    </td></tr>
-                                    <tr><th>IP Address</th><td>{{ dd.network_info.ip_address|default:"-" }}</td></tr>
-                                    <tr><th>Recorded</th><td>{{ dd.network_info.recorded_at|date:"d M Y, h:i A"|default:"-" }}</td></tr>
-                                </table>
-                            </div>
-                            {% endif %}
+                                {% if dd.network_info %}
+                                <!-- Network Info -->
+                                <div class="col-md-6 col-lg-3 mb-3">
+                                    <div class="device-detail-section">
+                                        <h6><i class="fas fa-wifi me-1"></i>Network</h6>
+                                        <table class="table table-sm detail-table mb-0">
+                                            <tr><th>Type</th><td>{{ dd.network_info.type|default:"-" }}</td></tr>
+                                            <tr><th>IP Address</th><td>{{ dd.network_info.ip_address|default:"-" }}</td></tr>
+                                            <tr><th>Connected</th><td>{% if dd.network_info.is_connected %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}</td></tr>
+                                            <tr><th>Internet</th><td>{% if dd.network_info.is_internet_reachable %}<span class="badge bg-success">Reachable</span>{% else %}<span class="badge bg-danger">Unreachable</span>{% endif %}</td></tr>
+                                            <tr><th>Recorded</th><td>{{ dd.network_info.recorded_at|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
 
-                            {% if dd.system_info %}
-                            <!-- System Info -->
-                            <div class="device-detail-section mx-3">
-                                <h6><i class="fas fa-cogs me-1"></i>System Information</h6>
-                                <table class="table table-sm table-bordered detail-table mb-0">
-                                    <tr><th>Platform</th><td>{{ dd.system_info.platform|default:"-" }} {{ dd.system_info.platform_version|default:"" }}</td></tr>
-                                    <tr><th>Physical Device</th><td>
-                                        {% if dd.system_info.is_physical_device %}
-                                            <span class="badge bg-success">Yes</span>
-                                        {% else %}
-                                            <span class="badge bg-warning">Emulator</span>
-                                        {% endif %}
-                                    </td></tr>
-                                    <tr><th>Free Disk</th><td>{{ dd.system_info.free_disk_storage|default:"-" }}</td></tr>
-                                    <tr><th>Total Disk</th><td>{{ dd.system_info.total_disk_capacity|default:"-" }}</td></tr>
-                                    <tr><th>Bootloader</th><td>{{ dd.system_info.bootloader|default:"-" }}</td></tr>
-                                    <tr><th>ABIs</th><td><small>{{ dd.system_info.supported_abis|default:"-" }}</small></td></tr>
-                                </table>
+                                {% if dd.system_info %}
+                                <!-- System Info -->
+                                <div class="col-md-6 col-lg-3 mb-3">
+                                    <div class="device-detail-section">
+                                        <h6><i class="fas fa-cogs me-1"></i>System</h6>
+                                        <table class="table table-sm detail-table mb-0">
+                                            <tr><th>Platform</th><td>{{ dd.system_info.platform|default:"-" }} {{ dd.system_info.platform_version|default:"" }}</td></tr>
+                                            <tr><th>Physical</th><td>{% if dd.system_info.is_physical_device %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-warning">Emulator</span>{% endif %}</td></tr>
+                                            <tr><th>Free Disk</th><td>{% if dd.system_info.free_disk_storage %}{{ dd.system_info.free_disk_storage|filesizeformat }}{% else %}-{% endif %}</td></tr>
+                                            <tr><th>Total Disk</th><td>{% if dd.system_info.total_disk_capacity %}{{ dd.system_info.total_disk_capacity|filesizeformat }}{% else %}-{% endif %}</td></tr>
+                                            {% if dd.system_info.bootloader %}<tr><th>Bootloader</th><td>{{ dd.system_info.bootloader }}</td></tr>{% endif %}
+                                            {% if dd.system_info.supported_abis %}
+                                            <tr><th>ABIs</th><td>{% for abi in dd.system_info.supported_abis %}<span class="badge bg-light text-dark border me-1">{{ abi }}</span>{% endfor %}</td></tr>
+                                            {% endif %}
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
                             </div>
-                            {% endif %}
 
                             {% if dd.sim_cards %}
-                            <!-- SIM Cards -->
-                            <div class="device-detail-section mx-3 mb-3">
-                                <h6><i class="fas fa-sim-card me-1"></i>SIM Cards</h6>
-                                <table class="table table-sm table-bordered detail-table mb-0">
-                                    <thead class="table-light">
-                                        <tr><th>Slot</th><th>Carrier</th><th>Display Name</th><th>Phone</th><th>Roaming</th></tr>
-                                    </thead>
+                            <div class="device-detail-section">
+                                <h6><i class="fas fa-sim-card me-1"></i>SIM Cards ({{ dd.sim_cards|length }})</h6>
+                                <table class="table table-sm detail-table mb-0">
+                                    <thead><tr><th>Slot</th><th>Name</th><th>Carrier</th><th>Phone</th><th>Roaming</th></tr></thead>
                                     <tbody>
-                                        {% for sim in dd.sim_cards %}
-                                        <tr>
-                                            <td>{{ sim.slot_index }}</td>
-                                            <td>{{ sim.carrier_name|default:"-" }}</td>
-                                            <td>{{ sim.display_name|default:"-" }}</td>
-                                            <td>{{ sim.phone_number|default:"-" }}</td>
-                                            <td>{% if sim.is_roaming %}<span class="badge bg-warning">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
-                                        </tr>
-                                        {% endfor %}
+                                    {% for sim in dd.sim_cards %}
+                                    <tr>
+                                        <td>{{ sim.slot_index }}</td>
+                                        <td>{{ sim.display_name|default:"SIM" }}</td>
+                                        <td>{{ sim.carrier_name|default:"-" }}</td>
+                                        <td>{{ sim.phone_number|default:"-" }}</td>
+                                        <td>{% if sim.is_roaming %}<span class="badge bg-warning">Roaming</span>{% else %}<span class="badge bg-light text-muted border">Local</span>{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
                                     </tbody>
                                 </table>
                             </div>
                             {% endif %}
 
                             {% if not dd.device_info and not dd.network_info and not dd.system_info %}
-                            <div class="text-center text-muted py-3">
-                                <i class="fas fa-exclamation-circle"></i> No extended device info available yet.
-                            </div>
+                            <p class="text-muted text-center mb-0"><i class="fas fa-exclamation-circle me-1"></i>No extended device info available yet.</p>
                             {% endif %}
-                        </div>
-                        <div class="card-footer text-center">
-                            <a href="{% url 'device_view' dd.device.id %}" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye"></i> Full View
-                            </a>
                         </div>
                     </div>
                 </div>
@@ -651,14 +697,42 @@ function formatDur(secs) {
 
 // ==================== INIT ====================
 $(document).ready(function() {
+    // Update Select2 search placeholder with selection count
+    function s2UpdateCount($el, placeholder) {
+        var count = ($el.val() || []).length;
+        var text = count ? count + ' selected' : placeholder;
+        $el.next('.select2-container').find('.select2-search__field').attr('placeholder', text).css('width', '100%');
+    }
+
+    // Device dropdown: show instance-based count like "Prod: 3, Dev: 2"
+    function s2DeviceCount($el) {
+        var $field = $el.next('.select2-container').find('.select2-search__field');
+        var selected = $el.find('option:selected');
+        if (!selected.length) {
+            $field.attr('placeholder', 'All Devices').css('width', '100%');
+            return;
+        }
+        var counts = {};
+        selected.each(function() {
+            var inst = String($(this).data('instance')) || 'other';
+            counts[inst] = (counts[inst] || 0) + 1;
+        });
+        var parts = [];
+        Object.keys(counts).forEach(function(inst) {
+            parts.push(inst.charAt(0).toUpperCase() + inst.slice(1) + ': ' + counts[inst]);
+        });
+        $field.attr('placeholder', parts.join(', ')).css('width', '100%');
+    }
+
     // Instance multi-select dropdown — auto-selects matching devices and submits
     $('#instanceSelect').select2({
         theme: 'bootstrap-5',
         placeholder: 'All Instances',
         allowClear: true,
         closeOnSelect: false,
-        width: '100%',
+        width: 'resolve',
     }).on('change', function() {
+        s2UpdateCount($(this), 'All Instances');
         var selectedInstances = $(this).val() || [];
         var $deviceSelect = $('#deviceSelect');
         var newVals = [];
@@ -682,13 +756,17 @@ $(document).ready(function() {
     // Multi-select device dropdown with auto-submit
     $('#deviceSelect').select2({
         theme: 'bootstrap-5',
-        placeholder: 'All Devices (click to filter)',
+        placeholder: 'All Devices',
         allowClear: true,
         closeOnSelect: false,
-        width: '100%',
+        width: 'resolve',
     }).on('change', function() {
+        s2DeviceCount($(this));
         $('#filterForm').submit();
     });
+    // Set initial count on page load
+    s2UpdateCount($('#instanceSelect'), 'All Instances');
+    s2DeviceCount($('#deviceSelect'));
 
     // Auto-submit on date change
     $('input[name="date_from"], input[name="date_to"]').on('change', function() {
@@ -698,6 +776,26 @@ $(document).ready(function() {
     // Load map immediately (default tab)
     initMap();
 
+    // Save main tab to hash
+    $('[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {
+        var tab = $(e.target).attr('href').replace('#', '');
+        var currentSub = $('#networkSubTabs .nav-link.active').attr('href');
+        var hash = tab;
+        if (tab === 'tab-network' && currentSub) hash += '/' + currentSub.replace('#', '');
+        history.replaceState(null, '', '#' + hash);
+    });
+    // Save network sub-tab to hash
+    $('#networkSubTabs').on('shown.bs.tab', function(e) {
+        var sub = $(e.target).attr('href').replace('#', '');
+        history.replaceState(null, '', '#tab-network/' + sub);
+    });
+
+    // Append hash to filter form on submit
+    $('#filterForm').on('submit', function() {
+        var h = window.location.hash;
+        if (h) this.action = this.action.split('#')[0] + h;
+    });
+
     // Lazy tab loading
     $('[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {
         var tab = $(e.target).attr('href');
@@ -705,6 +803,61 @@ $(document).ready(function() {
         if (tab === '#tab-calls' && !tabsLoaded.calls) { initCallLogsTable(); tabsLoaded.calls = true; }
         if (tab === '#tab-contacts' && !tabsLoaded.contacts) { initContactsTable(); tabsLoaded.contacts = true; }
         if (tab === '#tab-network' && !tabsLoaded.network) { loadNetworkGraph('contacts'); tabsLoaded.network = true; }
+    });
+
+    // Restore active tab from URL hash AFTER all handlers are registered
+    var savedHash = window.location.hash.replace('#', '');
+    var hashParts = savedHash.split('/');
+    var mainTab = hashParts[0];
+    var subTab = hashParts[1] || null;
+    if (mainTab) {
+        var mainLink = $('[data-bs-toggle="pill"][href="#' + mainTab + '"]');
+        if (mainLink.length) mainLink.tab('show');
+    }
+    if (subTab) {
+        setTimeout(function() {
+            var subLink = $('[data-bs-toggle="tab"][href="#' + subTab + '"]');
+            if (subLink.length) subLink.tab('show');
+        }, 50);
+    }
+
+    // Fullscreen toggle for network graphs
+    document.querySelectorAll('.btn-fullscreen-graph').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var cardId = this.dataset.target;
+            var card = document.getElementById(cardId);
+            if (!card) return;
+            var isFs = card.classList.toggle('network-fullscreen');
+            var icon = this.querySelector('i');
+            icon.className = isFs ? 'fas fa-compress' : 'fas fa-expand';
+            this.title = isFs ? 'Exit fullscreen' : 'Toggle fullscreen';
+            document.body.style.overflow = isFs ? 'hidden' : '';
+            // Re-render graph to fit new dimensions
+            var mode = cardId.indexOf('contacts') !== -1 ? 'contacts' : 'calllogs';
+            var containerId = 'network-graph-' + mode;
+            if (graphData[mode]) {
+                var filterEl = document.getElementById(mode === 'contacts' ? 'contactNetFilter' : 'callNetFilter');
+                var filter = filterEl ? filterEl.value : 'all';
+                setTimeout(function() { renderGraph(graphData[mode], filter, containerId); }, 50);
+            }
+        });
+    });
+    // Escape key exits fullscreen
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.network-fullscreen').forEach(function(card) {
+                card.classList.remove('network-fullscreen');
+                var btn = card.querySelector('.btn-fullscreen-graph');
+                if (btn) { btn.querySelector('i').className = 'fas fa-expand'; btn.title = 'Toggle fullscreen'; }
+                document.body.style.overflow = '';
+                var mode = card.id.indexOf('contacts') !== -1 ? 'contacts' : 'calllogs';
+                if (graphData[mode]) {
+                    var filterEl = document.getElementById(mode === 'contacts' ? 'contactNetFilter' : 'callNetFilter');
+                    var filter = filterEl ? filterEl.value : 'all';
+                    setTimeout(function() { renderGraph(graphData[mode], filter, 'network-graph-' + mode); }, 50);
+                }
+            });
+        }
     });
 });
 
@@ -819,81 +972,206 @@ function initMap() {
         });
 }
 
-// ==================== LOCATIONS TABLE (AJAX) ====================
+// ==================== AG GRID HELPERS ====================
+var gridApis = {};
+
+function deviceCellRenderer(params) {
+    var color = deviceColors[params.data.device_id] || '#6c757d';
+    return '<span class="badge" style="background:' + color + ';font-size:0.75rem;padding:3px 8px;border-radius:20px;">' + params.value + '</span>';
+}
+
+function exportGridCsv(gridApi, fileName) {
+    gridApi.exportDataAsCsv({ fileName: fileName, allColumns: true });
+}
+
+function updateRowCount(gridApi, elId) {
+    var displayed = gridApi.getDisplayedRowCount();
+    var total = 0;
+    gridApi.forEachNode(function() { total++; });
+    var el = document.getElementById(elId);
+    if (el) el.textContent = displayed === total ? total + ' rows' : displayed + ' of ' + total + ' rows';
+}
+
+// ==================== LOCATIONS TABLE (AG GRID) ====================
 function initLocationsTable() {
-    $('#locations-table').DataTable({
-        ajax: { url: buildApiUrl('locations'), dataSrc: 'data' },
-        columns: [
-            { data: 'n' },
-            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
-            { data: 'city' },
-            { data: 'region' },
-            { data: 'lat' },
-            { data: 'lng' },
-            { data: 'accuracy' },
-            { data: 'is_gps', render: function(d) { return d ? '<span class="badge bg-success">GPS</span>' : '<span class="badge bg-warning">Net</span>'; } },
-            { data: 'isp' },
-            { data: 'ip', render: function(d) { return '<small>' + d + '</small>'; } },
-            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
-            { data: null, orderable: false, render: function(d) {
-                return '<button class="btn btn-sm btn-outline-primary btn-fly-to" data-lat="' + d.lat + '" data-lng="' + d.lng + '"><i class="fas fa-crosshairs"></i></button>';
-            }},
-        ],
-        order: [[10, 'desc']],
-        pageLength: 25,
-        lengthMenu: [10, 25, 50, 100, 500],
-        drawCallback: function() {
-            // Bind fly-to buttons after each draw
-            $('#locations-table .btn-fly-to').off('click').on('click', function() {
-                var lat = parseFloat($(this).data('lat'));
-                var lng = parseFloat($(this).data('lng'));
-                var mapTab = document.querySelector('[href="#tab-map"]');
-                bootstrap.Tab.getOrCreateInstance(mapTab).show();
-                setTimeout(function() { dashboardMap.flyTo([lat, lng], 16, { duration: 1.5 }); }, 300);
-            });
-        }
+    var gridDiv = document.getElementById('locations-grid');
+    var columnDefs = [
+        { field: 'n', headerName: '#', maxWidth: 75, flex: 0, filter: false, sortable: true, pinned: 'left' },
+        { field: 'device', headerName: 'Device', minWidth: 100, cellRenderer: deviceCellRenderer, filter: true },
+        { field: 'city', headerName: 'City', minWidth: 110, filter: true },
+        { field: 'region', headerName: 'Region', minWidth: 110, filter: true },
+        { field: 'lat', headerName: 'Lat', minWidth: 90, filter: 'agNumberColumnFilter' },
+        { field: 'lng', headerName: 'Lng', minWidth: 90, filter: 'agNumberColumnFilter' },
+        { field: 'accuracy', headerName: 'Accuracy', minWidth: 90, filter: true },
+        { field: 'is_gps', headerName: 'Method', maxWidth: 95, flex: 0, cellRenderer: function(p) {
+            return p.value ? '<span class="badge bg-success" style="font-size:0.72rem;">GPS</span>' : '<span class="badge bg-warning text-dark" style="font-size:0.72rem;">Net</span>';
+        }, filter: true, valueFormatter: function(p) { return p.value ? 'GPS' : 'Network'; } },
+        { field: 'isp', headerName: 'ISP', minWidth: 120, filter: true },
+        { field: 'ip', headerName: 'IP', minWidth: 120, filter: true, cellStyle: { fontSize: '0.75rem', color: '#888' } },
+        { field: 'ts_display', headerName: 'Timestamp', minWidth: 155, filter: true, sort: 'desc',
+          comparator: function(a, b, nA, nB, inv) { return (nA.data.ts || '').localeCompare(nB.data.ts || ''); }
+        },
+        { headerName: '', maxWidth: 55, flex: 0, filter: false, sortable: false, cellRenderer: function(p) {
+            return '<button class="btn btn-sm btn-outline-primary" style="padding:1px 6px;font-size:0.7rem;" onclick="flyToLoc(' + p.data.lat + ',' + p.data.lng + ')"><i class="fas fa-crosshairs"></i></button>';
+        }}
+    ];
+
+    var gridOptions = {
+        columnDefs: columnDefs,
+        defaultColDef: { resizable: true, sortable: true, floatingFilter: true, minWidth: 60, flex: 1 },
+        rowData: [],
+        animateRows: true,
+        pagination: true,
+        paginationPageSize: 50,
+        paginationPageSizeSelector: [25, 50, 100, 500],
+        suppressCellFocus: true,
+        enableCellTextSelection: true,
+        onFilterChanged: function() { updateRowCount(gridApis.locations, 'loc-row-count'); },
+        onRowDataUpdated: function() { updateRowCount(gridApis.locations, 'loc-row-count'); }
+    };
+
+    new agGrid.Grid(gridDiv, gridOptions);
+    gridApis.locations = gridOptions.api;
+
+    fetch(buildApiUrl('locations'))
+        .then(function(r) { return r.json(); })
+        .then(function(resp) { gridApis.locations.setRowData(resp.data || []); });
+
+    document.getElementById('loc-search').addEventListener('input', function() {
+        gridApis.locations.setQuickFilter(this.value);
+    });
+    document.getElementById('loc-export-csv').addEventListener('click', function() {
+        exportGridCsv(gridApis.locations, 'locations.csv');
+    });
+    document.getElementById('loc-reset-filters').addEventListener('click', function() {
+        gridApis.locations.setFilterModel(null);
+        document.getElementById('loc-search').value = '';
+        gridApis.locations.setQuickFilter('');
     });
 }
 
-// ==================== CALL LOGS TABLE (AJAX) ====================
+function flyToLoc(lat, lng) {
+    var mapTab = document.querySelector('[href="#tab-map"]');
+    bootstrap.Tab.getOrCreateInstance(mapTab).show();
+    setTimeout(function() { dashboardMap.flyTo([lat, lng], 16, { duration: 1.5 }); }, 300);
+}
+
+// ==================== CALL LOGS TABLE (AG GRID) ====================
 function initCallLogsTable() {
-    $('#calllogs-table').DataTable({
-        ajax: { url: buildApiUrl('calllogs'), dataSrc: 'data' },
-        columns: [
-            { data: 'n' },
-            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
-            { data: 'name' },
-            { data: 'phone' },
-            { data: 'call_type', render: function(d) {
-                if (d === 'incoming') return '<span class="badge badge-call-incoming">Incoming</span>';
-                if (d === 'outgoing') return '<span class="badge badge-call-outgoing">Outgoing</span>';
-                if (d === 'missed') return '<span class="badge badge-call-missed">Missed</span>';
-                return '<span class="badge bg-secondary">' + d + '</span>';
-            }},
-            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
-            { data: 'duration', render: function(data, type) { return type === 'display' ? formatDur(data) : data; } },
-        ],
-        order: [[5, 'desc']],
-        pageLength: 25,
-        lengthMenu: [10, 25, 50, 100, 500],
+    var gridDiv = document.getElementById('calllogs-grid');
+    var callTypeCellRenderer = function(p) {
+        var d = (p.value || '').toLowerCase();
+        if (d === 'incoming') return '<span class="badge badge-call-incoming" style="font-size:0.72rem;">Incoming</span>';
+        if (d === 'outgoing') return '<span class="badge badge-call-outgoing" style="font-size:0.72rem;">Outgoing</span>';
+        if (d === 'missed') return '<span class="badge badge-call-missed" style="font-size:0.72rem;">Missed</span>';
+        if (d === 'rejected') return '<span class="badge badge-call-rejected" style="font-size:0.72rem;">Rejected</span>';
+        if (d === 'blocked') return '<span class="badge badge-call-blocked" style="font-size:0.72rem;">Blocked</span>';
+        return '<span class="badge bg-secondary" style="font-size:0.72rem;">' + p.value + '</span>';
+    };
+
+    var columnDefs = [
+        { field: 'n', headerName: '#', maxWidth: 75, flex: 0, filter: false, sortable: true, pinned: 'left' },
+        { field: 'device', headerName: 'Device', minWidth: 100, cellRenderer: deviceCellRenderer, filter: true },
+        { field: 'name', headerName: 'Name', minWidth: 140, filter: true },
+        { field: 'phone', headerName: 'Phone', minWidth: 130, filter: true },
+        { field: 'call_type', headerName: 'Type', minWidth: 100, cellRenderer: callTypeCellRenderer, filter: true },
+        { field: 'ts_display', headerName: 'Timestamp', minWidth: 155, filter: true, sort: 'desc',
+          comparator: function(a, b, nA, nB, inv) { return (nA.data.ts || '').localeCompare(nB.data.ts || ''); }
+        },
+        { field: 'duration', headerName: 'Duration', minWidth: 100, filter: 'agNumberColumnFilter',
+          cellRenderer: function(p) {
+            var secs = p.value || 0;
+            if (!secs) return '<span style="color:#ccc;">0s</span>';
+            var dur = formatDur(secs);
+            var color = secs > 300 ? '#28a745' : secs > 60 ? '#667eea' : '#888';
+            return '<span style="font-weight:600;color:' + color + ';">' + dur + '</span>';
+          },
+          valueGetter: function(p) { return p.data.duration || 0; }
+        }
+    ];
+
+    var gridOptions = {
+        columnDefs: columnDefs,
+        defaultColDef: { resizable: true, sortable: true, floatingFilter: true, minWidth: 60, flex: 1 },
+        rowData: [],
+        animateRows: true,
+        pagination: true,
+        paginationPageSize: 50,
+        paginationPageSizeSelector: [25, 50, 100, 500],
+        suppressCellFocus: true,
+        enableCellTextSelection: true,
+        onFilterChanged: function() { updateRowCount(gridApis.calls, 'call-row-count'); },
+        onRowDataUpdated: function() { updateRowCount(gridApis.calls, 'call-row-count'); }
+    };
+
+    new agGrid.Grid(gridDiv, gridOptions);
+    gridApis.calls = gridOptions.api;
+
+    fetch(buildApiUrl('calllogs'))
+        .then(function(r) { return r.json(); })
+        .then(function(resp) { gridApis.calls.setRowData(resp.data || []); });
+
+    document.getElementById('call-search').addEventListener('input', function() {
+        gridApis.calls.setQuickFilter(this.value);
+    });
+    document.getElementById('call-export-csv').addEventListener('click', function() {
+        exportGridCsv(gridApis.calls, 'calllogs.csv');
+    });
+    document.getElementById('call-reset-filters').addEventListener('click', function() {
+        gridApis.calls.setFilterModel(null);
+        document.getElementById('call-search').value = '';
+        gridApis.calls.setQuickFilter('');
     });
 }
 
-// ==================== CONTACTS TABLE (AJAX) ====================
+// ==================== CONTACTS TABLE (AG GRID) ====================
 function initContactsTable() {
-    $('#contacts-table').DataTable({
-        ajax: { url: buildApiUrl('contacts'), dataSrc: 'data' },
-        columns: [
-            { data: 'n' },
-            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
-            { data: 'name' },
-            { data: 'phone' },
-            { data: 'email' },
-            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
-        ],
-        order: [[5, 'desc']],
-        pageLength: 25,
-        lengthMenu: [10, 25, 50, 100, 500],
+    var gridDiv = document.getElementById('contacts-grid');
+    var columnDefs = [
+        { field: 'n', headerName: '#', maxWidth: 75, flex: 0, filter: false, sortable: true, pinned: 'left' },
+        { field: 'device', headerName: 'Device', minWidth: 100, cellRenderer: deviceCellRenderer, filter: true },
+        { field: 'name', headerName: 'Name', minWidth: 150, flex: 2, filter: true },
+        { field: 'phone', headerName: 'Phone', minWidth: 130, filter: true },
+        { field: 'email', headerName: 'Email', minWidth: 160, flex: 2, filter: true, cellRenderer: function(p) {
+            if (!p.value || p.value === '-') return '<span style="color:#ccc;">-</span>';
+            return '<span style="color:#667eea;">' + p.value + '</span>';
+        }},
+        { field: 'ts_display', headerName: 'Synced At', minWidth: 155, filter: true, sort: 'desc',
+          comparator: function(a, b, nA, nB, inv) { return (nA.data.ts || '').localeCompare(nB.data.ts || ''); }
+        }
+    ];
+
+    var gridOptions = {
+        columnDefs: columnDefs,
+        defaultColDef: { resizable: true, sortable: true, floatingFilter: true, minWidth: 60, flex: 1 },
+        rowData: [],
+        animateRows: true,
+        pagination: true,
+        paginationPageSize: 50,
+        paginationPageSizeSelector: [25, 50, 100, 500],
+        suppressCellFocus: true,
+        enableCellTextSelection: true,
+        onFilterChanged: function() { updateRowCount(gridApis.contacts, 'contact-row-count'); },
+        onRowDataUpdated: function() { updateRowCount(gridApis.contacts, 'contact-row-count'); }
+    };
+
+    new agGrid.Grid(gridDiv, gridOptions);
+    gridApis.contacts = gridOptions.api;
+
+    fetch(buildApiUrl('contacts'))
+        .then(function(r) { return r.json(); })
+        .then(function(resp) { gridApis.contacts.setRowData(resp.data || []); });
+
+    document.getElementById('contact-search').addEventListener('input', function() {
+        gridApis.contacts.setQuickFilter(this.value);
+    });
+    document.getElementById('contact-export-csv').addEventListener('click', function() {
+        exportGridCsv(gridApis.contacts, 'contacts.csv');
+    });
+    document.getElementById('contact-reset-filters').addEventListener('click', function() {
+        gridApis.contacts.setFilterModel(null);
+        document.getElementById('contact-search').value = '';
+        gridApis.contacts.setQuickFilter('');
     });
 }
 
@@ -913,7 +1191,15 @@ function loadNetworkGraph(mode) {
             graphLoaded[mode] = true;
             var containerId = 'network-graph-' + mode;
             var bridgeId = 'bridge-info-' + mode;
-            renderGraph(data, null, containerId);
+            // Auto-select Top 100 for large datasets (better initial performance)
+            var initFilter = null;
+            var isLargeData = data.nodes && data.nodes.length > 200;
+            if (isLargeData) {
+                initFilter = 'top100';
+                var filterEl = document.getElementById(mode === 'contacts' ? 'contactNetFilter' : 'callNetFilter');
+                if (filterEl) filterEl.value = 'top100';
+            }
+            renderGraph(data, initFilter, containerId);
             renderBridgeInfo(data.bridges || [], data.device_labels || {}, bridgeId, mode);
         });
 }
@@ -1110,8 +1396,8 @@ function renderGraph(data, filter, containerId) {
 
     var filteredLinks = data.links.slice();
 
-    if (filter === 'top20' || filter === 'top50') {
-        var limit = filter === 'top20' ? 20 : 50;
+    if (filter === 'top20' || filter === 'top50' || filter === 'top100') {
+        var limit = filter === 'top20' ? 20 : filter === 'top50' ? 50 : 100;
         // Count connections per non-device node
         var nodeLinkCount = {};
         var nodeCallCount = {};
@@ -1157,12 +1443,12 @@ function renderGraph(data, filter, containerId) {
             var tgt = typeof l.target === 'object' ? l.target.id : l.target;
             return sharedNodeIds.has(src) || sharedNodeIds.has(tgt);
         });
-    } else if (filter === 'incoming') {
-        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('incoming') !== -1; });
-    } else if (filter === 'outgoing') {
-        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('outgoing') !== -1; });
-    } else if (filter === 'missed') {
-        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('missed') !== -1; });
+    } else if (['incoming','outgoing','missed','rejected','blocked'].indexOf(filter) !== -1) {
+        var filterUpper = filter.toUpperCase();
+        filteredLinks = filteredLinks.filter(function(l) {
+            if (!l.types || !l.types.length) return false;
+            return l.types.some(function(t) { return t.toUpperCase() === filterUpper; });
+        });
     }
 
     var needed = new Set();
@@ -1189,40 +1475,91 @@ function renderGraph(data, filter, containerId) {
     }).filter(function(l) { return nodeIdSet.has(l.source) && nodeIdSet.has(l.target); });
 
     var svg = d3.select(container).append('svg').attr('width', width).attr('height', height);
+
+    // SVG Defs: device glow (only ~3 elements) + bridge gradient. No per-node filters for performance.
+    var defs = svg.append('defs');
+    var devGlow = defs.append('filter').attr('id', 'glow-device').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    devGlow.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+    devGlow.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over');
+    var bridgeGrad = defs.append('linearGradient').attr('id', 'bridge-grad').attr('gradientUnits', 'userSpaceOnUse');
+    bridgeGrad.append('stop').attr('offset', '0%').attr('stop-color', '#f093fb');
+    bridgeGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f5576c');
+
     var g = svg.append('g');
     svg.call(d3.zoom().scaleExtent([0.05, 10]).on('zoom', function(event) {
         g.attr('transform', event.transform);
     }));
 
+    // Floating stats overlay
+    var deviceCount = nodes.filter(function(n) { return n.group === 'device'; }).length;
+    var contactCount = nodes.filter(function(n) { return n.group !== 'device'; }).length;
+    var bridgeCount = links.filter(function(l) { return l.link_type === 'bridge'; }).length;
+    var statsHtml = '<div class="gs-pill"><span class="gs-dot" style="background:#dc3545;"></span>' + deviceCount + ' Devices</div>';
+    statsHtml += '<div class="gs-pill"><span class="gs-dot" style="background:#4facfe;"></span>' + contactCount + ' Nodes</div>';
+    statsHtml += '<div class="gs-pill"><span class="gs-dot" style="background:#f093fb;"></span>' + links.length + ' Links</div>';
+    if (bridgeCount) statsHtml += '<div class="gs-pill"><span class="gs-dot" style="background:linear-gradient(135deg,#f093fb,#f5576c);"></span>' + bridgeCount + ' Bridges</div>';
+    // Remove old overlay if exists, add new
+    d3.select(container).selectAll('.graph-stats-overlay').remove();
+    d3.select(container).append('div').attr('class', 'graph-stats-overlay').html(statsHtml);
+
+    var isLarge = nodes.length > 300;
+
     var simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(links).id(function(d) { return d.id; }).distance(function(d) {
             if (d.link_type === 'bridge') return 150;
-            return Math.max(60, 180 - (d.calls || 0) * 2);
+            return isLarge ? Math.max(35, 100 - (d.calls || 0)) : Math.max(60, 180 - (d.calls || 0) * 2);
         }))
-        .force('charge', d3.forceManyBody().strength(function(d) { return d.group === 'device' ? -500 : -100; }))
+        .force('charge', d3.forceManyBody().strength(function(d) {
+            return d.group === 'device' ? -400 : (isLarge ? -25 : -100);
+        }).theta(isLarge ? 0.9 : 0.8))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(function(d) { return d.group === 'device' ? 35 : 15; }));
+        .force('collision', d3.forceCollide().radius(function(d) { return d.group === 'device' ? 30 : (isLarge ? 5 : 15); }))
+        .alphaDecay(isLarge ? 0.05 : 0.0228);
 
-    var link = g.append('g').selectAll('line').data(links).join('line')
-        .attr('stroke', function(d) { return d.link_type === 'bridge' ? '#f093fb' : '#555'; })
-        .attr('stroke-opacity', function(d) { return d.link_type === 'bridge' ? 0.8 : 0.3; })
+    var link = g.append('g').attr('class', 'links').selectAll('line').data(links).join('line')
+        .attr('stroke', function(d) { return d.link_type === 'bridge' ? 'url(#bridge-grad)' : 'rgba(102,126,234,0.25)'; })
+        .attr('stroke-opacity', function(d) { return d.link_type === 'bridge' ? 0.9 : (isLarge ? 0.15 : 0.35); })
         .attr('stroke-width', function(d) {
-            if (d.link_type === 'bridge') return 4;
-            return Math.min(Math.max(1, (d.calls || 0) / 3), 8);
+            if (d.link_type === 'bridge') return 3;
+            return isLarge ? Math.min(Math.max(0.4, (d.calls || 0) / 6), 3) : Math.min(Math.max(0.8, (d.calls || 0) / 4), 6);
         })
-        .attr('stroke-dasharray', function(d) { return d.link_type === 'bridge' ? '8 4' : null; });
+        .attr('stroke-dasharray', function(d) { return d.link_type === 'bridge' ? '8 4' : null; })
+        .style('animation', function(d) { return d.link_type === 'bridge' ? 'dashFlow 1.5s linear infinite' : null; })
+        .attr('stroke-linecap', 'round');
 
-    var node = g.append('g').selectAll('g').data(nodes).join('g')
+    var node = g.append('g').attr('class', 'nodes').selectAll('g').data(nodes).join('g')
+        .attr('class', function(d) { return 'graph-node node-' + d.group; })
         .call(d3.drag()
             .on('start', function(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
             .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
             .on('end', function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    node.append('circle')
-        .attr('r', function(d) { return d.group === 'device' ? 24 : Math.min(7 + (d.calls || 0), 16); })
-        .attr('fill', function(d) { return d.color || '#888'; })
-        .attr('stroke', function(d) { return d.group === 'device' ? '#fff' : '#333'; })
-        .attr('stroke-width', function(d) { return d.group === 'device' ? 3 : 1; });
+    // Device nodes: outer pulse ring + inner circle + icon
+    node.filter(function(d) { return d.group === 'device'; })
+        .append('circle').attr('class', 'pulse-ring')
+        .attr('r', 30).attr('fill', 'none')
+        .attr('stroke', function(d) { return d.color || '#dc3545'; })
+        .attr('stroke-width', 1.5).attr('stroke-opacity', 0.3)
+        .style('animation', 'pulseGlow 3s ease-in-out infinite');
+
+    node.append('circle').attr('class', 'node-circle')
+        .attr('r', function(d) {
+            if (d.group === 'device') return 22;
+            return isLarge ? Math.min(3 + (d.calls || 0) * 0.3, 9) : Math.min(6 + (d.calls || 0) * 0.8, 14);
+        })
+        .attr('fill', function(d) {
+            if (d.group === 'device') return d.color || '#dc3545';
+            if (d.group === 'contact_with_calls') return '#38ef7d';
+            if (d.group === 'contact') return '#4facfe';
+            return '#f5576c';
+        })
+        .attr('stroke', function(d) {
+            if (d.group === 'device') return 'rgba(255,255,255,0.6)';
+            return 'rgba(255,255,255,0.12)';
+        })
+        .attr('stroke-width', function(d) { return d.group === 'device' ? 2.5 : 0.5; })
+        .attr('filter', function(d) { return d.group === 'device' ? 'url(#glow-device)' : null; })
+        .style('cursor', 'pointer');
 
     node.filter(function(d) { return d.group === 'device'; })
         .append('text').text('\uf3cd')
@@ -1230,13 +1567,15 @@ function renderGraph(data, filter, containerId) {
         .attr('font-size', '14px').attr('fill', '#fff')
         .attr('text-anchor', 'middle').attr('dy', 5);
 
-    node.append('text')
-        .text(function(d) { var l = d.label || d.id; return l.length > 14 ? l.slice(0, 14) + '...' : l; })
-        .attr('dx', function(d) { return d.group === 'device' ? 28 : 14; })
+    // All nodes get labels — visibility controlled by CSS .labels-hidden class
+    node.append('text').attr('class', 'node-label')
+        .text(function(d) { var l = d.label || d.id; return l.length > 16 ? l.slice(0, 16) + '…' : l; })
+        .attr('dx', function(d) { return d.group === 'device' ? 28 : 10; })
         .attr('dy', 4)
-        .attr('font-size', function(d) { return d.group === 'device' ? '12px' : '9px'; })
-        .attr('font-weight', function(d) { return d.group === 'device' ? 'bold' : 'normal'; })
-        .attr('fill', function(d) { return d.group === 'device' ? '#fff' : '#aaa'; });
+        .attr('font-size', function(d) { return d.group === 'device' ? '11px' : '7.5px'; })
+        .attr('font-weight', function(d) { return d.group === 'device' ? '700' : '400'; })
+        .attr('fill', function(d) { return d.group === 'device' ? '#e0e0f0' : 'rgba(200,200,220,0.55)'; })
+        .style('pointer-events', 'none');
 
     // Rich HTML Tooltip (pinnable on click)
     function buildNodeTooltipHtml(d) {
@@ -1284,7 +1623,8 @@ function renderGraph(data, filter, containerId) {
                         if (dd.last_call) html += '<div class="tt-row"><span class="tt-label">Last Call</span><span class="tt-value">' + dd.last_call + '</span></div>';
                         if (dd.call_types && Object.keys(dd.call_types).length) {
                             var typeStr = Object.keys(dd.call_types).map(function(t) {
-                                var color = t === 'incoming' ? '#28a745' : t === 'outgoing' ? '#007bff' : t === 'missed' ? '#dc3545' : '#888';
+                                var tl = t.toLowerCase();
+                                var color = tl === 'incoming' ? '#28a745' : tl === 'outgoing' ? '#007bff' : tl === 'missed' ? '#dc3545' : tl === 'rejected' ? '#fd7e14' : tl === 'blocked' ? '#6c757d' : '#888';
                                 return '<span style="color:' + color + ';">' + t + ': ' + dd.call_types[t] + '</span>';
                             }).join(' &middot; ');
                             html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + typeStr + '</span></div>';
@@ -1300,13 +1640,69 @@ function renderGraph(data, filter, containerId) {
         return html;
     }
 
+    // Build adjacency map for hover highlighting
+    var adjacency = {};
+    links.forEach(function(l) {
+        var s = typeof l.source === 'object' ? l.source.id : l.source;
+        var t = typeof l.target === 'object' ? l.target.id : l.target;
+        if (!adjacency[s]) adjacency[s] = new Set();
+        if (!adjacency[t]) adjacency[t] = new Set();
+        adjacency[s].add(t);
+        adjacency[t].add(s);
+    });
+
+    function highlightNode(d) {
+        if (isLarge) return;
+        var connected = adjacency[d.id] || new Set();
+        node.style('opacity', function(o) {
+            return o.id === d.id || connected.has(o.id) ? 1 : 0.12;
+        });
+        link.style('opacity', function(o) {
+            var s = typeof o.source === 'object' ? o.source.id : o.source;
+            var t = typeof o.target === 'object' ? o.target.id : o.target;
+            return s === d.id || t === d.id ? 1 : 0.04;
+        }).attr('stroke-width', function(o) {
+            var s = typeof o.source === 'object' ? o.source.id : o.source;
+            var t = typeof o.target === 'object' ? o.target.id : o.target;
+            if (s === d.id || t === d.id) {
+                return o.link_type === 'bridge' ? 4 : Math.min(Math.max(1.5, (o.calls || 0) / 3), 8);
+            }
+            return o.link_type === 'bridge' ? 3 : Math.min(Math.max(0.8, (o.calls || 0) / 4), 6);
+        });
+        // Enlarge hovered node
+        d3.select(this).select('.node-circle')
+            .transition().duration(150)
+            .attr('r', function(nd) { return nd.group === 'device' ? 26 : Math.min(8 + (nd.calls || 0) * 0.8, 18); })
+            .attr('stroke-width', function(nd) { return nd.group === 'device' ? 3.5 : 2; });
+    }
+
+    function unhighlightNode() {
+        if (isLarge) return;
+        node.style('opacity', 1);
+        link.style('opacity', function(d) { return d.link_type === 'bridge' ? 0.9 : 0.35; })
+            .attr('stroke-width', function(d) {
+                if (d.link_type === 'bridge') return 3;
+                return Math.min(Math.max(0.8, (d.calls || 0) / 4), 6);
+            });
+        d3.select(this).select('.node-circle')
+            .transition().duration(150)
+            .attr('r', function(nd) { return nd.group === 'device' ? 22 : Math.min(6 + (nd.calls || 0) * 0.8, 14); })
+            .attr('stroke-width', function(nd) { return nd.group === 'device' ? 2.5 : 1; });
+    }
+
     node.on('mouseover', function(event, d) {
+        if (!sharedTooltipPinned) highlightNode.call(this, d);
         if (sharedTooltipPinned) return;
         var html = buildNodeTooltipHtml(d);
         tooltip.html(html).style('opacity', 1).style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px');
     })
     .on('mousemove', function(event) { if (!sharedTooltipPinned) tooltip.style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px'); })
-    .on('mouseout', function() { if (!sharedTooltipPinned) tooltip.style('opacity', 0); })
+    .on('mouseout', function() {
+        if (!sharedTooltipPinned) {
+            unhighlightNode.call(this);
+            tooltip.style('opacity', 0);
+        }
+    })
     .on('click', function(event, d) {
         event.stopPropagation();
         sharedTooltipPinned = true;
@@ -1359,6 +1755,15 @@ function renderGraph(data, filter, containerId) {
             .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
         node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
     });
+
+    // Auto-sync labels toggle based on filtered node count
+    var labelsToggleId = containerId === 'network-graph-contacts' ? 'contactLabelsToggle' : 'callLabelsToggle';
+    var labelsToggle = document.getElementById(labelsToggleId);
+    if (labelsToggle && !labelsToggle.dataset.userSet) {
+        var showLabels = !isLarge;
+        labelsToggle.checked = showLabels;
+        container.classList.toggle('labels-hidden', !showLabels);
+    }
 }
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -1383,10 +1788,21 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
     });
+    // Label toggle checkboxes (mark user-set to prevent auto-override)
+    document.getElementById('contactLabelsToggle').addEventListener('change', function() {
+        this.dataset.userSet = '1';
+        document.getElementById('network-graph-contacts').classList.toggle('labels-hidden', !this.checked);
+    });
+    document.getElementById('callLabelsToggle').addEventListener('change', function() {
+        this.dataset.userSet = '1';
+        document.getElementById('network-graph-calllogs').classList.toggle('labels-hidden', !this.checked);
+    });
     // Sub-tab lazy load for call logs graph
     document.getElementById('net-calllogs-tab').addEventListener('shown.bs.tab', function() {
         loadNetworkGraph('calllogs');
     });
+
+
 });
 </script>
 {% endblock %}

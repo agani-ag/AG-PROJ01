@@ -695,7 +695,7 @@ def device_table_api(request):
         rows = []
         for i, loc in enumerate(qs[:5000], 1):
             rows.append({
-                'n': i, 'device': loc.device.user_id.title(),
+                'n': i, 'device_id': str(loc.device.id), 'device': loc.device.user_id.title(),
                 'city': loc.city or '-', 'region': loc.region or '-',
                 'lat': round(float(loc.latitude), 4), 'lng': round(float(loc.longitude), 4),
                 'accuracy': f"{loc.accuracy:.1f}" if loc.accuracy else '-',
@@ -712,7 +712,7 @@ def device_table_api(request):
         rows = []
         for i, log in enumerate(qs[:5000], 1):
             rows.append({
-                'n': i, 'device': log.device.user_id.title(),
+                'n': i, 'device_id': str(log.device.id), 'device': log.device.user_id.title(),
                 'name': log.name or '-', 'phone': log.phone_number or '-',
                 'call_type': log.call_type or '-',
                 'ts': log.timestamp.isoformat() if log.timestamp else '',
@@ -726,7 +726,7 @@ def device_table_api(request):
         rows = []
         for i, c in enumerate(qs[:5000], 1):
             rows.append({
-                'n': i, 'device': c.device.user_id.title(),
+                'n': i, 'device_id': str(c.device.id), 'device': c.device.user_id.title(),
                 'name': c.name or '-', 'phone': c.phone_number or '-',
                 'email': c.email or '-',
                 'ts': c.synced_at.isoformat() if c.synced_at else '',
