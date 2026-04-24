@@ -305,7 +305,7 @@
             <!-- Location Info -->
             <h4 class="fw-bold mb-3">Location Info</h4>
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-sm mb-4">
+                <table id="locations-table" class="table table-bordered table-striped table-sm mb-4">
                     <thead class="table-dark">
                         <tr>
                             <th>Latitude</th>
@@ -381,6 +381,14 @@ $('#calllogs-table').DataTable({
     "ordering": true,
 });
 $('#contacts-table').DataTable({
+    "order": [],
+    "columnDefs": [],
+    "paging": true,
+    "lengthChange": true,
+    "searching": true,
+    "ordering": true,
+});
+$('#locations-table').DataTable({
     "order": [],
     "columnDefs": [],
     "paging": true,

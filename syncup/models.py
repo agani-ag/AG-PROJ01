@@ -1,6 +1,7 @@
 from django.db import models
+from datetime import timedelta
+from django.utils import timezone
 from django.utils.timezone import now
-from datetime import timedelta, timezone
 from django.contrib.auth.models import User
 from multiselectfield import MultiSelectField
 from .utils import (
@@ -419,7 +420,7 @@ class Device(models.Model):
     platform = models.CharField(max_length=50, default="unknown")
     instance = models.CharField(max_length=255, blank=True, null=True)
     registered_at = models.DateTimeField(auto_now_add=True)
-    last_login = models.DateTimeField(auto_now=True)
+    last_login = models.DateTimeField(default=timezone.now)
     last_background_sync = models.DateTimeField(default=timezone.now)
     retry_count = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
