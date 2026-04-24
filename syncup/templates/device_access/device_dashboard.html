@@ -1555,9 +1555,9 @@ function renderGraph(data, filter, containerId) {
         })
         .attr('stroke', function(d) {
             if (d.group === 'device') return 'rgba(255,255,255,0.6)';
-            return 'rgba(255,255,255,0.12)';
+            return 'rgba(255,255,255,0.45)';
         })
-        .attr('stroke-width', function(d) { return d.group === 'device' ? 2.5 : 0.5; })
+        .attr('stroke-width', function(d) { return d.group === 'device' ? 2.5 : 1.2; })
         .attr('filter', function(d) { return d.group === 'device' ? 'url(#glow-device)' : null; })
         .style('cursor', 'pointer');
 

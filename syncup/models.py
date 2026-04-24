@@ -573,3 +573,37 @@ class PublicUser(models.Model):
         if self.password:
             self.password = self.password.strip().lower()
         super().save(*args, **kwargs)
+
+
+class AuditError(models.Model):
+    error_id = models.CharField(max_length=100, unique=True, db_index=True)
+    timestamp = models.DateTimeField()
+    # Context
+    source = models.CharField(max_length=100, blank=True, null=True)
+    event_type = models.CharField(max_length=100, blank=True, null=True)
+    user_id = models.CharField(max_length=255, blank=True, null=True)
+    device_id = models.CharField(max_length=255, blank=True, null=True)
+    api_url = models.URLField(max_length=500, blank=True, null=True)
+    app_version = models.CharField(max_length=50, blank=True, null=True)
+    platform = models.CharField(max_length=50, blank=True, null=True)
+    os_version = models.CharField(max_length=50, blank=True, null=True)
+    task_elapsed_seconds = models.FloatField(null=True, blank=True)
+    # Error
+    error_type = models.CharField(max_length=100, blank=True, null=True)
+    error_message = models.TextField(blank=True, null=True)
+    http_status = models.IntegerField(null=True, blank=True)
+    http_status_text = models.CharField(max_length=100, blank=True, null=True)
+    response_snippet = models.TextField(blank=True, null=True)
+    stack = models.TextField(blank=True, null=True)
+    # Payload summary
+    payload_summary = models.JSONField(blank=True, null=True)
+    # Payload preview
+    payload_preview = models.JSONField(blank=True, null=True)
+    # Meta
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.error_id} - {self.error_type or 'unknown'} ({self.user_id})"
+
+    class Meta:
+        ordering = ['-timestamp']

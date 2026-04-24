@@ -20,7 +20,8 @@ from ..utils import get_fcm_token
 from ..models import (
     CallLog, Contact, SystemInfo, User,
     LinkRegistry, InstanceInfo, PublicUser,
-    Device, Location, SIMCard, DeviceInfo, NetworkInfo
+    Device, Location, SIMCard, DeviceInfo, NetworkInfo,
+    AuditError
 )
 
 # Variables
@@ -303,7 +304,8 @@ def send_notification(request):
         sent, failed = send_fcm_notifications_data_only(tokens, title, body)
         print(f"Data-only notification sent to {len(sent)} devices, failed for {len(failed)} devices")
     else:
-        sent, failed = send_fcm_notifications(tokens, title, body, {}, "https://picsum.photos/400/300")
+        image = None if data.get("no_image") else (data.get("image") or "https://picsum.photos/400/300")
+        sent, failed = send_fcm_notifications(tokens, title, body, {}, image)
         print(f"Notification sent to {len(sent)} devices, failed for {len(failed)} devices")
     if failed:
         Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
@@ -1105,6 +1107,61 @@ def device_network_api(request):
     links.extend(bridge_agg.values())
 
     return JsonResponse({"nodes": nodes, "links": links, "bridges": list(bridge_agg.values()), "device_labels": device_labels, "mode": mode})
+
+@csrf_exempt
+def audit_errors(request):
+    if request.method != 'POST':
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    error_id = data.get('error_id')
+    if not error_id:
+        return JsonResponse({"success": False, "message": "error_id required"}, status=400)
+
+    ctx = data.get('context', {})
+    err = data.get('error', {})
+    ts_raw = data.get('timestamp')
+    ts = None
+    if ts_raw:
+        from django.utils.dateparse import parse_datetime
+        ts = parse_datetime(ts_raw)
+        if not ts:
+            ts = now()
+    else:
+        ts = now()
+
+    obj, created = AuditError.objects.update_or_create(
+        error_id=error_id,
+        defaults={
+            'timestamp': ts,
+            'source': ctx.get('source'),
+            'event_type': ctx.get('event_type'),
+            'user_id': ctx.get('user_id'),
+            'device_id': ctx.get('device_id'),
+            'api_url': ctx.get('api_url'),
+            'app_version': ctx.get('app_version'),
+            'platform': ctx.get('platform'),
+            'os_version': str(ctx.get('os_version', '')) or None,
+            'task_elapsed_seconds': ctx.get('task_elapsed_seconds'),
+            'error_type': err.get('type'),
+            'error_message': err.get('message'),
+            'http_status': err.get('http_status'),
+            'http_status_text': err.get('http_status_text'),
+            'response_snippet': err.get('response_snippet'),
+            'stack': err.get('stack'),
+            'payload_summary': data.get('payload_summary'),
+            'payload_preview': data.get('payload_preview'),
+        }
+    )
+
+    return JsonResponse({
+        "success": True,
+        "error_id": obj.error_id,
+        "action": "CREATED" if created else "UPDATED"
+    })
 
 def device_view(request, id):
     context = {}

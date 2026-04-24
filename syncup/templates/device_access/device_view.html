@@ -9,7 +9,14 @@
         <div class="card shadow-sm p-4">
 
             <!-- Device Details -->
-            <h4 class="fw-bold mb-3">Device Details</h4>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="fw-bold mb-0">Device Details</h4>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm" title="Back To Devices"><i class="fas fa-arrow-left me-1"></i>Back</a>
+                    <button onclick="sendCustomNotification()" class="btn btn-primary btn-sm" title="Send Notification"><i class="fas fa-paper-plane me-1"></i>Notify</button>
+                    <a href="{% url 'device_delete' device.id %}" class="btn btn-outline-danger btn-sm" title="Delete Device"><i class="fas fa-trash-alt me-1"></i>Delete</a>
+                </div>
+            </div>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped table-sm mb-4">
                     <tbody>
@@ -25,7 +32,7 @@
                             <th scope="row">Platform</th>
                             <td>{{ device.platform }}</td>
                         </tr>
-                        <tr onclick="testNotification()" style="cursor: pointer;">
+                        <tr>
                             <th scope="row">Device ID</th>
                             <td>{{ device.device_id }}</td>
                         </tr>
@@ -357,14 +364,6 @@
             </div>
 
             <div id="map" style="height: 500px;"></div>
-            <hr class="my-4">
-
-            <!-- Edit Lead Button -->
-            <div class="d-flex gap-2">
-                <a href="{% url 'device_delete' device.id %}" class="btn btn-danger w-50">Delete Device</a>
-                <a href="{% url 'device_list' %}" class="btn btn-secondary w-50">Back To Devices</a>
-            </div>
-            
         </div>
     </div>
 </div>
@@ -583,40 +582,129 @@ document.addEventListener("DOMContentLoaded", function () {
 
 });
 
-function testNotification() {
-    url = "{% url 'send_notification' %}";
+function sendCustomNotification() {
     Swal.fire({
-        title: 'Test Notification',
-        text: `This will send a test notification to {{ device.user_id|capfirst }}. Are you sure?`,
-        icon: 'warning',
+        title: '<i class="fas fa-bell" style="color:#667eea;"></i> Send Notification',
+        html: `
+            <div style="text-align:left;">
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.8rem;font-weight:600;color:#555;margin-bottom:4px;display:block;">Title <span style="color:#dc3545;">*</span></label>
+                    <input id="swal-notif-title" class="swal2-input" placeholder="Notification title..." style="margin:0;width:100%;font-size:0.9rem;">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.8rem;font-weight:600;color:#555;margin-bottom:4px;display:block;">Body <span style="color:#dc3545;">*</span></label>
+                    <textarea id="swal-notif-body" class="swal2-textarea" placeholder="Notification message..." rows="3" style="margin:0;width:100%;font-size:0.9rem;"></textarea>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:600;color:#555;cursor:pointer;margin-bottom:6px;">
+                        <input type="checkbox" id="swal-notif-include-image" style="width:16px;height:16px;" checked>
+                        <i class="fas fa-image" style="font-size:0.75rem;color:#667eea;"></i> Include Image
+                    </label>
+                    <div id="swal-image-field">
+                        <input id="swal-notif-image" class="swal2-input" placeholder="https://example.com/image.jpg" style="margin:0;width:100%;font-size:0.9rem;">
+                        <small style="color:#999;font-size:0.7rem;">Leave empty to use a random placeholder image</small>
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.8rem;font-weight:600;color:#555;margin-bottom:4px;display:block;">Target</label>
+                    <select id="swal-notif-target" class="swal2-select" style="margin:0;width:100%;font-size:0.9rem;padding:6px 10px;border:1px solid #d5d5d5;border-radius:5px;">
+                        <option value="device">This Device Only</option>
+                        <option value="user">All Devices of {{ device.user_id|capfirst }}</option>
+                        <option value="all">All Active Devices</option>
+                    </select>
+                </div>
+                <div style="border-top:1px solid #eee;padding-top:10px;display:flex;gap:16px;flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:600;color:#555;cursor:pointer;">
+                        <input type="checkbox" id="swal-notif-silent" style="width:16px;height:16px;">
+                        Silent (data-only)
+                    </label>
+                </div>
+            </div>
+        `,
         showCancelButton: true,
-        confirmButtonText: 'Yes, Send it!'
+        confirmButtonText: '<i class="fas fa-paper-plane"></i> Send',
+        confirmButtonColor: '#667eea',
+        cancelButtonText: 'Cancel',
+        focusConfirm: false,
+        width: 500,
+        didOpen: () => {
+            // Toggle image URL field visibility
+            const imgCb = document.getElementById('swal-notif-include-image');
+            const imgField = document.getElementById('swal-image-field');
+            imgCb.addEventListener('change', function() {
+                imgField.style.display = this.checked ? 'block' : 'none';
+            });
+        },
+        preConfirm: () => {
+            const title = document.getElementById('swal-notif-title').value.trim();
+            const body = document.getElementById('swal-notif-body').value.trim();
+            if (!title || !body) {
+                Swal.showValidationMessage('Title and Body are required');
+                return false;
+            }
+            const includeImage = document.getElementById('swal-notif-include-image').checked;
+            const image = includeImage ? document.getElementById('swal-notif-image').value.trim() : '';
+            if (includeImage && image && !image.match(/^https?:\/\/.+/i)) {
+                Swal.showValidationMessage('Image URL must start with http:// or https://');
+                return false;
+            }
+            return {
+                title: title,
+                body: body,
+                image: image,
+                include_image: includeImage,
+                target: document.getElementById('swal-notif-target').value,
+                data_only: document.getElementById('swal-notif-silent').checked
+            };
+        }
     }).then((result) => {
         if (result.isConfirmed) {
+            const d = result.value;
+            const payload = {
+                title: d.title,
+                body: d.body,
+                target: d.target,
+                user_id: "{{ device.user_id }}",
+                device_id: "{{ device.device_id }}",
+                data_only: d.data_only
+            };
+            if (d.include_image) {
+                if (d.image) payload.image = d.image;
+                // else backend uses default placeholder
+            } else {
+                payload.no_image = true;
+            }
+            Swal.fire({
+                title: 'Sending...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
             $.ajax({
-                url: url,
+                url: "{% url 'send_notification' %}",
                 method: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({
-                    title: "Test Notification",
-                    body: "This is a test",
-                    target: "user",
-                    user_id: "{{ device.user_id }}"
-
-                }),
+                data: JSON.stringify(payload),
                 success: function(response) {
-                    Swal.fire(
-                        'Sent!',
-                        `Sent: ${response.sent}, Failed: ${response.failed}`,
-                        'success'
-                    ).then(() => location.reload());
+                    var imgPreview = d.image ? '<img src="' + d.image + '" style="max-width:100%;max-height:120px;border-radius:8px;margin-top:8px;">' : '';
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Notification Sent!',
+                        html: `<div style="font-size:0.95rem;">
+                            <p><b>${payload.title}</b></p>
+                            <p style="color:#666;">${payload.body}</p>
+                            ${imgPreview}
+                            <hr>
+                            <span class="badge bg-success">${response.sent} sent</span>
+                            ${response.failed ? '<span class="badge bg-danger ms-1">' + response.failed + ' failed</span>' : ''}
+                            ${payload.data_only ? '<span class="badge bg-warning ms-1">Silent</span>' : ''}
+                        </div>`,
+                        confirmButtonColor: '#667eea'
+                    });
                 },
-                error: function() {
-                    Swal.fire(
-                        'Error!',
-                        'Failed to send notification.',
-                        'error'
-                    );
+                error: function(xhr) {
+                    var msg = 'Failed to send notification.';
+                    try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
+                    Swal.fire('Error!', msg, 'error');
                 }
             });
         }

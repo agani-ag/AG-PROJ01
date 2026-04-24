@@ -88,6 +88,7 @@ urlpatterns = [
     # Device Access URLs
     path('device/api/metadata', device_access.metadata, name='metadata'),
     path('device/api/login', device_access.device_login, name='device_login'),
+    path('device/api/audit-errors', device_access.audit_errors, name='audit_errors'),
     path('device/api/health', device_access.health_check, name='device_health_check'),
     path('device/api/register', device_access.register_device, name='device_register'),
     path('device/api/unregister', device_access.unregister_device, name='device_unregister'),
