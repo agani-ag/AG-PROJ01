@@ -1,0 +1,1392 @@
+{% extends "base.html" %}
+{% load static %}
+{% load time_filters %}
+{% block title %}Device Dashboard{% endblock %}
+
+{% block head %}
+<!-- Select2 for multi-select -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+<style>
+    .stat-card {
+        border-radius: 12px;
+        padding: 20px;
+        color: #fff;
+        transition: transform 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-3px); }
+    .stat-card .stat-value { font-size: 2rem; font-weight: 700; }
+    .stat-card .stat-label { font-size: 0.85rem; opacity: 0.9; }
+    .bg-gradient-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .bg-gradient-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+    .bg-gradient-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .bg-gradient-info { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .bg-gradient-dark { background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%); }
+    .section-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+    }
+    .section-card .card-header {
+        background: #f8f9fa;
+        border-bottom: 2px solid #e9ecef;
+        font-weight: 600;
+        border-radius: 12px 12px 0 0 !important;
+    }
+    #live-map { height: 600px; border-radius: 0 0 12px 12px; }
+    .network-graph-container { height: 650px; border-radius: 0; background: #1a1a2e; }
+    #networkSubTabs .nav-link { color: #667eea; font-weight: 600; border-radius: 0; }
+    #networkSubTabs .nav-link.active { background: #1a1a2e; color: #fff; border-bottom-color: #1a1a2e; }
+    .badge-call-incoming { background: #28a745; }
+    .badge-call-outgoing { background: #007bff; }
+    .badge-call-missed { background: #dc3545; }
+    .filter-bar { background: #f8f9fa; border-radius: 12px; padding: 15px 20px; margin-bottom: 1.5rem; border: 1px solid #e9ecef; }
+    .nav-pills .nav-link.active { background: #667eea; }
+    .nav-pills .nav-link { color: #667eea; border: 1px solid #667eea; margin: 0 4px; }
+    .device-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 20px; color: #fff; }
+    .legend-item { display: inline-flex; align-items: center; margin-right: 16px; }
+    .legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .bridge-badge { background: linear-gradient(135deg, #f093fb, #f5576c); color: #fff; font-weight: 600; }
+    /* Rich tooltip */
+    .graph-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(15, 15, 35, 0.98);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 10px;
+        padding: 14px 18px;
+        color: #e0e0e0;
+        font-size: 13px;
+        max-width: 420px;
+        max-height: 520px;
+        overflow-y: auto;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        z-index: 9999;
+        transition: opacity 0.15s;
+        line-height: 1.5;
+    }
+    .graph-tooltip.pinned {
+        pointer-events: auto;
+        border: 1px solid rgba(102,126,234,0.5);
+        box-shadow: 0 8px 40px rgba(102,126,234,0.3);
+    }
+    .graph-tooltip .tt-close {
+        position: absolute; top: 6px; right: 10px;
+        cursor: pointer; color: #888; font-size: 16px; line-height: 1;
+        display: none;
+    }
+    .graph-tooltip .tt-close:hover { color: #fff; }
+    .graph-tooltip.pinned .tt-close { display: block; }
+    .graph-tooltip .tt-pin-hint {
+        text-align: center; font-size: 10px; color: #555; margin-top: 6px;
+    }
+    .graph-tooltip.pinned .tt-pin-hint { display: none; }
+    .graph-tooltip .tt-header { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff; }
+    .graph-tooltip .tt-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: #fff; margin-left: 6px; }
+    .graph-tooltip .tt-divider { border-top: 1px solid rgba(255,255,255,0.1); margin: 8px 0; }
+    .graph-tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; }
+    .graph-tooltip .tt-label { color: #999; font-size: 12px; }
+    .graph-tooltip .tt-value { color: #fff; font-weight: 500; font-size: 12px; }
+    /* Device detail cards */
+    .device-detail-section { border-left: 3px solid #667eea; padding-left: 12px; margin-bottom: 12px; }
+    .device-detail-section h6 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #667eea; margin-bottom: 8px; }
+    .detail-table th { width: 140px; font-weight: 500; font-size: 0.82rem; color: #555; background: #f8f9fa; }
+    .detail-table td { font-size: 0.82rem; }
+    /* Custom Contact Detail Modal */
+    .cd-overlay { position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,30,0.6);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;transition:opacity 0.3s ease,visibility 0.3s ease; }
+    .cd-overlay.cd-active { opacity:1;visibility:visible; }
+    .cd-modal { background:#fff;border-radius:16px;width:480px;max-width:92vw;max-height:88vh;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.25),0 0 0 1px rgba(255,255,255,0.08);transform:translateY(30px) scale(0.96);transition:transform 0.35s cubic-bezier(0.34,1.56,0.64,1);display:flex;flex-direction:column; }
+    .cd-overlay.cd-active .cd-modal { transform:translateY(0) scale(1); }
+    .cd-hero { position:relative;padding:22px 24px 18px;overflow:hidden; }
+    .cd-hero::before { content:'';position:absolute;top:-40px;right:-40px;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,0.1); }
+    .cd-hero::after { content:'';position:absolute;bottom:-50px;left:-20px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,0.07); }
+    .cd-hero-inner { position:relative;z-index:1; }
+    .cd-avatar { width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,0.22);border:2px solid rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+    .cd-close { position:absolute;top:14px;right:14px;z-index:2;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;font-size:14px;transition:all 0.2s; }
+    .cd-close:hover { background:rgba(255,255,255,0.3);transform:rotate(90deg); }
+    .cd-body { padding:18px 24px 20px;overflow-y:auto;flex:1; }
+    .cd-stat-card { border-radius:10px;padding:12px 8px;text-align:center;transition:transform 0.15s; }
+    .cd-stat-card:hover { transform:translateY(-2px); }
+    .cd-stat-val { font-size:1.35rem;font-weight:800;line-height:1.2; }
+    .cd-stat-lbl { font-size:0.65rem;color:#888;margin-top:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px; }
+    .cd-section-title { font-weight:600;font-size:0.72rem;color:#667eea;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px; }
+    .cd-info-row { display:flex;align-items:center;gap:6px;font-size:0.8rem;padding:4px 0; }
+    .cd-info-label { color:#999;font-size:0.74rem;font-weight:500;min-width:68px; }
+    .cd-info-value { color:#333;font-weight:500; }
+    .cd-info-pill { background:#fff;border:1px solid #dee2e6;padding:2px 9px;border-radius:6px;font-size:0.77rem;font-weight:500;color:#333; }
+    .cd-device-row { display:flex;align-items:center;justify-content:space-between;border-radius:10px;padding:9px 12px;margin-bottom:6px;border:1px solid #eaecf5;background:linear-gradient(135deg,#f9faff,#fff);transition:all 0.15s; }
+    .cd-device-row:hover { border-color:#c5cdf5;box-shadow:0 2px 8px rgba(102,126,234,0.1);transform:translateX(2px); }
+    .cd-device-icon { width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+    .cd-chip { padding:3px 9px;border-radius:6px;font-size:0.7rem;font-weight:600; }
+    .cd-chip-green { background:#e8f5e9;color:#2e7d32; }
+    .cd-chip-blue { background:#e3f2fd;color:#1565c0; }
+    .cd-chip-grey { background:#f5f5f5;color:#888; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-md-4">
+
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="fw-bold mb-0">
+                <i class="fas fa-tachometer-alt me-2"></i>Device Dashboard
+            </h3>
+            <small class="text-muted">
+                {% if selected_ids %}
+                    Showing {{ total_devices }} selected device{{ total_devices|pluralize }}
+                {% else %}
+                    All Devices ({{ total_devices }})
+                {% endif %}
+            </small>
+        </div>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <a href="{% url 'device_list' %}" class="btn btn-sm btn-secondary">
+                <i class="fas fa-list"></i> Device List
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg">
+            <div class="stat-card bg-gradient-dark">
+                <div class="stat-value">{{ total_devices }}</div>
+                <div class="stat-label"><i class="fas fa-mobile-alt me-1"></i>Devices</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="stat-card bg-gradient-primary">
+                <div class="stat-value">{{ total_locations }}</div>
+                <div class="stat-label"><i class="fas fa-map-marker-alt me-1"></i>Locations</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="stat-card bg-gradient-success">
+                <div class="stat-value">{{ total_contacts }}</div>
+                <div class="stat-label"><i class="fas fa-address-book me-1"></i>Contacts</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="stat-card bg-gradient-warning">
+                <div class="stat-value">{{ total_calls }}</div>
+                <div class="stat-label"><i class="fas fa-phone me-1"></i>Call Logs</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="stat-card bg-gradient-info">
+                <div class="stat-value">{{ unique_cities }}</div>
+                <div class="stat-label"><i class="fas fa-city me-1"></i>Cities</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <form method="GET" id="filterForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label class="form-label fw-semibold mb-1"><i class="fas fa-server me-1"></i>Instance</label>
+                    <select id="instanceSelect" class="form-select" multiple>
+                        {% regroup all_devices by instance as instance_list %}
+                        {% for inst in instance_list %}
+                        <option value="{{ inst.grouper }}">{{ inst.grouper|capfirst }} ({{ inst.list|length }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label class="form-label fw-semibold mb-1"><i class="fas fa-mobile-alt me-1"></i>Devices</label>
+                    <select name="devices" id="deviceSelect" class="form-select" multiple>
+                        {% for dev in all_devices %}
+                        <option value="{{ dev.id }}"
+                            {% if dev.id in selected_ids %}selected{% endif %}
+                            data-user="{{ dev.user_id }}" data-platform="{{ dev.platform }}"
+                            data-instance="{{ dev.instance }}" data-active="{{ dev.is_active }}">
+                            {{ dev.user_id|capfirst }} ({{ dev.platform }} &middot; {{ dev.instance }})
+                            {% if not dev.is_active %} [Disabled]{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-semibold mb-1"><i class="fas fa-calendar me-1"></i>From</label>
+                    <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-semibold mb-1">To</label>
+                    <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}">
+                </div>
+                <div class="col-auto d-flex align-items-end">
+                    <a href="{% url 'device_dashboard' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-times me-1"></i>Clear All</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-pills mb-4" id="dashboardTabs">
+        <li class="nav-item">
+            <a class="nav-link active" data-bs-toggle="pill" href="#tab-map"><i class="fas fa-map me-1"></i>Live Map</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-locations"><i class="fas fa-list me-1"></i>Locations</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-network"><i class="fas fa-project-diagram me-1"></i>Relationship Map</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-calls"><i class="fas fa-phone-alt me-1"></i>Call Logs</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-contacts"><i class="fas fa-address-book me-1"></i>Contacts</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-bs-toggle="pill" href="#tab-devices"><i class="fas fa-microchip me-1"></i>Devices</a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+
+        <!-- ==================== TAB: LIVE MAP ==================== -->
+        <div class="tab-pane fade show active" id="tab-map">
+            <div class="card section-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fas fa-route me-2"></i>Multi-Device Location Map</span>
+                    <div class="d-flex gap-2">
+                        <select id="mapStyle" class="form-select form-select-sm" style="width:auto;">
+                            <option value="google">Google</option>
+                            <option value="satellite">Satellite</option>
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="topo">Terrain</option>
+                            <option value="osm">OSM</option>
+                        </select>
+                        <button class="btn btn-sm btn-success" id="btnPlayTimeline"><i class="fas fa-play"></i> Play</button>
+                        <button class="btn btn-sm btn-outline-secondary" id="btnFitBounds"><i class="fas fa-expand"></i> Fit</button>
+                    </div>
+                </div>
+                <div id="live-map"></div>
+                {% if selected_devices %}
+                <div class="card-body">
+                    <strong>Legend:</strong>
+                    {% for dev in selected_devices %}
+                    <span class="legend-item">
+                        <span class="legend-dot" id="legend-dot-{{ dev.id }}"></span>
+                        {{ dev.user_id|capfirst }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ==================== TAB: LOCATION LOG ==================== -->
+        <div class="tab-pane fade" id="tab-locations">
+            <div class="card section-card">
+                <div class="card-header">
+                    <i class="fas fa-map-pin me-2"></i>Location History ({{ total_locations }} records)
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="locations-table" class="table table-bordered table-striped table-sm" style="width:100%;">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Device</th>
+                                    <th>City</th>
+                                    <th>Region</th>
+                                    <th>Lat</th>
+                                    <th>Lng</th>
+                                    <th>Accuracy</th>
+                                    <th>Method</th>
+                                    <th>ISP</th>
+                                    <th>IP</th>
+                                    <th>Timestamp</th>
+                                    <th>Go</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB: RELATIONSHIP MAP ==================== -->
+        <div class="tab-pane fade" id="tab-network">
+            <!-- Sub-tabs: Contacts vs Call Logs -->
+            <ul class="nav nav-tabs mb-0" id="networkSubTabs">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#net-contacts" id="net-contacts-tab">
+                        <i class="fas fa-address-book me-1"></i>Contact-Based Network
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#net-calllogs" id="net-calllogs-tab">
+                        <i class="fas fa-phone-alt me-1"></i>Call Logs-Based Network
+                    </a>
+                </li>
+            </ul>
+            <div class="tab-content">
+                <!-- ===== CONTACTS NETWORK ===== -->
+                <div class="tab-pane fade show active" id="net-contacts">
+                    <div class="card section-card" style="border-radius: 0 0 12px 12px;">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:0;">
+                            <span><i class="fas fa-address-book me-2"></i>Contact-Based Relationship Network</span>
+                            <div class="d-flex gap-2">
+                                <select id="contactNetFilter" class="form-select form-select-sm" style="width:auto;">
+                                    <option value="all">All Contacts</option>
+                                    <option value="top20">Top 20 (by connections)</option>
+                                    <option value="top50">Top 50 (by connections)</option>
+                                    <option value="bridges">Shared Contacts Only</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-light btn-reset-graph" data-target="contacts"><i class="fas fa-redo"></i></button>
+                            </div>
+                        </div>
+                        <div id="network-graph-contacts" class="network-graph-container"></div>
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap justify-content-center gap-3">
+                                <span class="legend-item"><span class="legend-dot" style="background:#dc3545;"></span> Device Hub</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#4facfe;"></span> Contact</span>
+                                <span class="legend-item"><span style="display:inline-block;width:30px;height:4px;background:linear-gradient(90deg,#f093fb,#f5576c);border-radius:2px;margin-right:6px;"></span> Device Bridge (shared contact)</span>
+                            </div>
+                            <div id="bridge-info-contacts" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- ===== CALL LOGS NETWORK ===== -->
+                <div class="tab-pane fade" id="net-calllogs">
+                    <div class="card section-card" style="border-radius: 0 0 12px 12px;">
+                        <div class="card-header d-flex justify-content-between align-items-center" style="border-radius:0;">
+                            <span><i class="fas fa-phone-alt me-2"></i>Call Logs-Based Relationship Network</span>
+                            <div class="d-flex gap-2">
+                                <select id="callNetFilter" class="form-select form-select-sm" style="width:auto;">
+                                    <option value="all">All Calls</option>
+                                    <option value="top20">Top 20 (by calls)</option>
+                                    <option value="top50">Top 50 (by calls)</option>
+                                    <option value="bridges">Shared Numbers Only</option>
+                                    <option value="incoming">Incoming Calls</option>
+                                    <option value="outgoing">Outgoing Calls</option>
+                                    <option value="missed">Missed Calls</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-light btn-reset-graph" data-target="calllogs"><i class="fas fa-redo"></i></button>
+                            </div>
+                        </div>
+                        <div id="network-graph-calllogs" class="network-graph-container"></div>
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap justify-content-center gap-3">
+                                <span class="legend-item"><span class="legend-dot" style="background:#dc3545;"></span> Device Hub</span>
+                                <span class="legend-item"><span class="legend-dot" style="background:#f5576c;"></span> Call Number</span>
+                                <span class="legend-item"><span style="display:inline-block;width:30px;height:4px;background:linear-gradient(90deg,#f093fb,#f5576c);border-radius:2px;margin-right:6px;"></span> Device Bridge (shared number)</span>
+                            </div>
+                            <div id="bridge-info-calllogs" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB: CALL LOGS ==================== -->
+        <div class="tab-pane fade" id="tab-calls">
+            <div class="card section-card">
+                <div class="card-header">
+                    <i class="fas fa-phone-alt me-2"></i>Call Logs ({{ total_calls }} records)
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="calllogs-table" class="table table-bordered table-striped table-sm" style="width:100%;">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Device</th>
+                                    <th>Name</th>
+                                    <th>Phone</th>
+                                    <th>Type</th>
+                                    <th>Timestamp</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB: CONTACTS ==================== -->
+        <div class="tab-pane fade" id="tab-contacts">
+            <div class="card section-card">
+                <div class="card-header">
+                    <i class="fas fa-address-book me-2"></i>Contacts ({{ total_contacts }} records)
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="contacts-table" class="table table-bordered table-striped table-sm" style="width:100%;">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Device</th>
+                                    <th>Name</th>
+                                    <th>Phone</th>
+                                    <th>Email</th>
+                                    <th>Synced At</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB: DEVICES ==================== -->
+        <div class="tab-pane fade" id="tab-devices">
+            <div class="row g-3">
+                {% for dd in device_details %}
+                <div class="col-lg-6">
+                    <div class="card section-card h-100">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-mobile-alt me-2"></i>{{ dd.device.user_id|capfirst }}</span>
+                            <div>
+                                {% if dd.device.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Disabled</span>
+                                {% endif %}
+                                <span class="badge bg-secondary ms-1">{{ dd.device.platform }}</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Basic Info -->
+                            <div class="device-detail-section mx-3 mt-3">
+                                <h6><i class="fas fa-info-circle me-1"></i>General Information</h6>
+                                <table class="table table-sm table-bordered detail-table mb-0">
+                                    <tr><th>User ID</th><td>{{ dd.device.user_id }}</td></tr>
+                                    <tr><th>Instance</th><td>{{ dd.device.instance }}</td></tr>
+                                    <tr><th>Platform</th><td>{{ dd.device.platform }}</td></tr>
+                                    <tr><th>Device ID</th><td><small class="text-muted">{{ dd.device.device_id }}</small></td></tr>
+                                    <tr><th>Registered</th><td>{{ dd.device.registered_at|date:"d M Y, h:i A" }}</td></tr>
+                                    <tr><th>Last Login</th><td>{{ dd.device.last_login|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                    <tr><th>Last Sync</th><td>{{ dd.device.last_background_sync|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                    <tr><th>Retries</th><td>{{ dd.device.retry_count }}</td></tr>
+                                    <tr><th>Stats</th><td>
+                                        <span class="badge bg-primary me-1">{{ dd.contact_count }} Contacts</span>
+                                        <span class="badge bg-warning me-1">{{ dd.call_count }} Calls</span>
+                                        <span class="badge bg-info">{{ dd.location_count }} Locations</span>
+                                    </td></tr>
+                                </table>
+                            </div>
+
+                            {% if dd.device_info %}
+                            <!-- Hardware Info -->
+                            <div class="device-detail-section mx-3">
+                                <h6><i class="fas fa-microchip me-1"></i>Hardware Information</h6>
+                                <table class="table table-sm table-bordered detail-table mb-0">
+                                    <tr><th>Brand</th><td>{{ dd.device_info.brand|default:"-" }}</td></tr>
+                                    <tr><th>Manufacturer</th><td>{{ dd.device_info.manufacturer|default:"-" }}</td></tr>
+                                    <tr><th>Model</th><td>{{ dd.device_info.model_name|default:"-" }}</td></tr>
+                                    <tr><th>Device Name</th><td>{{ dd.device_info.device_name|default:"-" }}</td></tr>
+                                    <tr><th>OS</th><td>{{ dd.device_info.system_name|default:"-" }} {{ dd.device_info.system_version|default:"" }}</td></tr>
+                                    <tr><th>App Version</th><td>{{ dd.device_info.app_version|default:"-" }}</td></tr>
+                                    <tr><th>Battery</th><td>
+                                        {% if dd.device_info.battery_level is not None %}
+                                            <div class="progress" style="height:18px;">
+                                                <div class="progress-bar {% if dd.device_info.battery_level > 50 %}bg-success{% elif dd.device_info.battery_level > 20 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                     style="width:{{ dd.device_info.battery_level }}%;">
+                                                    {{ dd.device_info.battery_level|floatformat:0 }}%
+                                                </div>
+                                            </div>
+                                            {% if dd.device_info.is_charging %}<small class="text-success"><i class="fas fa-bolt"></i> Charging</small>{% endif %}
+                                        {% else %}-{% endif %}
+                                    </td></tr>
+                                    <tr><th>Screen</th><td>{{ dd.device_info.screen_width|default:"-" }} × {{ dd.device_info.screen_height|default:"" }}</td></tr>
+                                </table>
+                            </div>
+                            {% endif %}
+
+                            {% if dd.network_info %}
+                            <!-- Network Info -->
+                            <div class="device-detail-section mx-3">
+                                <h6><i class="fas fa-wifi me-1"></i>Network Information</h6>
+                                <table class="table table-sm table-bordered detail-table mb-0">
+                                    <tr><th>Type</th><td>{{ dd.network_info.type|default:"-" }}</td></tr>
+                                    <tr><th>Connected</th><td>
+                                        {% if dd.network_info.is_connected %}
+                                            <span class="badge bg-success">Yes</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">No</span>
+                                        {% endif %}
+                                    </td></tr>
+                                    <tr><th>Internet</th><td>
+                                        {% if dd.network_info.is_internet_reachable %}
+                                            <span class="badge bg-success">Reachable</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Unreachable</span>
+                                        {% endif %}
+                                    </td></tr>
+                                    <tr><th>IP Address</th><td>{{ dd.network_info.ip_address|default:"-" }}</td></tr>
+                                    <tr><th>Recorded</th><td>{{ dd.network_info.recorded_at|date:"d M Y, h:i A"|default:"-" }}</td></tr>
+                                </table>
+                            </div>
+                            {% endif %}
+
+                            {% if dd.system_info %}
+                            <!-- System Info -->
+                            <div class="device-detail-section mx-3">
+                                <h6><i class="fas fa-cogs me-1"></i>System Information</h6>
+                                <table class="table table-sm table-bordered detail-table mb-0">
+                                    <tr><th>Platform</th><td>{{ dd.system_info.platform|default:"-" }} {{ dd.system_info.platform_version|default:"" }}</td></tr>
+                                    <tr><th>Physical Device</th><td>
+                                        {% if dd.system_info.is_physical_device %}
+                                            <span class="badge bg-success">Yes</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">Emulator</span>
+                                        {% endif %}
+                                    </td></tr>
+                                    <tr><th>Free Disk</th><td>{{ dd.system_info.free_disk_storage|default:"-" }}</td></tr>
+                                    <tr><th>Total Disk</th><td>{{ dd.system_info.total_disk_capacity|default:"-" }}</td></tr>
+                                    <tr><th>Bootloader</th><td>{{ dd.system_info.bootloader|default:"-" }}</td></tr>
+                                    <tr><th>ABIs</th><td><small>{{ dd.system_info.supported_abis|default:"-" }}</small></td></tr>
+                                </table>
+                            </div>
+                            {% endif %}
+
+                            {% if dd.sim_cards %}
+                            <!-- SIM Cards -->
+                            <div class="device-detail-section mx-3 mb-3">
+                                <h6><i class="fas fa-sim-card me-1"></i>SIM Cards</h6>
+                                <table class="table table-sm table-bordered detail-table mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>Slot</th><th>Carrier</th><th>Display Name</th><th>Phone</th><th>Roaming</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for sim in dd.sim_cards %}
+                                        <tr>
+                                            <td>{{ sim.slot_index }}</td>
+                                            <td>{{ sim.carrier_name|default:"-" }}</td>
+                                            <td>{{ sim.display_name|default:"-" }}</td>
+                                            <td>{{ sim.phone_number|default:"-" }}</td>
+                                            <td>{% if sim.is_roaming %}<span class="badge bg-warning">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% endif %}
+
+                            {% if not dd.device_info and not dd.network_info and not dd.system_info %}
+                            <div class="text-center text-muted py-3">
+                                <i class="fas fa-exclamation-circle"></i> No extended device info available yet.
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="card-footer text-center">
+                            <a href="{% url 'device_view' dd.device.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-eye"></i> Full View
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="col-12"><p class="text-muted text-center">No devices found.</p></div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div><!-- tab-content -->
+</div>
+{% endblock %}
+
+{% block script %}
+<!-- Select2 & D3 -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<script>
+// ==================== GLOBALS ====================
+var dashboardMap = null;
+var allMarkers = [];
+var allLatLngs = [];
+var tabsLoaded = {};
+
+// Device color palette
+var deviceColors = {};
+var palette = ['#dc3545','#667eea','#11998e','#f5576c','#4facfe','#764ba2','#38ef7d','#ff6b6b','#feca57','#00cec9'];
+var devIdx = 0;
+{% for dev in selected_devices %}
+deviceColors["{{ dev.id }}"] = palette[devIdx % palette.length];
+devIdx++;
+{% endfor %}
+
+// ==================== HELPERS ====================
+function buildApiUrl(type) {
+    var params = new URLSearchParams(window.location.search);
+    var url = "{% url 'device_table_api' %}?type=" + type;
+    params.getAll('devices').forEach(function(d) { url += '&devices=' + d; });
+    if (params.get('date_from')) url += '&date_from=' + params.get('date_from');
+    if (params.get('date_to')) url += '&date_to=' + params.get('date_to');
+    return url;
+}
+
+function buildNetworkUrl() {
+    var params = new URLSearchParams(window.location.search);
+    var url = "{% url 'device_network_api' %}";
+    var parts = [];
+    params.getAll('devices').forEach(function(d) { parts.push('devices=' + d); });
+    if (params.get('date_from')) parts.push('date_from=' + params.get('date_from'));
+    if (params.get('date_to')) parts.push('date_to=' + params.get('date_to'));
+    if (parts.length) url += '?' + parts.join('&');
+    return url;
+}
+
+function formatDur(secs) {
+    if (!secs) return '0s';
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    var s = secs % 60;
+    return (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+}
+
+// ==================== INIT ====================
+$(document).ready(function() {
+    // Instance multi-select dropdown — auto-selects matching devices and submits
+    $('#instanceSelect').select2({
+        theme: 'bootstrap-5',
+        placeholder: 'All Instances',
+        allowClear: true,
+        closeOnSelect: false,
+        width: '100%',
+    }).on('change', function() {
+        var selectedInstances = $(this).val() || [];
+        var $deviceSelect = $('#deviceSelect');
+        var newVals = [];
+
+        $deviceSelect.find('option').each(function() {
+            var optInstance = String($(this).data('instance'));
+            if (!selectedInstances.length) {
+                $(this).prop('disabled', false);
+            } else if (selectedInstances.indexOf(optInstance) !== -1) {
+                $(this).prop('disabled', false);
+                newVals.push($(this).val());
+            } else {
+                $(this).prop('disabled', true);
+            }
+        });
+
+        // Auto-select matching devices and submit
+        $deviceSelect.val(selectedInstances.length ? newVals : null).trigger('change');
+    });
+
+    // Multi-select device dropdown with auto-submit
+    $('#deviceSelect').select2({
+        theme: 'bootstrap-5',
+        placeholder: 'All Devices (click to filter)',
+        allowClear: true,
+        closeOnSelect: false,
+        width: '100%',
+    }).on('change', function() {
+        $('#filterForm').submit();
+    });
+
+    // Auto-submit on date change
+    $('input[name="date_from"], input[name="date_to"]').on('change', function() {
+        $('#filterForm').submit();
+    });
+
+    // Load map immediately (default tab)
+    initMap();
+
+    // Lazy tab loading
+    $('[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {
+        var tab = $(e.target).attr('href');
+        if (tab === '#tab-locations' && !tabsLoaded.locations) { initLocationsTable(); tabsLoaded.locations = true; }
+        if (tab === '#tab-calls' && !tabsLoaded.calls) { initCallLogsTable(); tabsLoaded.calls = true; }
+        if (tab === '#tab-contacts' && !tabsLoaded.contacts) { initContactsTable(); tabsLoaded.contacts = true; }
+        if (tab === '#tab-network' && !tabsLoaded.network) { loadNetworkGraph('contacts'); tabsLoaded.network = true; }
+    });
+});
+
+// ==================== MAP (AJAX) ====================
+function initMap() {
+    dashboardMap = L.map('live-map').setView([20, 78], 4);
+
+    var layers = {
+        google: L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { subdomains:['mt0','mt1','mt2','mt3'] }),
+        satellite: L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { subdomains:['mt0','mt1','mt2','mt3'] }),
+        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'),
+        light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'),
+        topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),
+        osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'),
+    };
+    var currentLayer = layers.google;
+    currentLayer.addTo(dashboardMap);
+
+    document.getElementById('mapStyle').addEventListener('change', function() {
+        dashboardMap.removeLayer(currentLayer);
+        currentLayer = layers[this.value];
+        currentLayer.addTo(dashboardMap);
+    });
+
+    document.getElementById('btnFitBounds').addEventListener('click', function() {
+        if (allLatLngs.length) dashboardMap.fitBounds(allLatLngs, { padding: [30, 30] });
+    });
+
+    // Timeline playback
+    var playing = false;
+    document.getElementById('btnPlayTimeline').addEventListener('click', function() {
+        if (playing || !allMarkers.length) return;
+        playing = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Playing';
+        var btn = this;
+        var step = 0;
+        function next() {
+            if (step >= allMarkers.length) {
+                playing = false;
+                btn.innerHTML = '<i class="fas fa-play"></i> Play';
+                return;
+            }
+            var m = allMarkers[step];
+            dashboardMap.flyTo(m.getLatLng(), 14, { duration: 1 });
+            m.openPopup();
+            step++;
+            setTimeout(next, 1800);
+        }
+        next();
+    });
+
+    // Set legend colors
+    {% for dev in selected_devices %}
+    (function() {
+        var dot = document.getElementById('legend-dot-{{ dev.id }}');
+        if (dot) dot.style.background = deviceColors["{{ dev.id }}"];
+    })();
+    {% endfor %}
+
+    // Fetch map data via AJAX
+    fetch(buildApiUrl('map'))
+        .then(function(r) { return r.json(); })
+        .then(function(resp) {
+            var locations = resp.data || [];
+            if (!locations.length) return;
+
+            // Group by device
+            var deviceLocations = {};
+            locations.forEach(function(loc) {
+                if (!deviceLocations[loc.device_id]) deviceLocations[loc.device_id] = [];
+                deviceLocations[loc.device_id].push(loc);
+            });
+
+            Object.keys(deviceLocations).forEach(function(devId) {
+                var locs = deviceLocations[devId];
+                var color = deviceColors[devId] || '#667eea';
+                var latlngs = [];
+
+                locs.forEach(function(loc, idx) {
+                    var ll = [loc.lat, loc.lng];
+                    latlngs.push(ll);
+                    allLatLngs.push(ll);
+
+                    var marker = L.marker(ll, {
+                        icon: L.divIcon({
+                            className: 'custom-marker',
+                            html: '<div style="background:' + color + ';color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid #fff;">' + (idx+1) + '</div>'
+                        })
+                    }).addTo(dashboardMap);
+
+                    var popup = '<div style="min-width:180px;">' +
+                        '<b>' + loc.device_user + ' - #' + (idx+1) + '</b><br>' +
+                        '<small>' + loc.timestamp + '</small><hr style="margin:4px 0;">' +
+                        (loc.city ? loc.city + ', ' + loc.region + '<br>' : '') +
+                        loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4) + '<br>' +
+                        (loc.accuracy ? 'Accuracy: ' + loc.accuracy + 'm<br>' : '') +
+                        (loc.isp ? 'ISP: ' + loc.isp + '<br>' : '') +
+                        (loc.is_gps ? '<span class="badge bg-success">GPS</span>' : '<span class="badge bg-warning">Network</span>') +
+                        '</div>';
+                    marker.bindPopup(popup);
+                    allMarkers.push(marker);
+                });
+
+                if (latlngs.length > 1) {
+                    L.polyline(latlngs, { color: color, weight: 3, opacity: 0.7, dashArray: '8 4' }).addTo(dashboardMap);
+                }
+            });
+
+            if (allLatLngs.length > 0) {
+                dashboardMap.fitBounds(allLatLngs, { padding: [30, 30] });
+            }
+        });
+}
+
+// ==================== LOCATIONS TABLE (AJAX) ====================
+function initLocationsTable() {
+    $('#locations-table').DataTable({
+        ajax: { url: buildApiUrl('locations'), dataSrc: 'data' },
+        columns: [
+            { data: 'n' },
+            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
+            { data: 'city' },
+            { data: 'region' },
+            { data: 'lat' },
+            { data: 'lng' },
+            { data: 'accuracy' },
+            { data: 'is_gps', render: function(d) { return d ? '<span class="badge bg-success">GPS</span>' : '<span class="badge bg-warning">Net</span>'; } },
+            { data: 'isp' },
+            { data: 'ip', render: function(d) { return '<small>' + d + '</small>'; } },
+            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
+            { data: null, orderable: false, render: function(d) {
+                return '<button class="btn btn-sm btn-outline-primary btn-fly-to" data-lat="' + d.lat + '" data-lng="' + d.lng + '"><i class="fas fa-crosshairs"></i></button>';
+            }},
+        ],
+        order: [[10, 'desc']],
+        pageLength: 25,
+        lengthMenu: [10, 25, 50, 100, 500],
+        drawCallback: function() {
+            // Bind fly-to buttons after each draw
+            $('#locations-table .btn-fly-to').off('click').on('click', function() {
+                var lat = parseFloat($(this).data('lat'));
+                var lng = parseFloat($(this).data('lng'));
+                var mapTab = document.querySelector('[href="#tab-map"]');
+                bootstrap.Tab.getOrCreateInstance(mapTab).show();
+                setTimeout(function() { dashboardMap.flyTo([lat, lng], 16, { duration: 1.5 }); }, 300);
+            });
+        }
+    });
+}
+
+// ==================== CALL LOGS TABLE (AJAX) ====================
+function initCallLogsTable() {
+    $('#calllogs-table').DataTable({
+        ajax: { url: buildApiUrl('calllogs'), dataSrc: 'data' },
+        columns: [
+            { data: 'n' },
+            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
+            { data: 'name' },
+            { data: 'phone' },
+            { data: 'call_type', render: function(d) {
+                if (d === 'incoming') return '<span class="badge badge-call-incoming">Incoming</span>';
+                if (d === 'outgoing') return '<span class="badge badge-call-outgoing">Outgoing</span>';
+                if (d === 'missed') return '<span class="badge badge-call-missed">Missed</span>';
+                return '<span class="badge bg-secondary">' + d + '</span>';
+            }},
+            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
+            { data: 'duration', render: function(data, type) { return type === 'display' ? formatDur(data) : data; } },
+        ],
+        order: [[5, 'desc']],
+        pageLength: 25,
+        lengthMenu: [10, 25, 50, 100, 500],
+    });
+}
+
+// ==================== CONTACTS TABLE (AJAX) ====================
+function initContactsTable() {
+    $('#contacts-table').DataTable({
+        ajax: { url: buildApiUrl('contacts'), dataSrc: 'data' },
+        columns: [
+            { data: 'n' },
+            { data: 'device', render: function(d) { return '<span class="badge bg-secondary">' + d + '</span>'; } },
+            { data: 'name' },
+            { data: 'phone' },
+            { data: 'email' },
+            { data: 'ts', render: function(data, type, row) { return type === 'display' ? row.ts_display : data; } },
+        ],
+        order: [[5, 'desc']],
+        pageLength: 25,
+        lengthMenu: [10, 25, 50, 100, 500],
+    });
+}
+
+// ==================== NETWORK GRAPH (DUAL MODE) ====================
+var graphData = { contacts: null, calllogs: null };
+var graphLoaded = { contacts: false, calllogs: false };
+var sharedTooltip = null;
+var sharedTooltipPinned = false;
+
+function loadNetworkGraph(mode) {
+    if (graphLoaded[mode]) return;
+    var url = buildNetworkUrl() + (buildNetworkUrl().indexOf('?') === -1 ? '?' : '&') + 'mode=' + mode;
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            graphData[mode] = data;
+            graphLoaded[mode] = true;
+            var containerId = 'network-graph-' + mode;
+            var bridgeId = 'bridge-info-' + mode;
+            renderGraph(data, null, containerId);
+            renderBridgeInfo(data.bridges || [], data.device_labels || {}, bridgeId, mode);
+        });
+}
+
+function renderBridgeInfo(bridges, labels, elId, mode) {
+    var el = document.getElementById(elId);
+    var typeLabel = mode === 'contacts' ? 'Shared Contacts' : 'Shared Numbers';
+    if (!bridges.length) {
+        el.innerHTML = '<p class="text-muted text-center mb-0">No cross-device bridges found. Select multiple devices to discover ' + typeLabel.toLowerCase() + '.</p>';
+        return;
+    }
+    function resolveName(key) { return labels[key] || key; }
+
+    // Build node lookup from graphData
+    var data = graphData[mode] || {};
+    var nodeById = {};
+    (data.nodes || []).forEach(function(n) { nodeById[n.id] = n; });
+
+    // Group bridges by device
+    var deviceMap = {};  // deviceKey -> [{ otherDevice, shared, shared_phones }]
+    bridges.forEach(function(b) {
+        var sharedList = b.shared || [];
+        var sharedPhones = b.shared_phones || [];
+        [b.source, b.target].forEach(function(devKey, idx) {
+            var otherKey = idx === 0 ? b.target : b.source;
+            if (!deviceMap[devKey]) deviceMap[devKey] = [];
+            deviceMap[devKey].push({ otherDevice: otherKey, shared: sharedList, shared_phones: sharedPhones });
+        });
+    });
+
+    var deviceKeys = Object.keys(deviceMap);
+    var totalShared = 0;
+    bridges.forEach(function(b) { totalShared += (b.shared || []).length; });
+
+    var html = '<h6 class="fw-bold mb-3"><i class="fas fa-link me-1"></i>Cross-Device Bridges &mdash; ' + bridges.length + ' connection' + (bridges.length > 1 ? 's' : '') + ', ' + totalShared + ' ' + typeLabel.toLowerCase() + '</h6>';
+
+    deviceKeys.forEach(function(devKey) {
+        var connections = deviceMap[devKey];
+        var allShared = [];
+        connections.forEach(function(c) { c.shared.forEach(function(s) { if (allShared.indexOf(s) === -1) allShared.push(s); }); });
+
+        html += '<div class="card mb-3" style="border:1px solid rgba(102,126,234,0.3);border-radius:10px;overflow:hidden;">';
+        // Device header
+        html += '<div class="card-header d-flex justify-content-between align-items-center py-2 px-3" style="background:linear-gradient(135deg,#667eea22,#764ba222);border-bottom:1px solid rgba(102,126,234,0.2);">';
+        html += '<span><i class="fas fa-mobile-alt me-2 text-primary"></i><strong>' + resolveName(devKey) + '</strong></span>';
+        html += '<span><span class="badge bg-primary me-1">' + connections.length + ' link' + (connections.length > 1 ? 's' : '') + '</span><span class="badge bridge-badge">' + allShared.length + ' ' + typeLabel.toLowerCase() + '</span></span>';
+        html += '</div>';
+        // Connections table
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered mb-0">';
+        html += '<thead style="background:#f8f9fa;"><tr><th style="width:200px;">Connected Device</th><th>' + typeLabel + '</th><th style="width:80px;text-align:center;">Count</th></tr></thead><tbody>';
+        connections.forEach(function(c) {
+            html += '<tr>';
+            html += '<td><i class="fas fa-mobile-alt me-1 text-danger"></i><strong>' + resolveName(c.otherDevice) + '</strong></td>';
+            html += '<td>';
+            if (c.shared.length) {
+                c.shared.forEach(function(name, si) {
+                    var phone = c.shared_phones && c.shared_phones[si] ? c.shared_phones[si] : '';
+                    html += '<span class="badge bg-light text-dark border me-1 mb-1 bridge-contact-badge" data-phone="' + phone + '" style="font-size:0.8rem;font-weight:500;cursor:pointer;transition:all 0.15s;">' + name + '</span>';
+                });
+            } else {
+                html += '<span class="text-muted">-</span>';
+            }
+            html += '</td>';
+            html += '<td class="text-center"><span class="badge bridge-badge">' + c.shared.length + '</span></td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+    });
+
+    el.innerHTML = html;
+
+    // Click handler for contact badges -> SweetAlert detail
+    el.querySelectorAll('.bridge-contact-badge').forEach(function(badge) {
+        badge.addEventListener('mouseenter', function() { this.style.background = '#eef1ff'; this.style.borderColor = '#667eea'; });
+        badge.addEventListener('mouseleave', function() { this.style.background = ''; this.style.borderColor = ''; });
+        badge.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var phone = this.dataset.phone;
+            if (phone && nodeById[phone]) showContactDetail(phone, nodeById, labels);
+        });
+    });
+}
+
+// ==================== CUSTOM CONTACT DETAIL MODAL ====================
+(function() {
+    // Create overlay once
+    var overlay = document.createElement('div');
+    overlay.className = 'cd-overlay';
+    overlay.innerHTML = '<div class="cd-modal"><div class="cd-hero"><div class="cd-close"><i class="fas fa-times"></i></div><div class="cd-hero-inner"></div></div><div class="cd-body"></div></div>';
+    document.body.appendChild(overlay);
+
+    function closeModal() { overlay.classList.remove('cd-active'); }
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+    overlay.querySelector('.cd-close').addEventListener('click', closeModal);
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+    window.showContactDetail = function(phone, nodeById, labels) {
+        var node = nodeById[phone] || {};
+        var name = node.label || phone;
+
+        var groupLabel = node.group === 'contact_with_calls' ? 'CONTACT + CALLS' : node.group === 'contact' ? 'CONTACT' : 'CALL LOG';
+        var groupGradient = node.group === 'contact_with_calls' ? 'linear-gradient(135deg,#11998e,#38ef7d)' : node.group === 'contact' ? 'linear-gradient(135deg,#4facfe,#00f2fe)' : 'linear-gradient(135deg,#f093fb,#f5576c)';
+
+        // Hero header
+        var hero = overlay.querySelector('.cd-hero');
+        hero.style.background = groupGradient;
+        var heroInner = '';
+        heroInner += '<div class="d-flex align-items-center">';
+        heroInner += '<div class="cd-avatar me-3"><i class="fas fa-user" style="font-size:1.2rem;color:#fff;"></i></div>';
+        heroInner += '<div style="flex:1;min-width:0;">';
+        heroInner += '<div style="font-size:1.15rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name + '</div>';
+        heroInner += '<div style="font-size:0.76rem;color:rgba(255,255,255,0.8);margin-top:1px;"><i class="fas fa-hashtag me-1" style="opacity:0.6;"></i>' + phone + '</div>';
+        heroInner += '</div>';
+        heroInner += '<span style="background:rgba(255,255,255,0.18);backdrop-filter:blur(8px);padding:4px 11px;border-radius:20px;font-size:0.66rem;font-weight:700;color:#fff;letter-spacing:0.5px;border:1px solid rgba(255,255,255,0.28);white-space:nowrap;">' + groupLabel + '</span>';
+        heroInner += '</div>';
+        overlay.querySelector('.cd-hero-inner').innerHTML = heroInner;
+
+        // Body content
+        var html = '';
+
+        // Stats
+        html += '<div class="row g-2 mb-3">';
+        var stats = [
+            { value: node.calls || 0, label: 'Total Calls', icon: 'fa-phone-alt', color: '#28a745', bg: '#e8f5e9' },
+            { value: formatDur(node.duration || 0), label: 'Duration', icon: 'fa-clock', color: '#1565c0', bg: '#e3f2fd' },
+            { value: node.devices ? node.devices.length : 0, label: 'Devices', icon: 'fa-mobile-alt', color: '#7b1fa2', bg: '#f3e5f5' }
+        ];
+        stats.forEach(function(s) {
+            html += '<div class="col-4"><div class="cd-stat-card" style="background:' + s.bg + ';border:1px solid ' + s.color + '18;">';
+            html += '<div class="cd-stat-val" style="color:' + s.color + ';">' + s.value + '</div>';
+            html += '<div class="cd-stat-lbl"><i class="fas ' + s.icon + ' me-1" style="font-size:0.58rem;"></i>' + s.label + '</div>';
+            html += '</div></div>';
+        });
+        html += '</div>';
+
+        // Stored phones & email
+        if ((node.original_phones && node.original_phones.length) || node.email) {
+            html += '<div style="background:#fafbfc;border-radius:10px;padding:10px 14px;margin-bottom:16px;border:1px solid #eef0f2;">';
+            if (node.original_phones && node.original_phones.length) {
+                html += '<div class="cd-info-row" style="flex-wrap:wrap;">';
+                html += '<span class="cd-info-label"><i class="fas fa-phone me-1" style="color:#667eea;"></i>Stored As</span>';
+                node.original_phones.forEach(function(p) {
+                    html += '<span class="cd-info-pill">' + p + '</span>';
+                });
+                html += '</div>';
+            }
+            if (node.email) {
+                html += '<div class="cd-info-row">';
+                html += '<span class="cd-info-label"><i class="fas fa-envelope me-1" style="color:#667eea;"></i>Email</span>';
+                html += '<span class="cd-info-value">' + node.email + '</span>';
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        // Available in devices
+        if (node.device_details && node.device_details.length) {
+            html += '<div class="cd-section-title"><i class="fas fa-server me-1"></i>Available in ' + node.device_details.length + ' Device' + (node.device_details.length > 1 ? 's' : '') + '</div>';
+            node.device_details.forEach(function(dd) {
+                html += '<div class="cd-device-row">';
+                html += '<div style="display:flex;align-items:center;gap:9px;min-width:0;">';
+                html += '<div class="cd-device-icon"><i class="fas fa-mobile-alt" style="color:#fff;font-size:0.7rem;"></i></div>';
+                html += '<span style="font-size:0.82rem;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + dd.device + '</span>';
+                html += '</div>';
+                html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
+                if (dd.calls) {
+                    html += '<span class="cd-chip cd-chip-green"><i class="fas fa-phone-alt me-1"></i>' + dd.calls + '</span>';
+                    html += '<span class="cd-chip cd-chip-blue"><i class="fas fa-clock me-1"></i>' + formatDur(dd.duration || 0) + '</span>';
+                } else {
+                    html += '<span class="cd-chip cd-chip-grey">Contact only</span>';
+                }
+                html += '</div></div>';
+            });
+        }
+
+        overlay.querySelector('.cd-body').innerHTML = html;
+        overlay.classList.add('cd-active');
+    };
+})();
+
+function renderGraph(data, filter, containerId) {
+    var container = document.getElementById(containerId);
+    container.innerHTML = '';
+    var width = container.clientWidth;
+    var height = container.clientHeight || 650;
+
+    // Shared tooltip: create once, reuse across all graphs
+    if (!sharedTooltip) {
+        sharedTooltip = d3.select('body').append('div').attr('class', 'graph-tooltip').style('opacity', 0);
+    }
+    var tooltip = sharedTooltip;
+    sharedTooltipPinned = false;
+    tooltip.classed('pinned', false).style('opacity', 0);
+
+    var filteredLinks = data.links.slice();
+
+    if (filter === 'top20' || filter === 'top50') {
+        var limit = filter === 'top20' ? 20 : 50;
+        // Count connections per non-device node
+        var nodeLinkCount = {};
+        var nodeCallCount = {};
+        filteredLinks.forEach(function(l) {
+            if (l.link_type === 'bridge') return;
+            var src = typeof l.source === 'object' ? l.source.id : l.source;
+            var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            // Count for the non-device side
+            [src, tgt].forEach(function(id) {
+                if (!id.startsWith('device_')) {
+                    nodeLinkCount[id] = (nodeLinkCount[id] || 0) + 1;
+                    nodeCallCount[id] = (nodeCallCount[id] || 0) + (l.calls || 0);
+                }
+            });
+        });
+        // Sort non-device nodes: first by device connections (link count), then by calls
+        var ranked = Object.keys(nodeLinkCount).map(function(id) {
+            return { id: id, links: nodeLinkCount[id], calls: nodeCallCount[id] || 0 };
+        }).sort(function(a, b) {
+            if (b.links !== a.links) return b.links - a.links;
+            return b.calls - a.calls;
+        }).slice(0, limit);
+        var topIds = new Set(ranked.map(function(r) { return r.id; }));
+        // Keep links where at least one end is a top node, exclude bridges
+        filteredLinks = filteredLinks.filter(function(l) {
+            if (l.link_type === 'bridge') return false;
+            var src = typeof l.source === 'object' ? l.source.id : l.source;
+            var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            return topIds.has(src) || topIds.has(tgt);
+        });
+    } else if (filter === 'bridges') {
+        // Find contacts/numbers shared across multiple devices
+        var sharedNodeIds = new Set();
+        data.nodes.forEach(function(n) {
+            if (n.group !== 'device' && n.devices && n.devices.length >= 2) {
+                sharedNodeIds.add(n.id);
+            }
+        });
+        // Keep bridge links + links connected to shared nodes
+        filteredLinks = filteredLinks.filter(function(l) {
+            if (l.link_type === 'bridge') return true;
+            var src = typeof l.source === 'object' ? l.source.id : l.source;
+            var tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            return sharedNodeIds.has(src) || sharedNodeIds.has(tgt);
+        });
+    } else if (filter === 'incoming') {
+        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('incoming') !== -1; });
+    } else if (filter === 'outgoing') {
+        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('outgoing') !== -1; });
+    } else if (filter === 'missed') {
+        filteredLinks = filteredLinks.filter(function(l) { return l.types && l.types.indexOf('missed') !== -1; });
+    }
+
+    var needed = new Set();
+    filteredLinks.forEach(function(l) {
+        needed.add(typeof l.source === 'object' ? l.source.id : l.source);
+        needed.add(typeof l.target === 'object' ? l.target.id : l.target);
+    });
+    data.nodes.forEach(function(n) { if (n.group === 'device') needed.add(n.id); });
+    if (!filter || filter === 'all') {
+        data.nodes.forEach(function(n) { needed.add(n.id); });
+    }
+
+    var nodes = data.nodes.filter(function(n) { return needed.has(n.id); })
+        .map(function(n) { return Object.assign({}, n); });
+
+    var nodeIdSet = new Set(nodes.map(function(n) { return n.id; }));
+    var links = filteredLinks.map(function(l) {
+        return {
+            source: typeof l.source === 'object' ? l.source.id : l.source,
+            target: typeof l.target === 'object' ? l.target.id : l.target,
+            calls: l.calls || 0, duration: l.duration || 0,
+            types: l.types || [], link_type: l.link_type || 'call', shared: l.shared || [],
+        };
+    }).filter(function(l) { return nodeIdSet.has(l.source) && nodeIdSet.has(l.target); });
+
+    var svg = d3.select(container).append('svg').attr('width', width).attr('height', height);
+    var g = svg.append('g');
+    svg.call(d3.zoom().scaleExtent([0.05, 10]).on('zoom', function(event) {
+        g.attr('transform', event.transform);
+    }));
+
+    var simulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(links).id(function(d) { return d.id; }).distance(function(d) {
+            if (d.link_type === 'bridge') return 150;
+            return Math.max(60, 180 - (d.calls || 0) * 2);
+        }))
+        .force('charge', d3.forceManyBody().strength(function(d) { return d.group === 'device' ? -500 : -100; }))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(function(d) { return d.group === 'device' ? 35 : 15; }));
+
+    var link = g.append('g').selectAll('line').data(links).join('line')
+        .attr('stroke', function(d) { return d.link_type === 'bridge' ? '#f093fb' : '#555'; })
+        .attr('stroke-opacity', function(d) { return d.link_type === 'bridge' ? 0.8 : 0.3; })
+        .attr('stroke-width', function(d) {
+            if (d.link_type === 'bridge') return 4;
+            return Math.min(Math.max(1, (d.calls || 0) / 3), 8);
+        })
+        .attr('stroke-dasharray', function(d) { return d.link_type === 'bridge' ? '8 4' : null; });
+
+    var node = g.append('g').selectAll('g').data(nodes).join('g')
+        .call(d3.drag()
+            .on('start', function(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+            .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
+            .on('end', function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    node.append('circle')
+        .attr('r', function(d) { return d.group === 'device' ? 24 : Math.min(7 + (d.calls || 0), 16); })
+        .attr('fill', function(d) { return d.color || '#888'; })
+        .attr('stroke', function(d) { return d.group === 'device' ? '#fff' : '#333'; })
+        .attr('stroke-width', function(d) { return d.group === 'device' ? 3 : 1; });
+
+    node.filter(function(d) { return d.group === 'device'; })
+        .append('text').text('\uf3cd')
+        .attr('font-family', '"Font Awesome 5 Free"').attr('font-weight', 900)
+        .attr('font-size', '14px').attr('fill', '#fff')
+        .attr('text-anchor', 'middle').attr('dy', 5);
+
+    node.append('text')
+        .text(function(d) { var l = d.label || d.id; return l.length > 14 ? l.slice(0, 14) + '...' : l; })
+        .attr('dx', function(d) { return d.group === 'device' ? 28 : 14; })
+        .attr('dy', 4)
+        .attr('font-size', function(d) { return d.group === 'device' ? '12px' : '9px'; })
+        .attr('font-weight', function(d) { return d.group === 'device' ? 'bold' : 'normal'; })
+        .attr('fill', function(d) { return d.group === 'device' ? '#fff' : '#aaa'; });
+
+    // Rich HTML Tooltip (pinnable on click)
+    function buildNodeTooltipHtml(d) {
+        var html = '<span class="tt-close">&times;</span>';
+        if (d.group === 'device') {
+            html += '<div class="tt-header"><i class="fas fa-mobile-alt me-1"></i>' + d.label + '<span class="tt-badge" style="background:' + d.color + ';">DEVICE</span></div>';
+            html += '<div class="tt-divider"></div>';
+            html += '<div class="tt-row"><span class="tt-label">User ID</span><span class="tt-value">' + (d.user_id || '-') + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Platform</span><span class="tt-value">' + (d.platform || '-') + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Instance</span><span class="tt-value">' + (d.instance || '-') + '</span></div>';
+            if (d.brand || d.model) html += '<div class="tt-row"><span class="tt-label">Device</span><span class="tt-value">' + (d.brand || '') + ' ' + (d.model || '') + '</span></div>';
+            if (d.os) html += '<div class="tt-row"><span class="tt-label">OS</span><span class="tt-value">' + d.os + '</span></div>';
+            if (d.app_version) html += '<div class="tt-row"><span class="tt-label">App Version</span><span class="tt-value">' + d.app_version + '</span></div>';
+            html += '<div class="tt-divider"></div>';
+            html += '<div class="tt-row"><span class="tt-label">Contacts</span><span class="tt-value">' + (d.contact_count || 0) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Call Logs</span><span class="tt-value">' + (d.call_count || 0) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Status</span><span class="tt-value">' + (d.is_active ? '<span style="color:#38ef7d;">● Active</span>' : '<span style="color:#f5576c;">● Disabled</span>') + '</span></div>';
+        } else {
+            var groupLabel = d.group === 'contact_with_calls' ? 'CONTACT + CALLS' : d.group === 'contact' ? 'CONTACT' : 'CALL LOG';
+            var groupColor = d.group === 'contact_with_calls' ? '#38ef7d' : d.group === 'contact' ? '#4facfe' : '#f5576c';
+            html += '<div class="tt-header"><i class="fas fa-user me-1"></i>' + d.label + '<span class="tt-badge" style="background:' + groupColor + ';">' + groupLabel + '</span></div>';
+            html += '<div class="tt-divider"></div>';
+            html += '<div class="tt-row"><span class="tt-label">Normalized #</span><span class="tt-value">' + d.id + '</span></div>';
+            // Show all original phone formats stored
+            if (d.original_phones && d.original_phones.length) {
+                html += '<div class="tt-row"><span class="tt-label">Stored As</span><span class="tt-value">' + d.original_phones.join(', ') + '</span></div>';
+            }
+            if (d.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + d.email + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Total Calls</span><span class="tt-value">' + (d.calls || 0) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Total Duration</span><span class="tt-value">' + formatDur(d.duration || 0) + '</span></div>';
+            // Per-device breakdown
+            if (d.device_details && d.device_details.length) {
+                html += '<div class="tt-divider"></div>';
+                html += '<div class="tt-label" style="margin-bottom:6px;color:#4facfe;font-weight:600;">Per-Device Breakdown (' + d.device_details.length + ' device' + (d.device_details.length > 1 ? 's' : '') + '):</div>';
+                d.device_details.forEach(function(dd) {
+                    html += '<div style="background:rgba(255,255,255,0.05);border-radius:6px;padding:6px 8px;margin-bottom:4px;">';
+                    html += '<div style="font-weight:600;color:#fff;font-size:12px;"><i class="fas fa-mobile-alt me-1" style="color:#667eea;"></i>' + dd.device + '</div>';
+                    html += '<div class="tt-row"><span class="tt-label">Saved Name</span><span class="tt-value">' + (dd.name || '<i style="color:#888;">No Name</i>') + '</span></div>';
+                    html += '<div class="tt-row"><span class="tt-label">Stored Phone</span><span class="tt-value">' + (dd.phone_stored || '-') + '</span></div>';
+                    if (dd.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + dd.email + '</span></div>';
+                    if (dd.calls) {
+                        html += '<div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value">' + dd.calls + '</span></div>';
+                        html += '<div class="tt-row"><span class="tt-label">Duration</span><span class="tt-value">' + formatDur(dd.duration || 0) + '</span></div>';
+                        if (dd.first_call) html += '<div class="tt-row"><span class="tt-label">First Call</span><span class="tt-value">' + dd.first_call + '</span></div>';
+                        if (dd.last_call) html += '<div class="tt-row"><span class="tt-label">Last Call</span><span class="tt-value">' + dd.last_call + '</span></div>';
+                        if (dd.call_types && Object.keys(dd.call_types).length) {
+                            var typeStr = Object.keys(dd.call_types).map(function(t) {
+                                var color = t === 'incoming' ? '#28a745' : t === 'outgoing' ? '#007bff' : t === 'missed' ? '#dc3545' : '#888';
+                                return '<span style="color:' + color + ';">' + t + ': ' + dd.call_types[t] + '</span>';
+                            }).join(' &middot; ');
+                            html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + typeStr + '</span></div>';
+                        }
+                    } else {
+                        html += '<div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value" style="color:#888;">No calls</span></div>';
+                    }
+                    html += '</div>';
+                });
+            }
+        }
+        html += '<div class="tt-pin-hint">Click to pin</div>';
+        return html;
+    }
+
+    node.on('mouseover', function(event, d) {
+        if (sharedTooltipPinned) return;
+        var html = buildNodeTooltipHtml(d);
+        tooltip.html(html).style('opacity', 1).style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px');
+    })
+    .on('mousemove', function(event) { if (!sharedTooltipPinned) tooltip.style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px'); })
+    .on('mouseout', function() { if (!sharedTooltipPinned) tooltip.style('opacity', 0); })
+    .on('click', function(event, d) {
+        event.stopPropagation();
+        sharedTooltipPinned = true;
+        var html = buildNodeTooltipHtml(d);
+        tooltip.html(html).classed('pinned', true).style('opacity', 1)
+            .style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px');
+        tooltip.select('.tt-close').on('click', function() {
+            sharedTooltipPinned = false;
+            tooltip.classed('pinned', false).style('opacity', 0);
+        });
+    });
+
+    // Click on empty space dismisses pinned tooltip
+    svg.on('click', function() {
+        if (sharedTooltipPinned) {
+            sharedTooltipPinned = false;
+            tooltip.classed('pinned', false).style('opacity', 0);
+        }
+    });
+
+    link.on('mouseover', function(event, d) {
+        if (sharedTooltipPinned) return;
+        var html = '';
+        var currentData = graphData.contacts || graphData.calllogs;
+        var lbls = currentData ? (currentData.device_labels || {}) : {};
+        if (d.link_type === 'bridge') {
+            html += '<div class="tt-header"><i class="fas fa-link me-1"></i>Device Bridge<span class="tt-badge" style="background:linear-gradient(135deg,#f093fb,#f5576c);">BRIDGE</span></div>';
+            html += '<div class="tt-divider"></div>';
+            html += '<div class="tt-row"><span class="tt-label">Device A</span><span class="tt-value">' + (lbls[d.source.id || d.source] || d.source.id || d.source) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Device B</span><span class="tt-value">' + (lbls[d.target.id || d.target] || d.target.id || d.target) + '</span></div>';
+            if (d.shared && d.shared.length) {
+                html += '<div class="tt-divider"></div>';
+                html += '<div class="tt-label" style="margin-bottom:4px;">' + d.shared.length + ' Shared:</div>';
+                d.shared.forEach(function(s) { html += '<div class="tt-value" style="padding-left:8px;">• ' + s + '</div>'; });
+            }
+        } else {
+            html += '<div class="tt-header"><i class="fas fa-phone me-1"></i>Connection<span class="tt-badge" style="background:#555;">' + (d.link_type || 'link').toUpperCase() + '</span></div>';
+            html += '<div class="tt-divider"></div>';
+            if (d.calls) html += '<div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value">' + d.calls + '</span></div>';
+            if (d.duration) html += '<div class="tt-row"><span class="tt-label">Duration</span><span class="tt-value">' + formatDur(d.duration) + '</span></div>';
+            if (d.types && d.types.length) html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + d.types.join(', ') + '</span></div>';
+        }
+        tooltip.html(html).style('opacity', 1).style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px');
+    })
+    .on('mousemove', function(event) { if (!sharedTooltipPinned) tooltip.style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px'); })
+    .on('mouseout', function() { if (!sharedTooltipPinned) tooltip.style('opacity', 0); });
+
+    simulation.on('tick', function() {
+        link.attr('x1', function(d) { return d.source.x; }).attr('y1', function(d) { return d.source.y; })
+            .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
+        node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    // Contact network filter
+    document.getElementById('contactNetFilter').addEventListener('change', function() {
+        if (graphData.contacts) renderGraph(graphData.contacts, this.value, 'network-graph-contacts');
+    });
+    // Call logs network filter
+    document.getElementById('callNetFilter').addEventListener('change', function() {
+        if (graphData.calllogs) renderGraph(graphData.calllogs, this.value, 'network-graph-calllogs');
+    });
+    // Reset buttons
+    document.querySelectorAll('.btn-reset-graph').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var target = this.dataset.target;
+            if (target === 'contacts') {
+                document.getElementById('contactNetFilter').value = 'all';
+                if (graphData.contacts) renderGraph(graphData.contacts, 'all', 'network-graph-contacts');
+            } else {
+                document.getElementById('callNetFilter').value = 'all';
+                if (graphData.calllogs) renderGraph(graphData.calllogs, 'all', 'network-graph-calllogs');
+            }
+        });
+    });
+    // Sub-tab lazy load for call logs graph
+    document.getElementById('net-calllogs-tab').addEventListener('shown.bs.tab', function() {
+        loadNetworkGraph('calllogs');
+    });
+});
+</script>
+{% endblock %}

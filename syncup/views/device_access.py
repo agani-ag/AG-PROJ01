@@ -14,9 +14,7 @@ import json
 import random
 import string
 import requests
-import phonenumbers
 from ..utils import get_fcm_token
-from phonenumbers import NumberParseException
 
 # Models
 from ..models import (
@@ -603,6 +601,511 @@ def metadata(request):
     return JsonResponse({"success": True})
 
 # ==================== DEVICE VIEW VIEWS ====================
+def device_dashboard(request):
+    """All-devices dashboard with multi-select device filter. Optimized: only stats + device details; tables & map loaded via AJAX."""
+    all_devices = Device.objects.all()
+
+    # Device filter (supports multiple via ?devices=1&devices=2)
+    selected_ids = request.GET.getlist('devices')
+    selected_ids = [int(x) for x in selected_ids if x.isdigit()]
+
+    if selected_ids:
+        devices_qs = all_devices.filter(id__in=selected_ids)
+    else:
+        devices_qs = all_devices
+
+    # Date filters
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    # Only compute counts — no full querysets
+    loc_qs = Location.objects.filter(device__in=devices_qs)
+    call_qs = CallLog.objects.filter(device__in=devices_qs)
+    con_qs = Contact.objects.filter(device__in=devices_qs)
+
+    if date_from:
+        loc_qs = loc_qs.filter(timestamp__date__gte=date_from)
+        call_qs = call_qs.filter(timestamp__date__gte=date_from)
+    if date_to:
+        loc_qs = loc_qs.filter(timestamp__date__lte=date_to)
+        call_qs = call_qs.filter(timestamp__date__lte=date_to)
+
+    # Batch device details (replaces N+1 queries with ~8 total)
+    from django.db.models import Count
+    dev_ids = list(devices_qs.values_list('id', flat=True))
+
+    device_infos = {di.device_id: di for di in DeviceInfo.objects.filter(device_id__in=dev_ids)}
+    network_infos = {}
+    for ni in NetworkInfo.objects.filter(device_id__in=dev_ids).order_by('device_id', '-recorded_at'):
+        if ni.device_id not in network_infos:
+            network_infos[ni.device_id] = ni
+    system_infos = {si.device_id: si for si in SystemInfo.objects.filter(device_id__in=dev_ids)}
+    sim_cards_map = {}
+    for sc in SIMCard.objects.filter(device_id__in=dev_ids):
+        sim_cards_map.setdefault(sc.device_id, []).append(sc)
+
+    contact_counts = dict(Contact.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
+    location_counts = dict(Location.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
+    call_counts = dict(CallLog.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
+
+    device_details = []
+    for dev in devices_qs:
+        device_details.append({
+            'device': dev,
+            'device_info': device_infos.get(dev.id),
+            'network_info': network_infos.get(dev.id),
+            'system_info': system_infos.get(dev.id),
+            'sim_cards': sim_cards_map.get(dev.id, []),
+            'contact_count': contact_counts.get(dev.id, 0),
+            'location_count': location_counts.get(dev.id, 0),
+            'call_count': call_counts.get(dev.id, 0),
+        })
+
+    context = {
+        'all_devices': all_devices,
+        'selected_ids': selected_ids,
+        'selected_devices': devices_qs,
+        'device_details': device_details,
+        'date_from': date_from or '',
+        'date_to': date_to or '',
+        # Stats (count-only queries)
+        'total_devices': devices_qs.count(),
+        'total_locations': loc_qs.count(),
+        'total_contacts': con_qs.count(),
+        'total_calls': call_qs.count(),
+        'unique_cities': loc_qs.exclude(city__isnull=True).exclude(city='').values_list('city', flat=True).distinct().count(),
+    }
+    return render(request, 'device_access/device_dashboard.html', context)
+
+
+def device_table_api(request):
+    """AJAX endpoint for dashboard tables and map data. Lazy-loaded per tab."""
+    data_type = request.GET.get('type', '')
+    selected_ids = request.GET.getlist('devices')
+    selected_ids = [int(x) for x in selected_ids if x.isdigit()]
+    devices_qs = Device.objects.filter(id__in=selected_ids) if selected_ids else Device.objects.all()
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    if data_type == 'locations':
+        qs = Location.objects.filter(device__in=devices_qs).select_related('device').order_by('-timestamp')
+        if date_from: qs = qs.filter(timestamp__date__gte=date_from)
+        if date_to: qs = qs.filter(timestamp__date__lte=date_to)
+        rows = []
+        for i, loc in enumerate(qs[:5000], 1):
+            rows.append({
+                'n': i, 'device': loc.device.user_id.title(),
+                'city': loc.city or '-', 'region': loc.region or '-',
+                'lat': round(float(loc.latitude), 4), 'lng': round(float(loc.longitude), 4),
+                'accuracy': f"{loc.accuracy:.1f}" if loc.accuracy else '-',
+                'is_gps': loc.is_gps, 'isp': loc.isp or '-', 'ip': loc.ip or '-',
+                'ts': loc.timestamp.isoformat() if loc.timestamp else '',
+                'ts_display': loc.timestamp.strftime('%d %b %Y, %I:%M %p') if loc.timestamp else '-',
+            })
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'calllogs':
+        qs = CallLog.objects.filter(device__in=devices_qs).select_related('device').order_by('-timestamp')
+        if date_from: qs = qs.filter(timestamp__date__gte=date_from)
+        if date_to: qs = qs.filter(timestamp__date__lte=date_to)
+        rows = []
+        for i, log in enumerate(qs[:5000], 1):
+            rows.append({
+                'n': i, 'device': log.device.user_id.title(),
+                'name': log.name or '-', 'phone': log.phone_number or '-',
+                'call_type': log.call_type or '-',
+                'ts': log.timestamp.isoformat() if log.timestamp else '',
+                'ts_display': log.timestamp.strftime('%d %b %Y, %I:%M %p') if log.timestamp else '-',
+                'duration': log.duration_seconds or 0,
+            })
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'contacts':
+        qs = Contact.objects.filter(device__in=devices_qs).select_related('device')
+        rows = []
+        for i, c in enumerate(qs[:5000], 1):
+            rows.append({
+                'n': i, 'device': c.device.user_id.title(),
+                'name': c.name or '-', 'phone': c.phone_number or '-',
+                'email': c.email or '-',
+                'ts': c.synced_at.isoformat() if c.synced_at else '',
+                'ts_display': c.synced_at.strftime('%d %b %Y, %I:%M %p') if c.synced_at else '-',
+            })
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'map':
+        qs = Location.objects.filter(device__in=devices_qs).select_related('device').order_by('-timestamp')
+        if date_from: qs = qs.filter(timestamp__date__gte=date_from)
+        if date_to: qs = qs.filter(timestamp__date__lte=date_to)
+        rows = []
+        for loc in qs[:5000]:
+            rows.append({
+                'lat': float(loc.latitude), 'lng': float(loc.longitude),
+                'device_id': str(loc.device.id), 'device_user': loc.device.user_id.title(),
+                'city': loc.city or '', 'region': loc.region or '',
+                'accuracy': str(loc.accuracy) if loc.accuracy else '',
+                'isp': loc.isp or '', 'ip': loc.ip or '',
+                'is_gps': loc.is_gps,
+                'timestamp': loc.timestamp.strftime('%d %b %Y, %I:%M %p') if loc.timestamp else '',
+            })
+        return JsonResponse({'data': rows})
+
+    return JsonResponse({'data': []})
+
+@csrf_exempt
+def device_network_api(request):
+    """Cross-device relationship graph. mode=contacts|calllogs|all (default all)."""
+    import re
+
+    def normalize_phone(phone):
+        """Normalize phone number: strip spaces, dashes, leading +91/91 for Indian numbers."""
+        if not phone:
+            return phone
+        p = re.sub(r'[\s\-\(\)\.]+', '', phone.strip())
+        # Strip leading + then country code 91 if remaining is 10 digits
+        if p.startswith('+'):
+            p = p[1:]
+        if p.startswith('91') and len(p) == 12:
+            p = p[2:]
+        elif p.startswith('0') and len(p) == 11:
+            p = p[1:]
+        return p
+
+    selected_ids = request.GET.getlist('devices')
+    selected_ids = [int(x) for x in selected_ids if x.isdigit()]
+    mode = request.GET.get('mode', 'all')  # contacts, calllogs, all
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    if selected_ids:
+        devices = Device.objects.filter(id__in=selected_ids)
+    else:
+        devices = Device.objects.all()
+
+    nodes = []
+    links = []
+    node_map = {}  # normalized_phone -> node index
+    phone_to_devices = {}  # normalized_phone -> set of device_keys
+
+    # Add each device as a hub node
+    device_colors = [
+        '#dc3545', '#667eea', '#11998e', '#f5576c', '#4facfe',
+        '#764ba2', '#38ef7d', '#ff6b6b', '#feca57', '#00cec9',
+    ]
+    device_labels = {}  # device_key -> friendly label
+    for i, dev in enumerate(devices):
+        key = f"device_{dev.id}"
+        friendly = f"{dev.user_id} ({dev.platform})"
+        device_labels[key] = friendly
+        node_map[key] = len(nodes)
+        dev_info = DeviceInfo.objects.filter(device=dev).first()
+        contact_count = Contact.objects.filter(device=dev).count()
+        call_count = CallLog.objects.filter(device=dev).count()
+        nodes.append({
+            "id": key,
+            "label": friendly,
+            "group": "device",
+            "color": device_colors[i % len(device_colors)],
+            "calls": 0,
+            "duration": 0,
+            "device_id": dev.id,
+            "user_id": dev.user_id,
+            "platform": dev.platform,
+            "instance": dev.instance,
+            "is_active": dev.is_active,
+            "contact_count": contact_count,
+            "call_count": call_count,
+            "model": dev_info.model_name if dev_info else "",
+            "brand": dev_info.brand if dev_info else "",
+            "os": f"{dev_info.system_name} {dev_info.system_version}" if dev_info else "",
+            "app_version": dev_info.app_version if dev_info else "",
+        })
+
+    # ==================== CONTACTS MODE ====================
+    if mode in ('contacts', 'all'):
+        for dev in devices:
+            dev_key = f"device_{dev.id}"
+            dev_label = device_labels.get(dev_key, dev_key)
+            for c in Contact.objects.filter(device=dev):
+                raw_phone = c.phone_number
+                phone = normalize_phone(raw_phone)
+                if not phone:
+                    continue
+                if phone not in node_map:
+                    node_map[phone] = len(nodes)
+                    nodes.append({
+                        "id": phone,
+                        "label": c.name or phone,
+                        "group": "contact",
+                        "color": "#4facfe",
+                        "calls": 0,
+                        "duration": 0,
+                        "devices": [dev_label],
+                        "email": c.email or "",
+                        "original_phones": [raw_phone],
+                        "device_details": [{
+                            "device": dev_label,
+                            "device_key": dev_key,
+                            "name": c.name or "",
+                            "phone_stored": raw_phone,
+                            "email": c.email or "",
+                            "calls": 0,
+                            "duration": 0,
+                            "call_types": {},
+                            "first_call": None,
+                            "last_call": None,
+                        }],
+                    })
+                else:
+                    existing = nodes[node_map[phone]]
+                    if dev_label not in existing.get("devices", []):
+                        existing.setdefault("devices", []).append(dev_label)
+                    if raw_phone not in existing.get("original_phones", []):
+                        existing.setdefault("original_phones", []).append(raw_phone)
+                    # Add device-level detail
+                    dd_list = existing.setdefault("device_details", [])
+                    found = False
+                    for dd in dd_list:
+                        if dd["device_key"] == dev_key:
+                            found = True
+                            break
+                    if not found:
+                        dd_list.append({
+                            "device": dev_label,
+                            "device_key": dev_key,
+                            "name": c.name or "",
+                            "phone_stored": raw_phone,
+                            "email": c.email or "",
+                            "calls": 0,
+                            "duration": 0,
+                            "call_types": {},
+                            "first_call": None,
+                            "last_call": None,
+                        })
+
+                if phone not in phone_to_devices:
+                    phone_to_devices[phone] = set()
+                phone_to_devices[phone].add(dev_key)
+
+        # Contact-only links
+        if mode == 'contacts':
+            # Enrich contact nodes with call log data
+            contact_call_agg = {}  # (dev_key, phone) -> {count, duration, types, first_call, last_call}
+            for dev in devices:
+                dev_key = f"device_{dev.id}"
+                call_qs = CallLog.objects.filter(device=dev)
+                if date_from:
+                    call_qs = call_qs.filter(timestamp__date__gte=date_from)
+                if date_to:
+                    call_qs = call_qs.filter(timestamp__date__lte=date_to)
+                for log in call_qs:
+                    phone = normalize_phone(log.phone_number)
+                    if not phone or phone not in node_map:
+                        continue
+                    pair = (dev_key, phone)
+                    if pair not in contact_call_agg:
+                        contact_call_agg[pair] = {"count": 0, "duration": 0, "types": {}, "first_call": None, "last_call": None}
+                    contact_call_agg[pair]["count"] += 1
+                    contact_call_agg[pair]["duration"] += log.duration_seconds or 0
+                    ct = log.call_type or "unknown"
+                    contact_call_agg[pair]["types"][ct] = contact_call_agg[pair]["types"].get(ct, 0) + 1
+                    ts = log.timestamp
+                    if ts:
+                        if contact_call_agg[pair]["first_call"] is None or ts < contact_call_agg[pair]["first_call"]:
+                            contact_call_agg[pair]["first_call"] = ts
+                        if contact_call_agg[pair]["last_call"] is None or ts > contact_call_agg[pair]["last_call"]:
+                            contact_call_agg[pair]["last_call"] = ts
+
+            # Apply call stats to nodes and device_details
+            for (dev_key, phone), agg in contact_call_agg.items():
+                idx = node_map[phone]
+                nodes[idx]["calls"] += agg["count"]
+                nodes[idx]["duration"] += agg["duration"]
+                dd_list = nodes[idx].get("device_details", [])
+                for dd in dd_list:
+                    if dd["device_key"] == dev_key:
+                        dd["calls"] = agg["count"]
+                        dd["duration"] = agg["duration"]
+                        dd["call_types"] = agg["types"]
+                        dd["first_call"] = agg["first_call"].strftime("%d %b %Y, %I:%M %p") if agg["first_call"] else None
+                        dd["last_call"] = agg["last_call"].strftime("%d %b %Y, %I:%M %p") if agg["last_call"] else None
+                        break
+
+            # Build links with call data
+            for phone, dev_keys_set in phone_to_devices.items():
+                for dk in dev_keys_set:
+                    pair = (dk, phone)
+                    agg = contact_call_agg.get(pair)
+                    links.append({
+                        "source": dk,
+                        "target": phone,
+                        "calls": agg["count"] if agg else 0,
+                        "duration": agg["duration"] if agg else 0,
+                        "types": list(agg["types"].keys()) if agg else [],
+                        "link_type": "contact",
+                    })
+
+    # ==================== CALL LOGS MODE ====================
+    call_agg = {}
+    if mode in ('calllogs', 'all'):
+        for dev in devices:
+            dev_key = f"device_{dev.id}"
+            dev_label = device_labels.get(dev_key, dev_key)
+            call_qs = CallLog.objects.filter(device=dev)
+            if date_from:
+                call_qs = call_qs.filter(timestamp__date__gte=date_from)
+            if date_to:
+                call_qs = call_qs.filter(timestamp__date__lte=date_to)
+            for log in call_qs:
+                raw_phone = log.phone_number
+                phone = normalize_phone(raw_phone)
+                if not phone:
+                    continue
+                pair = (dev_key, phone)
+                if pair not in call_agg:
+                    call_agg[pair] = {"count": 0, "duration": 0, "types": {}, "first_call": None, "last_call": None}
+                call_agg[pair]["count"] += 1
+                call_agg[pair]["duration"] += log.duration_seconds or 0
+                ct = log.call_type or "unknown"
+                call_agg[pair]["types"][ct] = call_agg[pair]["types"].get(ct, 0) + 1
+                ts = log.timestamp
+                if ts:
+                    if call_agg[pair]["first_call"] is None or ts < call_agg[pair]["first_call"]:
+                        call_agg[pair]["first_call"] = ts
+                    if call_agg[pair]["last_call"] is None or ts > call_agg[pair]["last_call"]:
+                        call_agg[pair]["last_call"] = ts
+
+                if phone not in node_map:
+                    node_map[phone] = len(nodes)
+                    nodes.append({
+                        "id": phone,
+                        "label": log.name or phone,
+                        "group": "call_only",
+                        "color": "#f5576c",
+                        "calls": 0,
+                        "duration": 0,
+                        "devices": [dev_label],
+                        "email": "",
+                        "original_phones": [raw_phone],
+                        "device_details": [{
+                            "device": dev_label,
+                            "device_key": dev_key,
+                            "name": log.name or "",
+                            "phone_stored": raw_phone,
+                            "email": "",
+                            "calls": 0,
+                            "duration": 0,
+                            "call_types": {},
+                            "first_call": None,
+                            "last_call": None,
+                        }],
+                    })
+                else:
+                    existing = nodes[node_map[phone]]
+                    if dev_label not in existing.get("devices", []):
+                        existing.setdefault("devices", []).append(dev_label)
+                    if raw_phone not in existing.get("original_phones", []):
+                        existing.setdefault("original_phones", []).append(raw_phone)
+                    dd_list = existing.setdefault("device_details", [])
+                    found = False
+                    for dd in dd_list:
+                        if dd["device_key"] == dev_key:
+                            found = True
+                            break
+                    if not found:
+                        dd_list.append({
+                            "device": dev_label,
+                            "device_key": dev_key,
+                            "name": log.name or "",
+                            "phone_stored": raw_phone,
+                            "email": "",
+                            "calls": 0,
+                            "duration": 0,
+                            "call_types": {},
+                            "first_call": None,
+                            "last_call": None,
+                        })
+
+                if phone not in phone_to_devices:
+                    phone_to_devices[phone] = set()
+                phone_to_devices[phone].add(dev_key)
+
+        # Build call links & update per-device call stats
+        for (dev_key, phone), agg in call_agg.items():
+            idx = node_map[phone]
+            nodes[idx]["calls"] += agg["count"]
+            nodes[idx]["duration"] += agg["duration"]
+            if mode == 'all' and nodes[idx]["group"] == "contact":
+                nodes[idx]["group"] = "contact_with_calls"
+                nodes[idx]["color"] = "#38ef7d"
+
+            # Update device_details with call stats
+            dd_list = nodes[idx].get("device_details", [])
+            for dd in dd_list:
+                if dd["device_key"] == dev_key:
+                    dd["calls"] = agg["count"]
+                    dd["duration"] = agg["duration"]
+                    dd["call_types"] = agg["types"]
+                    dd["first_call"] = agg["first_call"].strftime("%d %b %Y, %I:%M %p") if agg["first_call"] else None
+                    dd["last_call"] = agg["last_call"].strftime("%d %b %Y, %I:%M %p") if agg["last_call"] else None
+                    break
+
+            links.append({
+                "source": dev_key,
+                "target": phone,
+                "calls": agg["count"],
+                "duration": agg["duration"],
+                "types": list(agg["types"].keys()),
+                "link_type": "call",
+            })
+
+    # ==================== ALL MODE: contact-only links ====================
+    if mode == 'all':
+        for phone, dev_keys_set in phone_to_devices.items():
+            for dk in dev_keys_set:
+                pair = (dk, phone)
+                if pair not in call_agg:
+                    links.append({
+                        "source": dk,
+                        "target": phone,
+                        "calls": 0,
+                        "duration": 0,
+                        "types": [],
+                        "link_type": "contact",
+                    })
+
+    # ==================== BRIDGE LINKS ====================
+    bridge_links = []
+    dev_keys_list = [f"device_{d.id}" for d in devices]
+    for phone, dev_keys_set in phone_to_devices.items():
+        dev_list = [dk for dk in dev_keys_set if dk in dev_keys_list]
+        if len(dev_list) >= 2:
+            for i_idx in range(len(dev_list)):
+                for j_idx in range(i_idx + 1, len(dev_list)):
+                    bridge_links.append({
+                        "source": dev_list[i_idx],
+                        "target": dev_list[j_idx],
+                        "calls": 0,
+                        "duration": 0,
+                        "types": [],
+                        "link_type": "bridge",
+                        "shared_phone": phone,
+                        "shared_name": nodes[node_map[phone]]["label"],
+                    })
+
+    bridge_agg = {}
+    for bl in bridge_links:
+        pair_key = tuple(sorted([bl["source"], bl["target"]]))
+        if pair_key not in bridge_agg:
+            bridge_agg[pair_key] = {"source": pair_key[0], "target": pair_key[1], "shared": [], "shared_phones": [], "link_type": "bridge", "calls": 0, "duration": 0, "types": []}
+        bridge_agg[pair_key]["shared"].append(bl["shared_name"])
+        bridge_agg[pair_key]["shared_phones"].append(bl["shared_phone"])
+
+    links.extend(bridge_agg.values())
+
+    return JsonResponse({"nodes": nodes, "links": links, "bridges": list(bridge_agg.values()), "device_labels": device_labels, "mode": mode})
+
 def device_view(request, id):
     context = {}
     context['device'] = Device.objects.filter(id=id).first()
