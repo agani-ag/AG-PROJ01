@@ -100,6 +100,8 @@
                 <div class="col-12">
                     <a class="form-label" href="{% url 'api_login' %}?data={{ encoded_credentials }}"
                         style="text-decoration: none;color: black;">Encoded Credentials</a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" title="{{ auth_user.userprofile.random_password|default:'Reset Password' }}"
+                            onclick="user_reset_password('{{ auth_user.id }}', '{{ auth_user.userprofile.random_password}}')"><i class="fas fa-unlock"></i></button>
                     <input type="text" class="form-control" value="{{ encoded_credentials }}" readonly>
                 </div>
             </div>
@@ -340,5 +342,58 @@ function autofillAddress(lat, lng) {
 document.addEventListener("DOMContentLoaded", function () {
     initMap();
 });
+
+function user_reset_password(userId, randomPassword) {
+    // Prompt user for a new password
+    Swal.fire({
+        title: 'Enter New Password',
+        text: `Current Password: ${randomPassword}`,
+        input: 'password',
+        inputPlaceholder: 'New password',
+        showCancelButton: true,
+        confirmButtonText: 'Reset Password',
+        showLoaderOnConfirm: true,
+        preConfirm: (newPassword) => {
+            if (!newPassword) {
+                Swal.showValidationMessage('Password cannot be empty');
+                return false;
+            }
+
+            // Make AJAX request to reset the password
+            return $.ajax({
+                url: '{% url "api_reset_password" %}',
+                type: 'GET',
+                data: {
+                    'user_id': userId,
+                    'password': newPassword
+                }
+            }).then(response => {
+                return response;  // If the request succeeds, pass the response forward
+            }).catch(error => {
+                throw new Error(error.responseJSON ? error.responseJSON.error : 'An error occurred');
+            });
+        },
+        allowOutsideClick: () => !Swal.isLoading()
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Show success message if password reset is successful
+            Swal.fire({
+                icon: 'success',
+                title: 'Password Reset Successful',
+                text: 'The password has been successfully reset.'
+            }).then(() => {
+                // Reload the page after success, or you can redirect or do other actions
+                location.reload();
+            });
+        }
+    }).catch((error) => {
+        // Show error message if there was a problem resetting the password
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: error.message || 'An unexpected error occurred.'
+        });
+    });
+}
 </script>
 {% endblock %}

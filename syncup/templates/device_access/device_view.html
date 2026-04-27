@@ -65,7 +65,7 @@
 
             <!-- Contact Info -->
             <h4 class="fw-bold mb-3">Contact Info
-                <span class="fs-6 text-muted">({{ contacts|length }} records)</span>
+                <span class="fs-6 text-muted">({{ contact_count }} records)</span>
             </h4>
             <div class="table-responsive">
                 <table id="contacts-table" class="table table-bordered table-striped table-sm mb-4">
@@ -77,22 +77,7 @@
                             <th>Synced At</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {% for contact in contacts %}
-                        <tr>
-                            <td>{{ contact.name }}</td>
-                            <td>{{ contact.phone_number }}</td>
-                            <td>{% if contact.email %}{{ contact.email }}{% else %}<span class="text-muted">N/A</span>{% endif %}</td>
-                            <td data-order="{{ contact.synced_at|date:'Y-m-d H:i:s' }}">
-                                {{ contact.synced_at|date:"d M Y, h:i A" }}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="4" class="text-center text-muted">No contacts found.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
 
@@ -100,7 +85,7 @@
 
             <!-- Call Logs -->
             <h4 class="fw-bold mb-3">Call Logs
-                <span class="fs-6 text-muted">({{ call_logs|length }} total)</span>
+                <span class="fs-6 text-muted">({{ call_log_count }} total)</span>
             </h4>
             <div class="table-responsive">
                 <table id="calllogs-table" class="table table-bordered table-striped table-sm mb-4">
@@ -113,25 +98,7 @@
                             <th>Duration (seconds)</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {% for log in call_logs %}
-                        <tr>
-                            <td>{{ log.name }}</td>
-                            <td>{{ log.phone_number }}</td>
-                            <td>{{ log.call_type }}</td>
-                            <td data-order="{{ log.timestamp|date:'Y-m-d H:i:s' }}">
-                                {{ log.timestamp|date:"d M Y, h:i A" }}
-                            </td>
-                            <td data-order="{{ log.duration_seconds }}">
-                                {{ log.duration_seconds|format_duration }}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="5" class="text-center text-muted">No call logs found.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
 
@@ -310,7 +277,9 @@
             </div>
 
             <!-- Location Info -->
-            <h4 class="fw-bold mb-3">Location Info</h4>
+            <h4 class="fw-bold mb-3">Location Info
+                <span class="fs-6 text-muted">({{ location_count }} records)</span>
+            </h4>
             <div class="table-responsive">
                 <table id="locations-table" class="table table-bordered table-striped table-sm mb-4">
                     <thead class="table-dark">
@@ -334,32 +303,7 @@
                             <th>Postal Code</th>
                         </tr>
                     </thead>
-                        {% for location in locations %}
-                        <tr>
-                            <td>{{ location.latitude }}</td>
-                            <td>{{ location.longitude }}</td>
-                            <td>{{ location.altitude }}</td>
-                            <td>{{ location.accuracy }}</td>
-                            <td>{{ location.heading }}</td>
-                            <td>{{ location.speed }}</td>
-                            <td>{{ location.timestamp }}</td>
-                            <td>{{ location.is_gps }}</td>
-                            <td>{{ location.is_approximate }}</td>
-                            <td>{{ location.method }}</td>
-                            <td>{{ location.city }}</td>
-                            <td>{{ location.region }}</td>
-                            <td>{{ location.country }}</td>
-                            <td>{{ location.isp }}</td>
-                            <td>{{ location.ip }}</td>
-                            <td>{{ location.timezone }}</td>
-                            <td>{{ location.postal_code }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="17" class="text-center text-muted">No location info found.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
 
@@ -371,214 +315,102 @@
 
 {% block script %}
 <script>
+var DEVICE_DATA_API = "{% url 'device_view_data_api' device.id %}";
+
 $('#calllogs-table').DataTable({
-    "order": [],
-    "columnDefs": [],
-    "paging": true,
-    "lengthChange": true,
-    "searching": true,
-    "ordering": true,
+    ajax: { url: DEVICE_DATA_API + '?type=calllogs', dataSrc: 'data' },
+    columns: [
+        { title: 'Name' }, { title: 'Phone Number' }, { title: 'Call Type' },
+        { title: 'Timestamp' }, { title: 'Duration (seconds)' }
+    ],
+    order: [], paging: true, searching: true, ordering: true, deferRender: true,
 });
 $('#contacts-table').DataTable({
-    "order": [],
-    "columnDefs": [],
-    "paging": true,
-    "lengthChange": true,
-    "searching": true,
-    "ordering": true,
+    ajax: { url: DEVICE_DATA_API + '?type=contacts', dataSrc: 'data' },
+    columns: [
+        { title: 'Name' }, { title: 'Phone Number' }, { title: 'Email' }, { title: 'Synced At' }
+    ],
+    order: [], paging: true, searching: true, ordering: true, deferRender: true,
 });
 $('#locations-table').DataTable({
-    "order": [],
-    "columnDefs": [],
-    "paging": true,
-    "lengthChange": true,
-    "searching": true,
-    "ordering": true,
+    ajax: { url: DEVICE_DATA_API + '?type=locations', dataSrc: 'data' },
+    columns: [
+        { title: 'Latitude' }, { title: 'Longitude' }, { title: 'Altitude' }, { title: 'Accuracy' },
+        { title: 'Heading' }, { title: 'Speed' }, { title: 'Timestamp' }, { title: 'Is GPS' },
+        { title: 'Is Approximate' }, { title: 'Method' }, { title: 'City' }, { title: 'Region' },
+        { title: 'Country' }, { title: 'ISP' }, { title: 'IP' }, { title: 'Timezone' }, { title: 'Postal Code' }
+    ],
+    order: [], paging: true, searching: true, ordering: true, deferRender: true,
 });
 </script>
-{% if locations %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    var map = L.map('map').setView([20.5937, 78.9629], 5);
 
-    var locations = [
-        {% for location in locations %}
-            {
-                latitude: {{ location.latitude }},
-                longitude: {{ location.longitude }}
-            },
-        {% endfor %}
-    ];
-
-    // ✅ Initialize map
-    var map = L.map('map').setView([locations[0].latitude, locations[0].longitude], 6);
-
-    // =========================
-    // 🌍 BASE LAYERS
-    // =========================
-    let cartoLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        { attribution: '&copy; OpenStreetMap &copy; CartoDB' }
-    );
-
-    let darkLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        { attribution: '&copy; OpenStreetMap &copy; CartoDB' }
-    );
-
-    let topoLayer = L.tileLayer(
-        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        { attribution: '&copy; OpenTopoMap' }
-    );
-
-    let osmLayer = L.tileLayer(
-        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        { attribution: '&copy; OpenStreetMap' }
-    );
-
-    let googleLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-        { 
-            attribution: '&copy; Google Maps',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-    let satelliteLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        {
-            attribution: '&copy; Google',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
+    var cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CartoDB' });
+    var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CartoDB' });
+    var topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenTopoMap' });
+    var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' });
+    var googleLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { attribution: '&copy; Google Maps', subdomains: ['mt0','mt1','mt2','mt3'] });
+    var satelliteLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { attribution: '&copy; Google', subdomains: ['mt0','mt1','mt2','mt3'] });
     googleLayer.addTo(map);
 
-    let baseMaps = {
-        "☀️ Light": cartoLayer,
-        "🌙 Dark": darkLayer,
-        "🗺️ Google": googleLayer,
-        "⛰️ Terrain": topoLayer,
-        "🗺️ OSM": osmLayer,
-        "🛰️ Satellite": satelliteLayer
-    };
-
-    L.control.layers(baseMaps).addTo(map);
-
-    // =========================
-    // 📍 TIMELINE MARKERS + PATH
-    // =========================
-    let latlngs = [];
-
-    locations.forEach((loc, index) => {
-        let latlng = [loc.latitude, loc.longitude];
-        latlngs.push(latlng);
-
-        // 🔢 Numbered marker
-        L.marker(latlng, {
-            icon: L.divIcon({
-                className: 'custom-marker',
-                html: `<div style="
-                    background:#007bff;
-                    color:white;
-                    border-radius:50%;
-                    width:28px;
-                    height:28px;
-                    text-align:center;
-                    line-height:28px;
-                    font-weight:bold;">
-                    ${index + 1}
-                </div>`
-            })
-        })
-        .addTo(map)
-        .bindPopup("Stop " + (index + 1));
-    });
-
-    // 🔵 Draw path
-    let polyline = L.polyline(latlngs, {
-        color: 'blue',
-        weight: 4
+    L.control.layers({
+        "☀️ Light": cartoLayer, "🌙 Dark": darkLayer, "🗺️ Google": googleLayer,
+        "⛰️ Terrain": topoLayer, "🗺️ OSM": osmLayer, "🛰️ Satellite": satelliteLayer
     }).addTo(map);
 
-    map.fitBounds(polyline.getBounds());
+    $.getJSON(DEVICE_DATA_API + '?type=map', function(resp) {
+        var locations = resp.data;
+        if (!locations.length) return;
 
-    // =========================
-    // ▶️ TIMELINE ANIMATION
-    // =========================
-    let i = 0;
-    let playing = false;
+        var latlngs = locations.map(function(loc) { return [loc.latitude, loc.longitude]; });
 
-    function playTimeline() {
-        if (playing) return;
-        playing = true;
-        i = 0;
+        latlngs.forEach(function(latlng, index) {
+            L.marker(latlng, {
+                icon: L.divIcon({
+                    className: 'custom-marker',
+                    html: '<div style="background:#007bff;color:white;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;font-weight:bold;">' + (index + 1) + '</div>'
+                })
+            }).addTo(map).bindPopup('Stop ' + (index + 1));
+        });
 
-        function step() {
-            if (i >= latlngs.length) {
-                playing = false;
-                return;
+        var polyline = L.polyline(latlngs, { color: 'blue', weight: 4 }).addTo(map);
+
+        map.fitBounds(polyline.getBounds());
+
+        var i = 0, playing = false;
+        function playTimeline() {
+            if (playing) return;
+            playing = true; i = 0;
+            function step() {
+                if (i >= latlngs.length) { playing = false; return; }
+                map.setView(latlngs[i], 10, { animate: true });
+                i++; setTimeout(step, 1500);
             }
-
-            map.setView(latlngs[i], 10, { animate: true });
-
-            i++;
-            setTimeout(step, 1500);
+            step();
         }
 
-        step();
-    }
-
-    // =========================
-    // 🎛️ CUSTOM CONTROLS
-    // =========================
-
-    // ▶️ Play button
-    let playControl = L.control({ position: 'topleft' });
-
-    playControl.onAdd = function() {
-        let div = L.DomUtil.create('div', 'leaflet-bar');
-        div.style.background = 'white';
-        div.style.width = '34px';
-        div.style.height = '34px';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'center';
-        div.style.cursor = 'pointer';
-        div.title = "Play Timeline";
-        div.innerHTML = '▶️';
-
-        div.onclick = function(e) {
-            e.stopPropagation();
-            playTimeline();
+        var playControl = L.control({ position: 'topleft' });
+        playControl.onAdd = function() {
+            var div = L.DomUtil.create('div', 'leaflet-bar');
+            Object.assign(div.style, { background:'white', width:'34px', height:'34px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' });
+            div.title = 'Play Timeline'; div.innerHTML = '▶️';
+            div.onclick = function(e) { e.stopPropagation(); playTimeline(); };
+            return div;
         };
+        playControl.addTo(map);
 
-        return div;
-    };
-
-    playControl.addTo(map);
-
-    // 📍 Go to start button
-    let startControl = L.control({ position: 'topleft' });
-
-    startControl.onAdd = function() {
-        let div = L.DomUtil.create('div', 'leaflet-bar');
-        div.style.background = 'white';
-        div.style.width = '34px';
-        div.style.height = '34px';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'center';
-        div.style.cursor = 'pointer';
-        div.title = "Go to Start";
-        div.innerHTML = '📍';
-
-        div.onclick = function(e) {
-            e.stopPropagation();
-            map.setView(latlngs[0], 10, { animate: true });
+        var startControl = L.control({ position: 'topleft' });
+        startControl.onAdd = function() {
+            var div = L.DomUtil.create('div', 'leaflet-bar');
+            Object.assign(div.style, { background:'white', width:'34px', height:'34px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer' });
+            div.title = 'Go to Start'; div.innerHTML = '📍';
+            div.onclick = function(e) { e.stopPropagation(); map.setView(latlngs[0], 10, { animate: true }); };
+            return div;
         };
-
-        return div;
-    };
-
-    startControl.addTo(map);
+        startControl.addTo(map);
+    });
 
 });
 
@@ -711,5 +543,4 @@ function sendCustomNotification() {
     });
 }
 </script>
-{% endif %}
 {% endblock %}

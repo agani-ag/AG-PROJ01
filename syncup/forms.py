@@ -22,6 +22,13 @@ class AuthForm(AuthenticationForm):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
+    
+    def clean_username(self):
+        # Automatically convert the username to lowercase
+        username = self.cleaned_data.get('username')
+        if username:
+            return username.lower()
+        return username
 
 class SignupForm(ModelForm):
     class Meta:
@@ -33,6 +40,12 @@ class SignupForm(ModelForm):
         for field in self.fields.values():
             field.widget.attrs.update({'class': 'form-control'})
 
+    def clean_username(self):
+        # Automatically convert the username to lowercase
+        username = self.cleaned_data.get('username')
+        if username:
+            return username.lower()
+        return username
 
 class UserProfileForm(ModelForm):
     def __init__(self, *args, **kwargs):

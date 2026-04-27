@@ -104,12 +104,13 @@ def auth_login_api(request):
 @login_required
 def reset_password_api(request):
     user_id = request.GET.get("user_id")
+    password = request.GET.get("password")
     if not user_id:
         return JsonResponse({"error": "Missing user ID"}, status=400)
     try:
         user = User.objects.get(id=user_id)
         userprofile = UserProfile.objects.get(user=user)
-        new_password = secrets.token_urlsafe(8)
+        new_password = password if password else secrets.token_urlsafe(8)
         user.set_password(new_password)
         user.save()
         userprofile.random_password = new_password

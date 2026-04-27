@@ -1205,14 +1205,72 @@ def audit_errors_clear(request):
 def device_view(request, id):
     context = {}
     context['device'] = Device.objects.filter(id=id).first()
-    context['contacts'] = Contact.objects.filter(device=context['device']) if context['device'] else None
-    context['locations'] = Location.objects.filter(device=context['device']).order_by('-timestamp') if context['device'] else None
-    context['device_infos'] = DeviceInfo.objects.filter(device=context['device']) if context['device'] else None
-    context['network_infos'] = NetworkInfo.objects.filter(device=context['device']) if context['device'] else None
-    context['sim_cards'] = SIMCard.objects.filter(device=context['device']) if context['device'] else None
-    context['system_infos'] = SystemInfo.objects.filter(device=context['device']) if context['device'] else None
-    context['call_logs'] = CallLog.objects.filter(device=context['device']).order_by('-timestamp') if context['device'] else None
+    if context['device']:
+        context['device_infos'] = DeviceInfo.objects.filter(device=context['device'])
+        context['network_infos'] = NetworkInfo.objects.filter(device=context['device'])
+        context['sim_cards'] = SIMCard.objects.filter(device=context['device'])
+        context['system_infos'] = SystemInfo.objects.filter(device=context['device'])
+        context['contact_count'] = Contact.objects.filter(device=context['device']).count()
+        context['location_count'] = Location.objects.filter(device=context['device']).count()
+        context['call_log_count'] = CallLog.objects.filter(device=context['device']).count()
     return render(request, 'device_access/device_view.html', context)
+
+
+def device_view_data_api(request, id):
+    device = Device.objects.filter(id=id).first()
+    if not device:
+        return JsonResponse({'data': []})
+
+    data_type = request.GET.get('type', '')
+
+    if data_type == 'contacts':
+        qs = Contact.objects.filter(device=device)
+        rows = []
+        for c in qs:
+            rows.append([
+                c.name or '-',
+                c.phone_number or '-',
+                c.email or '-',
+                c.synced_at.strftime('%d %b %Y, %I:%M %p') if c.synced_at else '-',
+            ])
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'calllogs':
+        qs = CallLog.objects.filter(device=device).order_by('-timestamp')
+        rows = []
+        for log in qs:
+            rows.append([
+                log.name or '-',
+                log.phone_number or '-',
+                log.call_type or '-',
+                log.timestamp.strftime('%d %b %Y, %I:%M %p') if log.timestamp else '-',
+                log.duration_seconds or 0,
+            ])
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'locations':
+        qs = Location.objects.filter(device=device).order_by('-timestamp')
+        rows = []
+        for loc in qs:
+            rows.append([
+                str(loc.latitude), str(loc.longitude),
+                str(loc.altitude or ''), str(loc.accuracy or ''),
+                str(loc.heading or ''), str(loc.speed or ''),
+                loc.timestamp.strftime('%d %b %Y, %I:%M %p') if loc.timestamp else '-',
+                str(loc.is_gps), str(loc.is_approximate or ''),
+                loc.method or '-', loc.city or '-', loc.region or '-',
+                loc.country or '-', loc.isp or '-', loc.ip or '-',
+                loc.timezone or '-', loc.postal_code or '-',
+            ])
+        return JsonResponse({'data': rows})
+
+    elif data_type == 'map':
+        qs = Location.objects.filter(device=device).order_by('-timestamp').values('latitude', 'longitude')
+        rows = [{'latitude': float(r['latitude']), 'longitude': float(r['longitude'])} for r in qs]
+        return JsonResponse({'data': rows})
+
+    return JsonResponse({'data': []})
+
 
 def device_delete(request, id):
     device = Device.objects.filter(id=id).first()
