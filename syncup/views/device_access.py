@@ -228,6 +228,7 @@ def register_device(request):
     push_token = data.get("push_token")
     platform = data.get("platform", "unknown")
     instance = data.get("instance", "unknown-instance")
+    instance_info = InstanceInfo.objects.filter(name=instance, is_active=True).first()
     if not device_id or not user_id or not push_token:
         return JsonResponse({"success": False, "message": "Missing fields"}, status=400)
     device, created = Device.objects.update_or_create(
@@ -241,8 +242,8 @@ def register_device(request):
             "is_active": True
         }
     )
-    if device.login_notified:
-        send_telegram_message(1, f"*🤝Device Login🔔*\n\n{('-'*8)}\n*{user_id.upper()}*\n{('▬'*12)}\n*{instance.upper()}*\n{('-'*8)}\n\n🦀  _Crab AI \| SyncUp🔄️_".replace('-', r'\-'))
+    if (instance == "S1" or (instance_info and instance_info.login_notified)) and device:
+        send_telegram_message(1, f"*🤝Device Login🔔*\n\n{('-'*12)}\n*{user_id.upper()}*\n{('▬'*12)}\n*{instance.upper()}*\n{('-'*12)}\n\n🦀  _Crab AI \| SyncUp🔄️_".replace('-', r'\-'))
     action = "REGISTERED" if created else "UPDATED"
     return JsonResponse({
         "success": True,
@@ -1207,10 +1208,6 @@ def audit_errors_clear(request):
 def device_view(request, id):       
     context = {}
     device = Device.objects.filter(id=id).first()
-    if request.method == 'POST':
-        device.login_notified = not device.login_notified
-        device.save()
-        return JsonResponse({'success': True, 'message': 'Login notification status updated', 'login_notified': device.login_notified})
     if device:
         context['device'] = device
         context['device_infos'] = DeviceInfo.objects.filter(device=device)

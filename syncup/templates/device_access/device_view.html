@@ -48,15 +48,6 @@
                             <th scope="row">Last Background Sync</th>
                             <td>{{ device.last_background_sync|date:"d-m-Y h:i A" }}</td>
                         </tr>
-                        <tr onclick="change_login_notified()" style="cursor:pointer;">
-                            <th scope="row">Login Notification</th>
-                            <td>{% if device.login_notified %}
-                                    <span class="text-success">Active</span>
-                                {% else %}
-                                    <span class="text-danger">Disabled</span>
-                                {% endif %}
-                            </td>
-                        </tr>
                         <tr>
                             <th scope="row">Status</th>
                             <td>{% if device.is_active %}
@@ -544,33 +535,6 @@ function sendCustomNotification() {
                 },
                 error: function(xhr) {
                     var msg = 'Failed to send notification.';
-                    try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
-                    Swal.fire('Error!', msg, 'error');
-                }
-            });
-        }
-    });
-}
-function change_login_notified() {
-    Swal.fire({
-        title: 'Change Login Notification Setting',
-        text: 'Are you sure you want to toggle the login notification setting for this device?',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Yes, Toggle It',
-        confirmButtonColor: '#667eea',
-        cancelButtonText: 'No, Keep It',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            $.ajax({
-                url: "{% url 'device_view' device.id %}",
-                method: 'POST',
-                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-                success: function(response) {
-                    Swal.fire('Updated!', response.message, 'success').then(() => location.reload());
-                },
-                error: function(xhr) {
-                    var msg = 'Failed to update setting.';
                     try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
                     Swal.fire('Error!', msg, 'error');
                 }

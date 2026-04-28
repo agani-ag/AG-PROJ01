@@ -127,7 +127,8 @@ class LinkRegistryForm(ModelForm):
 class InstanceInfoForm(ModelForm):
     class Meta:
         model = InstanceInfo
-        fields = ['name', 'base_url', 'endpoint', 'description', 'auth_key', 'auth_value', 'is_active']
+        fields = ['name', 'base_url', 'endpoint', 'description', 
+                  'auth_key', 'auth_value', 'is_active', 'login_notified']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'base_url': forms.URLInput(attrs={'class': 'form-control'}),
@@ -136,6 +137,7 @@ class InstanceInfoForm(ModelForm):
             'auth_value': forms.TextInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'login_notified': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
     def clean_base_url(self):
