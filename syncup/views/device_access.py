@@ -9,12 +9,17 @@ from django.utils.timezone import datetime, now
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ObjectDoesNotExist
 # Python standard libraries
+import os
 import re
 import json
+import uuid
 import random
 import string
 import requests
 import phonenumbers
+from PIL import Image
+from io import BytesIO
+from django.core.files.base import ContentFile
 from ..utils import get_fcm_token, send_telegram_message, escape_markdown_v2
 from phonenumbers.phonenumberutil import NumberParseException
 
@@ -243,14 +248,15 @@ def register_device(request):
             "is_active": True
         }
     )
+    device.refresh_from_db()
     if (instance == "S1" or (instance_info and instance_info.login_notified)) and device:
         uid = escape_markdown_v2(user_id.upper())
         inst = escape_markdown_v2(instance.upper())
         sep = escape_markdown_v2('-' * 12)
         bold_sep = escape_markdown_v2('▬' * 12)
         markdown_message = f"*🤝Device Login🔔*\n\n{sep}\n*{uid}*\n{bold_sep}\n"
-        markdown_message += f"*{inst} \| 📲{device.login_count}*\n"
-        markdown_message += f"{sep}\n\n🦀  _Crab AI \| SyncUp🔄️_"
+        markdown_message += f"*{inst} \\| 📲 {device.login_count} Times*\n"
+        markdown_message += f"{sep}\n\n🦀  _Crab AI \\| SyncUp🔄️_"
         send_telegram_message(1, markdown_message)
     action = "REGISTERED" if created else "UPDATED"
     return JsonResponse({
@@ -286,6 +292,78 @@ def list_devices(request):
     context["users"] = Device.objects.values_list('user_id', flat=True).distinct()
     context["selected_user"] = user_filter
     return render(request, 'device_access/list_devices.html', context)
+
+ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+
+@csrf_exempt
+def upload_notification_image(request):
+    """Upload an image, compress it losslessly, save to media/notifications/, return URL."""
+    if request.method != 'POST':
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+    
+    file = request.FILES.get('image')
+    if not file:
+        return JsonResponse({"success": False, "message": "No image file provided"}, status=400)
+    
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        return JsonResponse({"success": False, "message": "Invalid image type. Allowed: JPEG, PNG, WebP, GIF"}, status=400)
+    
+    if file.size > MAX_IMAGE_SIZE:
+        return JsonResponse({"success": False, "message": "Image too large. Max 5MB"}, status=400)
+    
+    try:
+        img = Image.open(file)
+        img.verify()
+        file.seek(0)
+        img = Image.open(file)
+    except Exception:
+        return JsonResponse({"success": False, "message": "Corrupt or unreadable image"}, status=400)
+    
+    # Determine output format
+    fmt = img.format or 'PNG'
+    if fmt == 'JPEG':
+        ext = 'jpg'
+    elif fmt == 'GIF':
+        ext = 'gif'
+    elif fmt == 'WEBP':
+        ext = 'webp'
+    else:
+        ext = 'png'
+    
+    # Compress without quality loss
+    buffer = BytesIO()
+    if fmt == 'JPEG':
+        if img.mode in ('RGBA', 'P'):
+            img = img.convert('RGB')
+        img.save(buffer, format='JPEG', quality=95, optimize=True)
+    elif fmt == 'PNG':
+        img.save(buffer, format='PNG', optimize=True)
+    elif fmt == 'WEBP':
+        img.save(buffer, format='WEBP', lossless=True)
+    elif fmt == 'GIF':
+        img.save(buffer, format='GIF', optimize=True)
+    else:
+        img.save(buffer, format='PNG', optimize=True)
+        ext = 'png'
+    
+    # Save to media/notifications/
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    upload_dir = os.path.join(settings.MEDIA_ROOT, 'notifications')
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, filename)
+    
+    with open(filepath, 'wb') as f:
+        f.write(buffer.getvalue())
+    
+    image_url = f"{settings.PROJ01_URL}{settings.MEDIA_URL}notifications/{filename}"
+    
+    return JsonResponse({
+        "success": True,
+        "url": image_url,
+        "filename": filename,
+        "size": len(buffer.getvalue()),
+    })
 
 @csrf_exempt
 def send_notification(request):
@@ -323,6 +401,17 @@ def send_notification(request):
     if failed:
         Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
         Device.objects.filter(push_token__in=failed).update(retry_count=F('retry_count') + 1)
+    
+    # Delete temp uploaded image after sending
+    uploaded_filename = data.get("uploaded_filename")
+    if uploaded_filename:
+        try:
+            filepath = os.path.join(settings.MEDIA_ROOT, 'notifications', os.path.basename(uploaded_filename))
+            if os.path.isfile(filepath):
+                os.remove(filepath)
+        except Exception:
+            pass  # Non-critical, file will be cleaned up later
+    
     return JsonResponse({
         "success": True,
         "sent": len(sent),

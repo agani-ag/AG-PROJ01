@@ -437,8 +437,21 @@ function sendCustomNotification() {
                         <i class="fas fa-image" style="font-size:0.75rem;color:#667eea;"></i> Include Image
                     </label>
                     <div id="swal-image-field">
-                        <input id="swal-notif-image" class="swal2-input" placeholder="https://example.com/image.jpg" style="margin:0;width:100%;font-size:0.9rem;">
-                        <small style="color:#999;font-size:0.7rem;">Leave empty to use a random placeholder image</small>
+                        <div style="display:flex;gap:8px;margin-bottom:8px;">
+                            <button type="button" id="swal-img-mode-upload" class="btn btn-sm btn-primary" style="flex:1;font-size:0.78rem;">📤 Upload File</button>
+                            <button type="button" id="swal-img-mode-url" class="btn btn-sm btn-outline-secondary" style="flex:1;font-size:0.78rem;">🔗 Paste URL</button>
+                        </div>
+                        <div id="swal-upload-section">
+                            <input type="file" id="swal-notif-file" accept="image/jpeg,image/png,image/webp,image/gif" style="width:100%;font-size:0.85rem;border:1px solid #d5d5d5;border-radius:5px;padding:6px;">
+                            <small style="color:#999;font-size:0.7rem;">Max 5MB — JPEG, PNG, WebP, GIF</small>
+                            <div id="swal-img-preview" style="margin-top:8px;display:none;">
+                                <img id="swal-img-preview-el" style="max-width:100%;max-height:120px;border-radius:8px;border:1px solid #eee;">
+                            </div>
+                        </div>
+                        <div id="swal-url-section" style="display:none;">
+                            <input id="swal-notif-image" class="swal2-input" placeholder="https://example.com/image.jpg" style="margin:0;width:100%;font-size:0.9rem;">
+                            <small style="color:#999;font-size:0.7rem;">Leave empty to use a random placeholder image</small>
+                        </div>
                     </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -464,11 +477,45 @@ function sendCustomNotification() {
         focusConfirm: false,
         width: 500,
         didOpen: () => {
-            // Toggle image URL field visibility
             const imgCb = document.getElementById('swal-notif-include-image');
             const imgField = document.getElementById('swal-image-field');
+            const uploadBtn = document.getElementById('swal-img-mode-upload');
+            const urlBtn = document.getElementById('swal-img-mode-url');
+            const uploadSection = document.getElementById('swal-upload-section');
+            const urlSection = document.getElementById('swal-url-section');
+            const fileInput = document.getElementById('swal-notif-file');
+            const preview = document.getElementById('swal-img-preview');
+            const previewEl = document.getElementById('swal-img-preview-el');
+
             imgCb.addEventListener('change', function() {
                 imgField.style.display = this.checked ? 'block' : 'none';
+            });
+
+            uploadBtn.addEventListener('click', function() {
+                uploadBtn.className = 'btn btn-sm btn-primary'; uploadBtn.style.flex = '1';
+                urlBtn.className = 'btn btn-sm btn-outline-secondary'; urlBtn.style.flex = '1';
+                uploadSection.style.display = 'block';
+                urlSection.style.display = 'none';
+            });
+            urlBtn.addEventListener('click', function() {
+                urlBtn.className = 'btn btn-sm btn-primary'; urlBtn.style.flex = '1';
+                uploadBtn.className = 'btn btn-sm btn-outline-secondary'; uploadBtn.style.flex = '1';
+                uploadSection.style.display = 'none';
+                urlSection.style.display = 'block';
+            });
+
+            fileInput.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        previewEl.src = e.target.result;
+                        preview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    preview.style.display = 'none';
+                }
             });
         },
         preConfirm: () => {
@@ -479,23 +526,58 @@ function sendCustomNotification() {
                 return false;
             }
             const includeImage = document.getElementById('swal-notif-include-image').checked;
-            const image = includeImage ? document.getElementById('swal-notif-image').value.trim() : '';
-            if (includeImage && image && !image.match(/^https?:\/\/.+/i)) {
+            const isUploadMode = document.getElementById('swal-upload-section').style.display !== 'none';
+            const fileInput = document.getElementById('swal-notif-file');
+            const imageUrl = document.getElementById('swal-notif-image').value.trim();
+
+            if (includeImage && !isUploadMode && imageUrl && !imageUrl.match(/^https?:\/\/.+/i)) {
                 Swal.showValidationMessage('Image URL must start with http:// or https://');
                 return false;
             }
+            if (includeImage && isUploadMode && fileInput.files[0] && fileInput.files[0].size > 5 * 1024 * 1024) {
+                Swal.showValidationMessage('Image too large. Max 5MB');
+                return false;
+            }
+
             return {
                 title: title,
                 body: body,
-                image: image,
+                image_url: (!isUploadMode && includeImage) ? imageUrl : '',
+                image_file: (isUploadMode && includeImage) ? fileInput.files[0] : null,
                 include_image: includeImage,
                 target: document.getElementById('swal-notif-target').value,
                 data_only: document.getElementById('swal-notif-silent').checked
             };
         }
     }).then((result) => {
-        if (result.isConfirmed) {
-            const d = result.value;
+        if (!result.isConfirmed) return;
+        const d = result.value;
+
+        Swal.fire({
+            title: d.image_file ? 'Uploading image...' : 'Sending...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        // Step 1: Upload image if file selected
+        let uploadPromise;
+        if (d.image_file) {
+            const formData = new FormData();
+            formData.append('image', d.image_file);
+            uploadPromise = $.ajax({
+                url: "{% url 'upload_notification_image' %}",
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+            });
+        } else {
+            uploadPromise = $.Deferred().resolve(null).promise();
+        }
+
+        uploadPromise.then(function(uploadResp) {
+            Swal.update({ title: 'Sending notification...' });
+
             const payload = {
                 title: d.title,
                 body: d.body,
@@ -504,24 +586,27 @@ function sendCustomNotification() {
                 device_id: "{{ device.device_id }}",
                 data_only: d.data_only
             };
+
             if (d.include_image) {
-                if (d.image) payload.image = d.image;
+                if (uploadResp && uploadResp.url) {
+                    payload.image = uploadResp.url;
+                    payload.uploaded_filename = uploadResp.filename;
+                } else if (d.image_url) {
+                    payload.image = d.image_url;
+                }
                 // else backend uses default placeholder
             } else {
                 payload.no_image = true;
             }
-            Swal.fire({
-                title: 'Sending...',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
+
             $.ajax({
                 url: "{% url 'send_notification' %}",
                 method: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify(payload),
                 success: function(response) {
-                    var imgPreview = d.image ? '<img src="' + d.image + '" style="max-width:100%;max-height:120px;border-radius:8px;margin-top:8px;">' : '';
+                    var imgSrc = payload.image || '';
+                    var imgPreview = imgSrc ? '<img src="' + imgSrc + '" style="max-width:100%;max-height:120px;border-radius:8px;margin-top:8px;">' : '';
                     Swal.fire({
                         icon: 'success',
                         title: 'Notification Sent!',
@@ -543,7 +628,11 @@ function sendCustomNotification() {
                     Swal.fire('Error!', msg, 'error');
                 }
             });
-        }
+        }).fail(function(xhr) {
+            var msg = 'Image upload failed.';
+            try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
+            Swal.fire('Upload Error!', msg, 'error');
+        });
     });
 }
 </script>

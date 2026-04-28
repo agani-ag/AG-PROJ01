@@ -104,6 +104,7 @@ urlpatterns = [
     path('device/api/table', device_access.device_table_api, name='device_table_api'),
     # Device Notification URL
     path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
+    path('device/api/notifications/upload-image', device_access.upload_notification_image, name='upload_notification_image'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

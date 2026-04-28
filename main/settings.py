@@ -132,3 +132,7 @@ TELEGRAM_GROUPS = [
 ]
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+
+# Media files (Uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
