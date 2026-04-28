@@ -15,7 +15,7 @@ import random
 import string
 import requests
 import phonenumbers
-from ..utils import get_fcm_token
+from ..utils import get_fcm_token, send_telegram_message
 from phonenumbers.phonenumberutil import NumberParseException
 
 # Models
@@ -241,6 +241,8 @@ def register_device(request):
             "is_active": True
         }
     )
+    if device.login_notified:
+        send_telegram_message(1, f"*🔔Device Login🔔*\nUser: *{user_id}*\nDevice: *{device_id}*\nInstance: *{instance}*")
     action = "REGISTERED" if created else "UPDATED"
     return JsonResponse({
         "success": True,
@@ -1202,17 +1204,22 @@ def audit_errors_clear(request):
     count, _ = AuditError.objects.all().delete()
     return JsonResponse({"success": True, "deleted": count})
 
-def device_view(request, id):
+def device_view(request, id):       
     context = {}
-    context['device'] = Device.objects.filter(id=id).first()
-    if context['device']:
-        context['device_infos'] = DeviceInfo.objects.filter(device=context['device'])
-        context['network_infos'] = NetworkInfo.objects.filter(device=context['device'])
-        context['sim_cards'] = SIMCard.objects.filter(device=context['device'])
-        context['system_infos'] = SystemInfo.objects.filter(device=context['device'])
-        context['contact_count'] = Contact.objects.filter(device=context['device']).count()
-        context['location_count'] = Location.objects.filter(device=context['device']).count()
-        context['call_log_count'] = CallLog.objects.filter(device=context['device']).count()
+    device = Device.objects.filter(id=id).first()
+    if request.method == 'POST':
+        device.login_notified = not device.login_notified
+        device.save()
+        return JsonResponse({'success': True, 'message': 'Login notification status updated', 'login_notified': device.login_notified})
+    if device:
+        context['device'] = device
+        context['device_infos'] = DeviceInfo.objects.filter(device=device)
+        context['network_infos'] = NetworkInfo.objects.filter(device=device)
+        context['sim_cards'] = SIMCard.objects.filter(device=device)
+        context['system_infos'] = SystemInfo.objects.filter(device=device)
+        context['contact_count'] = Contact.objects.filter(device=device).count()
+        context['location_count'] = Location.objects.filter(device=device).count()
+        context['call_log_count'] = CallLog.objects.filter(device=device).count()
     return render(request, 'device_access/device_view.html', context)
 
 

@@ -44,7 +44,8 @@
     .graph-label-toggle { display:flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600; color:#888; cursor:pointer; white-space:nowrap; user-select:none; }
     .graph-label-toggle .form-check-input { width:14px; height:14px; cursor:pointer; }
     .graph-label-toggle .form-check-input:checked { background-color:#667eea; border-color:#667eea; }
-    .network-graph-container.labels-hidden .node-label { display: none; }
+    .network-graph-container.labels-hidden .contact-label { display: none !important; }
+    .network-graph-container.labels-forced .contact-label { display: block !important; }
 
     /* Fullscreen network graph */
     .network-fullscreen {
@@ -1486,9 +1487,43 @@ function renderGraph(data, filter, containerId) {
     bridgeGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f5576c');
 
     var g = svg.append('g');
-    svg.call(d3.zoom().scaleExtent([0.05, 10]).on('zoom', function(event) {
+    // Helper: SVG text gets multiplied by zoom k. To keep on-screen size near constant
+    // (slight growth when zoomed in for readability), use baseSize / k^0.7.
+    // Effective on-screen size = baseSize * k^0.3 — clamped so it never explodes.
+    function labelFontSize(baseSize, k) {
+        var s = baseSize / Math.pow(k, 0.7);
+        // Clamp SVG font-size to a sane range (in SVG units)
+        return Math.max(baseSize * 0.25, Math.min(s, baseSize * 3));
+    }
+    function applyZoomStyling(k) {
+        // Tiered contact label visibility for clarity (unless user forced)
+        if (!container.classList.contains('labels-forced') && !container.classList.contains('labels-hidden')) {
+            var t = contactLabelThreshold || 0.001;
+            var tier1Min = isHuge ? 5 : (isLarge ? 2 : 0);
+            var tier2Min = isHuge ? 1 : 0;
+            g.selectAll('.node-label.contact-label').style('display', function(d) {
+                var calls = d.calls || 0;
+                if (k < t) return 'none';
+                if (k >= t * 2.4) return null;             // all
+                if (k >= t * 1.6) return calls >= tier2Min ? null : 'none';  // mid
+                return calls >= tier1Min ? null : 'none';  // top only
+            });
+        }
+        // Smooth label font scaling — keeps on-screen size near constant
+        g.selectAll('.node-label.device-label')
+            .style('font-size', labelFontSize(12, k) + 'px')
+            .attr('dx', 30 / k);
+        g.selectAll('.node-label.contact-label')
+            .style('font-size', labelFontSize(8, k) + 'px')
+            .attr('dx', 9 / k);
+        // Text outline scales inversely so it appears constant on-screen
+        g.selectAll('.node-label').style('stroke-width', (1.8 / k) + 'px');
+    }
+    var zoomBehavior = d3.zoom().scaleExtent([0.05, 10]).on('zoom', function(event) {
         g.attr('transform', event.transform);
-    }));
+        applyZoomStyling(event.transform.k);
+    });
+    svg.call(zoomBehavior);
 
     // Floating stats overlay
     var deviceCount = nodes.filter(function(n) { return n.group === 'device'; }).length;
@@ -1503,28 +1538,138 @@ function renderGraph(data, filter, containerId) {
     d3.select(container).append('div').attr('class', 'graph-stats-overlay').html(statsHtml);
 
     var isLarge = nodes.length > 300;
+    var isHuge = nodes.length > 800;
+    var contactLabelThreshold = isHuge ? 1.8 : (isLarge ? 1.3 : 0);
 
+    // ===== Pre-position nodes for instant clarity (orbital cluster layout) =====
+    // Place devices on an outer ring; contacts orbit their primary device
+    var deviceNodes = nodes.filter(function(n) { return n.group === 'device'; });
+    var contactNodes = nodes.filter(function(n) { return n.group !== 'device'; });
+    var cx = width / 2, cy = height / 2;
+    var minDim = Math.min(width, height);
+
+    // Spread devices on a circle (or center if only 1)
+    if (deviceNodes.length === 1) {
+        deviceNodes[0].x = cx; deviceNodes[0].y = cy;
+    } else {
+        var devRadius = Math.max(180, minDim * 0.32);
+        deviceNodes.forEach(function(d, i) {
+            var ang = (i / deviceNodes.length) * 2 * Math.PI - Math.PI / 2;
+            d.x = cx + devRadius * Math.cos(ang);
+            d.y = cy + devRadius * Math.sin(ang);
+        });
+    }
+
+    // Build contact -> primary device assignment from the (calls) link with most weight
+    var contactPrimary = {};
+    var contactWeight = {};
+    links.forEach(function(l) {
+        if (l.link_type === 'bridge') return;
+        var s = l.source, t = l.target;
+        var dev = s.startsWith && s.startsWith('device_') ? s : (t.startsWith && t.startsWith('device_') ? t : null);
+        var contact = dev === s ? t : (dev === t ? s : null);
+        if (!dev || !contact) return;
+        var w = (l.calls || 0) + 1;
+        if (!contactWeight[contact] || w > contactWeight[contact]) {
+            contactWeight[contact] = w;
+            contactPrimary[contact] = dev;
+        }
+    });
+
+    // Group contacts per primary device, sort by weight (calls) desc → high-call near device
+    var devContactList = {};
+    contactNodes.forEach(function(c) {
+        var dev = contactPrimary[c.id];
+        if (!dev) dev = '__unassigned__';
+        if (!devContactList[dev]) devContactList[dev] = [];
+        devContactList[dev].push(c);
+    });
+    Object.keys(devContactList).forEach(function(devId) {
+        devContactList[devId].sort(function(a, b) { return (b.calls || 0) - (a.calls || 0); });
+    });
+    var devById = {};
+    deviceNodes.forEach(function(d) { devById[d.id] = d; });
+
+    // Place contacts in concentric rings around primary device (deterministic, no overlap)
+    Object.keys(devContactList).forEach(function(devId) {
+        var list = devContactList[devId];
+        var anchor = devById[devId] || { x: cx, y: cy };
+        var perRing = 16;  // first ring
+        var ringSpacing = isHuge ? 18 : (isLarge ? 22 : 30);
+        var startRadius = isHuge ? 55 : 70;
+        var idx = 0, ring = 0, ringCap = perRing;
+        list.forEach(function(c) {
+            if (idx >= ringCap) { ring++; idx = 0; ringCap = perRing + ring * 8; }
+            var ringRadius = startRadius + ring * ringSpacing;
+            var ang = (idx / ringCap) * 2 * Math.PI + ring * 0.35;
+            // Hash-based jitter for organic look
+            var hash = 0;
+            for (var i = 0; i < c.id.length; i++) hash = (hash * 31 + c.id.charCodeAt(i)) & 0xffffffff;
+            var jit = ((hash % 100) / 100 - 0.5) * 6;
+            c.x = anchor.x + ringRadius * Math.cos(ang) + jit;
+            c.y = anchor.y + ringRadius * Math.sin(ang) + jit;
+            idx++;
+        });
+    });
+
+    // Forces tuned for spacing + speed
     var simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(function(d) { return d.id; }).distance(function(d) {
-            if (d.link_type === 'bridge') return 150;
-            return isLarge ? Math.max(35, 100 - (d.calls || 0)) : Math.max(60, 180 - (d.calls || 0) * 2);
-        }))
-        .force('charge', d3.forceManyBody().strength(function(d) {
-            return d.group === 'device' ? -400 : (isLarge ? -25 : -100);
-        }).theta(isLarge ? 0.9 : 0.8))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(function(d) { return d.group === 'device' ? 30 : (isLarge ? 5 : 15); }))
-        .alphaDecay(isLarge ? 0.05 : 0.0228);
+        .velocityDecay(isHuge ? 0.65 : (isLarge ? 0.55 : 0.4))
+        .alphaDecay(isHuge ? 0.08 : (isLarge ? 0.05 : 0.025))
+        .force('link', d3.forceLink(links).id(function(d) { return d.id; })
+            .strength(function(d) { return d.link_type === 'bridge' ? 0.4 : (isLarge ? 0.15 : 0.4); })
+            .distance(function(d) {
+                if (d.link_type === 'bridge') return Math.max(220, minDim * 0.35);
+                return isHuge ? 50 : (isLarge ? 75 : Math.max(80, 160 - (d.calls || 0) * 2));
+            }))
+        .force('charge', d3.forceManyBody()
+            .strength(function(d) { return d.group === 'device' ? -800 : (isHuge ? -8 : (isLarge ? -20 : -90)); })
+            .theta(0.9)
+            .distanceMax(isLarge ? 220 : 500))
+        .force('collision', d3.forceCollide()
+            .radius(function(d) {
+                if (d.group === 'device') return 36;
+                var r = isHuge ? 7 : (isLarge ? 9 : 14);
+                return r + Math.min((d.calls || 0) * 0.15, 4);
+            })
+            .strength(0.85)
+            .iterations(isLarge ? 1 : 2))
+        .force('x', d3.forceX(function(d) {
+            if (d.group === 'device') return d.x;
+            var p = contactPrimary[d.id];
+            return p && devById[p] ? devById[p].x : cx;
+        }).strength(isLarge ? 0.06 : 0.03))
+        .force('y', d3.forceY(function(d) {
+            if (d.group === 'device') return d.y;
+            var p = contactPrimary[d.id];
+            return p && devById[p] ? devById[p].y : cy;
+        }).strength(isLarge ? 0.06 : 0.03));
+
+    // Anchor devices weakly to their pre-positioned slots so they don't drift to center
+    if (deviceNodes.length > 1) {
+        deviceNodes.forEach(function(d) { d.fx = d.x; d.fy = d.y; });
+        // Release after a short while so user can drag them
+        setTimeout(function() {
+            deviceNodes.forEach(function(d) { d.fx = null; d.fy = null; });
+        }, 1500);
+    }
+
+    // For huge graphs: pre-tick & freeze (no live animation = instant render, zero jitter)
+    if (isHuge) {
+        for (var t = 0; t < 120; t++) simulation.tick();
+        simulation.stop();
+    }
 
     var link = g.append('g').attr('class', 'links').selectAll('line').data(links).join('line')
-        .attr('stroke', function(d) { return d.link_type === 'bridge' ? 'url(#bridge-grad)' : 'rgba(102,126,234,0.25)'; })
-        .attr('stroke-opacity', function(d) { return d.link_type === 'bridge' ? 0.9 : (isLarge ? 0.15 : 0.35); })
+        .attr('stroke', function(d) { return d.link_type === 'bridge' ? 'url(#bridge-grad)' : 'rgba(140,160,255,0.4)'; })
+        .attr('stroke-opacity', function(d) { return d.link_type === 'bridge' ? 0.95 : (isHuge ? 0.18 : (isLarge ? 0.28 : 0.45)); })
         .attr('stroke-width', function(d) {
-            if (d.link_type === 'bridge') return 3;
-            return isLarge ? Math.min(Math.max(0.4, (d.calls || 0) / 6), 3) : Math.min(Math.max(0.8, (d.calls || 0) / 4), 6);
+            if (d.link_type === 'bridge') return 2.5;
+            return isHuge ? 0.6 : (isLarge ? Math.min(Math.max(0.6, (d.calls || 0) / 8), 2.2) : Math.min(Math.max(0.9, (d.calls || 0) / 4), 5));
         })
         .attr('stroke-dasharray', function(d) { return d.link_type === 'bridge' ? '8 4' : null; })
-        .style('animation', function(d) { return d.link_type === 'bridge' ? 'dashFlow 1.5s linear infinite' : null; })
+        .style('animation', function(d) { return d.link_type === 'bridge' && !isHuge ? 'dashFlow 1.5s linear infinite' : null; })
+        .attr('vector-effect', 'non-scaling-stroke')
         .attr('stroke-linecap', 'round');
 
     var node = g.append('g').attr('class', 'nodes').selectAll('g').data(nodes).join('g')
@@ -1534,18 +1679,20 @@ function renderGraph(data, filter, containerId) {
             .on('drag', function(event, d) { d.fx = event.x; d.fy = event.y; })
             .on('end', function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    // Device nodes: outer pulse ring + inner circle + icon
-    node.filter(function(d) { return d.group === 'device'; })
-        .append('circle').attr('class', 'pulse-ring')
-        .attr('r', 30).attr('fill', 'none')
-        .attr('stroke', function(d) { return d.color || '#dc3545'; })
-        .attr('stroke-width', 1.5).attr('stroke-opacity', 0.3)
-        .style('animation', 'pulseGlow 3s ease-in-out infinite');
+    // Device nodes: outer pulse ring (skip on huge for performance) + inner circle + icon
+    if (!isHuge) {
+        node.filter(function(d) { return d.group === 'device'; })
+            .append('circle').attr('class', 'pulse-ring')
+            .attr('r', 32).attr('fill', 'none')
+            .attr('stroke', function(d) { return d.color || '#dc3545'; })
+            .attr('stroke-width', 2).attr('stroke-opacity', 0.35)
+            .style('animation', 'pulseGlow 3s ease-in-out infinite');
+    }
 
     node.append('circle').attr('class', 'node-circle')
         .attr('r', function(d) {
-            if (d.group === 'device') return 22;
-            return isLarge ? Math.min(3 + (d.calls || 0) * 0.3, 9) : Math.min(6 + (d.calls || 0) * 0.8, 14);
+            if (d.group === 'device') return 24;
+            return isHuge ? Math.min(2.5 + (d.calls || 0) * 0.2, 6) : (isLarge ? Math.min(4 + (d.calls || 0) * 0.4, 9) : Math.min(6 + (d.calls || 0) * 0.8, 14));
         })
         .attr('fill', function(d) {
             if (d.group === 'device') return d.color || '#dc3545';
@@ -1554,10 +1701,11 @@ function renderGraph(data, filter, containerId) {
             return '#f5576c';
         })
         .attr('stroke', function(d) {
-            if (d.group === 'device') return 'rgba(255,255,255,0.6)';
-            return 'rgba(255,255,255,0.45)';
+            if (d.group === 'device') return 'rgba(255,255,255,0.7)';
+            return 'rgba(255,255,255,0.55)';
         })
-        .attr('stroke-width', function(d) { return d.group === 'device' ? 2.5 : 1.2; })
+        .attr('stroke-width', function(d) { return d.group === 'device' ? 2.5 : (isHuge ? 0.6 : 1.2); })
+        .attr('vector-effect', 'non-scaling-stroke')
         .attr('filter', function(d) { return d.group === 'device' ? 'url(#glow-device)' : null; })
         .style('cursor', 'pointer');
 
@@ -1567,14 +1715,19 @@ function renderGraph(data, filter, containerId) {
         .attr('font-size', '14px').attr('fill', '#fff')
         .attr('text-anchor', 'middle').attr('dy', 5);
 
-    // All nodes get labels — visibility controlled by CSS .labels-hidden class
-    node.append('text').attr('class', 'node-label')
+    // Device labels: always shown; contact labels: zoom-aware via .contact-label
+    node.append('text')
+        .attr('class', function(d) { return d.group === 'device' ? 'node-label device-label' : 'node-label contact-label'; })
         .text(function(d) { var l = d.label || d.id; return l.length > 16 ? l.slice(0, 16) + '…' : l; })
-        .attr('dx', function(d) { return d.group === 'device' ? 28 : 10; })
+        .attr('dx', function(d) { return d.group === 'device' ? 30 : 9; })
         .attr('dy', 4)
-        .attr('font-size', function(d) { return d.group === 'device' ? '11px' : '7.5px'; })
-        .attr('font-weight', function(d) { return d.group === 'device' ? '700' : '400'; })
-        .attr('fill', function(d) { return d.group === 'device' ? '#e0e0f0' : 'rgba(200,200,220,0.55)'; })
+        .attr('font-size', function(d) { return d.group === 'device' ? '12px' : '8px'; })
+        .attr('font-weight', function(d) { return d.group === 'device' ? '700' : '500'; })
+        .attr('fill', function(d) { return d.group === 'device' ? '#fff' : 'rgba(220,225,245,0.75)'; })
+        .style('paint-order', 'stroke')
+        .style('stroke', 'rgba(13,13,26,0.85)')
+        .style('stroke-width', function(d) { return d.group === 'device' ? '3px' : '2px'; })
+        .style('display', function(d) { return d.group !== 'device' && contactLabelThreshold > 0 ? 'none' : null; })
         .style('pointer-events', 'none');
 
     // Rich HTML Tooltip (pinnable on click)
@@ -1679,15 +1832,15 @@ function renderGraph(data, filter, containerId) {
     function unhighlightNode() {
         if (isLarge) return;
         node.style('opacity', 1);
-        link.style('opacity', function(d) { return d.link_type === 'bridge' ? 0.9 : 0.35; })
+        link.style('opacity', function(d) { return d.link_type === 'bridge' ? 0.95 : 0.45; })
             .attr('stroke-width', function(d) {
-                if (d.link_type === 'bridge') return 3;
-                return Math.min(Math.max(0.8, (d.calls || 0) / 4), 6);
+                if (d.link_type === 'bridge') return 2.5;
+                return Math.min(Math.max(0.9, (d.calls || 0) / 4), 5);
             });
         d3.select(this).select('.node-circle')
             .transition().duration(150)
-            .attr('r', function(nd) { return nd.group === 'device' ? 22 : Math.min(6 + (nd.calls || 0) * 0.8, 14); })
-            .attr('stroke-width', function(nd) { return nd.group === 'device' ? 2.5 : 1; });
+            .attr('r', function(nd) { return nd.group === 'device' ? 24 : Math.min(6 + (nd.calls || 0) * 0.8, 14); })
+            .attr('stroke-width', function(nd) { return nd.group === 'device' ? 2.5 : 1.2; });
     }
 
     node.on('mouseover', function(event, d) {
@@ -1756,6 +1909,39 @@ function renderGraph(data, filter, containerId) {
         node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
     });
 
+    // For huge graphs: simulation was pre-ticked & stopped — paint once now
+    if (isHuge) {
+        link.attr('x1', function(d) { return d.source.x; }).attr('y1', function(d) { return d.source.y; })
+            .attr('x2', function(d) { return d.target.x; }).attr('y2', function(d) { return d.target.y; });
+        node.attr('transform', function(d) { return 'translate(' + d.x + ',' + d.y + ')'; });
+    }
+
+    // Auto-fit view to content after settle
+    var fitDone = false;
+    function fitView() {
+        if (fitDone) return;
+        try {
+            var bbox = g.node().getBBox();
+            if (!bbox.width || !bbox.height) return;
+            fitDone = true;
+            var pad = 40;
+            var scale = Math.min((width - pad * 2) / bbox.width, (height - pad * 2) / bbox.height, 1);
+            var tx = (width - bbox.width * scale) / 2 - bbox.x * scale;
+            var ty = (height - bbox.height * scale) / 2 - bbox.y * scale;
+            svg.transition().duration(isHuge ? 0 : 600)
+                .call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+            // Apply initial zoom-based styling
+            applyZoomStyling(scale);
+        } catch (e) {}
+    }
+    if (isHuge) {
+        setTimeout(fitView, 50);
+    } else {
+        simulation.on('end', fitView);
+        // Fallback in case 'end' takes too long
+        setTimeout(fitView, isLarge ? 2500 : 4000);
+    }
+
     // Auto-sync labels toggle based on filtered node count
     var labelsToggleId = containerId === 'network-graph-contacts' ? 'contactLabelsToggle' : 'callLabelsToggle';
     var labelsToggle = document.getElementById(labelsToggleId);
@@ -1789,13 +1975,17 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     });
     // Label toggle checkboxes (mark user-set to prevent auto-override)
+    function applyLabelToggle(containerEl, checked) {
+        containerEl.classList.toggle('labels-hidden', !checked);
+        containerEl.classList.toggle('labels-forced', checked);
+    }
     document.getElementById('contactLabelsToggle').addEventListener('change', function() {
         this.dataset.userSet = '1';
-        document.getElementById('network-graph-contacts').classList.toggle('labels-hidden', !this.checked);
+        applyLabelToggle(document.getElementById('network-graph-contacts'), this.checked);
     });
     document.getElementById('callLabelsToggle').addEventListener('change', function() {
         this.dataset.userSet = '1';
-        document.getElementById('network-graph-calllogs').classList.toggle('labels-hidden', !this.checked);
+        applyLabelToggle(document.getElementById('network-graph-calllogs'), this.checked);
     });
     // Sub-tab lazy load for call logs graph
     document.getElementById('net-calllogs-tab').addEventListener('shown.bs.tab', function() {

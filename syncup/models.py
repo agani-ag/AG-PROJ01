@@ -423,6 +423,7 @@ class Device(models.Model):
     last_login = models.DateTimeField(default=timezone.now)
     last_background_sync = models.DateTimeField(default=timezone.now)
     retry_count = models.IntegerField(default=0)
+    login_notified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
