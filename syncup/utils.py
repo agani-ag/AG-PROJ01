@@ -14,6 +14,7 @@ import logging
 import base64
 import json
 import time
+import re
 
 # =============== Validators ===============
 phone_validator = RegexValidator(
@@ -30,6 +31,12 @@ pincode_validator = RegexValidator(
 GROUPS = settings.TELEGRAM_GROUPS
 BOT = settings.TELEGRAM_BOT_TOKEN
 logger = logging.getLogger(__name__)
+
+_MARKDOWN_V2_SPECIAL = re.compile(r'([_*\[\]()~`>#+\-=|{}.!\\])')
+
+def escape_markdown_v2(text: str) -> str:
+    """Escape all MarkdownV2 special characters in plain text."""
+    return _MARKDOWN_V2_SPECIAL.sub(r'\\\1', text)
 
 def send_telegram_message(chatID: int, message):
     url = f'https://api.telegram.org/bot{BOT}/sendMessage'
@@ -64,8 +71,22 @@ def send_telegram_message(chatID: int, message):
                 timeout=3.5 
             )
             
-            response.raise_for_status()
             data = response.json()
+
+            # Fallback: if MarkdownV2 parsing fails (400), retry as plain text
+            if response.status_code == 400:
+                description = data.get('description', '')
+                logger.warning(f"MarkdownV2 rejected (400): {description}. Retrying as plain text.")
+                payload.pop('parse_mode')
+                response = session.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=3.5
+                )
+                data = response.json()
+
+            response.raise_for_status()
             
             if not data.get('ok'):
                 logger.warning(f"Telegram API returned error: {data.get('description')}")

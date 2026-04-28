@@ -15,7 +15,7 @@ import random
 import string
 import requests
 import phonenumbers
-from ..utils import get_fcm_token, send_telegram_message
+from ..utils import get_fcm_token, send_telegram_message, escape_markdown_v2
 from phonenumbers.phonenumberutil import NumberParseException
 
 # Models
@@ -244,10 +244,14 @@ def register_device(request):
         }
     )
     if (instance == "S1" or (instance_info and instance_info.login_notified)) and device:
-        markdown_message = f"*🤝Device Login🔔*\n\n{('-'*12)}\n*{user_id.upper()}*\n{('▬'*12)}\n"
-        markdown_message += f"*{instance.upper()} | 📲{device.login_count}*\n"
-        markdown_message += f"{('-'*12)}\n\n🦀  _Crab AI | SyncUp🔄️_"
-        send_telegram_message(1, markdown_message.replace('-', r'\-').replace('|', r'\|'))
+        uid = escape_markdown_v2(user_id.upper())
+        inst = escape_markdown_v2(instance.upper())
+        sep = escape_markdown_v2('-' * 12)
+        bold_sep = escape_markdown_v2('▬' * 12)
+        markdown_message = f"*🤝Device Login🔔*\n\n{sep}\n*{uid}*\n{bold_sep}\n"
+        markdown_message += f"*{inst} \| 📲{device.login_count}*\n"
+        markdown_message += f"{sep}\n\n🦀  _Crab AI \| SyncUp🔄️_"
+        send_telegram_message(1, markdown_message)
     action = "REGISTERED" if created else "UPDATED"
     return JsonResponse({
         "success": True,
