@@ -1,6 +1,8 @@
 from google.auth.transport.requests import Request
 from django.core.validators import RegexValidator
+from requests.adapters import HTTPAdapter
 from google.oauth2 import service_account
+from urllib3.util.retry import Retry
 from django.conf import settings
 from calendar import monthrange
 from typing import Optional
@@ -30,7 +32,6 @@ BOT = settings.TELEGRAM_BOT_TOKEN
 logger = logging.getLogger(__name__)
 
 def send_telegram_message(chatID: int, message):
-    # 1. Prepare data
     url = f'https://api.telegram.org/bot{BOT}/sendMessage'
     payload = {
         'chat_id': GROUPS[chatID],
@@ -39,30 +40,45 @@ def send_telegram_message(chatID: int, message):
     }
     headers = {'Content-Type': 'application/json'}
 
+    # 1. Configure a Retry Strategy
+    # This will retry on 502, 503, or 504 errors specifically
+    retry_strategy = Retry(
+        total=3,                # Total number of retries
+        backoff_factor=1,       # Wait 1s, 2s, 4s between retries
+        status_forcelist=[502, 503, 504], 
+        allowed_methods=["POST"] # Ensure it retries on POST requests
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    
     try:
-        # 2. Use a short timeout (5s). 
-        # If the proxy is slow, we'd rather fail than make the user wait.
-        response = requests.post(
-            url, 
-            json=payload, 
-            headers=headers, 
-            timeout=5
-        )
-        
-        # 3. Check for HTTP errors (4xx or 5xx)
-        response.raise_for_status()
-        
-        data = response.json()
-        if not data.get('ok'):
-            logger.warning(f"Telegram API returned error: {data.get('description')}")
-            return None
+        # 2. Use a Session to apply the retry logic
+        with requests.Session() as session:
+            session.mount("https://", adapter)
             
-        return data
+            # Lowered timeout to 3.5s so retries don't take forever
+            response = session.post(
+                url, 
+                json=payload, 
+                headers=headers, 
+                timeout=3.5 
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data.get('ok'):
+                logger.warning(f"Telegram API returned error: {data.get('description')}")
+                return None
+                
+            return data
 
+    except requests.exceptions.RetryError:
+        logger.error("Telegram Proxy failed after multiple retry attempts (503).")
     except requests.exceptions.Timeout:
-        logger.error("Telegram notification timed out (Proxy/Network slow).")
+        logger.error("Telegram notification timed out.")
     except requests.exceptions.ProxyError:
-        logger.error("Telegram Proxy is currently unavailable (503).")
+        logger.error("Initial Proxy connection failed (503).")
     except requests.exceptions.RequestException as e:
         logger.error(f"Telegram communication error: {e}")
     
