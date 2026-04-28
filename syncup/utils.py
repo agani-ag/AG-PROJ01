@@ -8,6 +8,7 @@ from decimal import Decimal
 from datetime import date
 import threading
 import requests
+import logging
 import base64
 import json
 import time
@@ -26,16 +27,35 @@ pincode_validator = RegexValidator(
 # =============== Telegram Bot ===============
 GROUPS = settings.TELEGRAM_GROUPS
 BOT = settings.TELEGRAM_BOT_TOKEN
+logger = logging.getLogger(__name__)
 
 def send_telegram_message(chatID: int, message):
     url = f'https://api.telegram.org/bot{BOT}/sendMessage'
-    params = {'chat_id': GROUPS[chatID],'text': message,'parse_mode': 'MarkdownV2'}
-    session = requests.Session()
-    response = session.get(url, params=params)
-    data = response.json()
-    if not data.get('ok'):
-        raise Exception(data.get('description', 'Unknown Telegram error'))
-    return data
+    payload = {
+        'chat_id': GROUPS[chatID],
+        'text': message,
+        'parse_mode': 'MarkdownV2'
+    }
+    
+    try:
+        # Using a Session is good for multiple requests, 
+        # but for a single notification, a direct post is fine.
+        with requests.Session() as session:
+            # We use json=payload to send a POST request with a JSON body
+            # Added a timeout so your app doesn't hang forever if the proxy is slow
+            response = session.post(url, json=payload, timeout=10)
+            # This checks for HTTP errors (like 404, 500, 503)
+            response.raise_for_status()
+            data = response.json()
+            if not data.get('ok'):
+                logger.error(f"Telegram API error: {data.get('description')}")
+                return None
+            return data
+    except requests.exceptions.ProxyError:
+        logger.error("Failed to connect to Telegram via proxy (503 Service Unavailable).")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"An error occurred while sending Telegram message: {e}")
+    return None
 
 # =============== Attendance Generation ===============
 def generate_attendance(user, year, month):
