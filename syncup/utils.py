@@ -30,31 +30,42 @@ BOT = settings.TELEGRAM_BOT_TOKEN
 logger = logging.getLogger(__name__)
 
 def send_telegram_message(chatID: int, message):
+    # 1. Prepare data
     url = f'https://api.telegram.org/bot{BOT}/sendMessage'
     payload = {
         'chat_id': GROUPS[chatID],
         'text': message,
         'parse_mode': 'MarkdownV2'
     }
-    
+    headers = {'Content-Type': 'application/json'}
+
     try:
-        # Using a Session is good for multiple requests, 
-        # but for a single notification, a direct post is fine.
-        with requests.Session() as session:
-            # We use json=payload to send a POST request with a JSON body
-            # Added a timeout so your app doesn't hang forever if the proxy is slow
-            response = session.post(url, json=payload, timeout=10)
-            # This checks for HTTP errors (like 404, 500, 503)
-            response.raise_for_status()
-            data = response.json()
-            if not data.get('ok'):
-                logger.error(f"Telegram API error: {data.get('description')}")
-                return None
-            return data
+        # 2. Use a short timeout (5s). 
+        # If the proxy is slow, we'd rather fail than make the user wait.
+        response = requests.post(
+            url, 
+            json=payload, 
+            headers=headers, 
+            timeout=5
+        )
+        
+        # 3. Check for HTTP errors (4xx or 5xx)
+        response.raise_for_status()
+        
+        data = response.json()
+        if not data.get('ok'):
+            logger.warning(f"Telegram API returned error: {data.get('description')}")
+            return None
+            
+        return data
+
+    except requests.exceptions.Timeout:
+        logger.error("Telegram notification timed out (Proxy/Network slow).")
     except requests.exceptions.ProxyError:
-        logger.error("Failed to connect to Telegram via proxy (503 Service Unavailable).")
+        logger.error("Telegram Proxy is currently unavailable (503).")
     except requests.exceptions.RequestException as e:
-        logger.error(f"An error occurred while sending Telegram message: {e}")
+        logger.error(f"Telegram communication error: {e}")
+    
     return None
 
 # =============== Attendance Generation ===============
