@@ -239,11 +239,15 @@ def register_device(request):
             "platform": platform,
             "instance": instance,
             "last_login": now(),
+            "login_count": F('login_count') + 1,
             "is_active": True
         }
     )
     if (instance == "S1" or (instance_info and instance_info.login_notified)) and device:
-        send_telegram_message(1, f"*🤝Device Login🔔*\n\n{('-'*12)}\n*{user_id.upper()}*\n{('▬'*12)}\n*{instance.upper()}*\n{('-'*12)}\n\n🦀  _Crab AI \| SyncUp🔄️_".replace('-', r'\-'))
+        markdown_message = f"*🤝Device Login🔔*\n\n{('-'*12)}\n*{user_id.upper()}*\n{('▬'*12)}\n"
+        markdown_message += f"*{instance.upper()} | 📲{device.login_count}*\n"
+        markdown_message += f"{('-'*12)}\n\n🦀  _Crab AI | SyncUp🔄️_"
+        send_telegram_message(1, markdown_message.replace('-', r'\-').replace('|', r'\|'))
     action = "REGISTERED" if created else "UPDATED"
     return JsonResponse({
         "success": True,

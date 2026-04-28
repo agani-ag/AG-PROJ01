@@ -30,7 +30,11 @@
                         </tr>
                         <tr>
                             <th scope="row">Platform</th>
-                            <td>{{ device.platform }}</td>
+                            <td>{{ device.platform }}
+                                {% if device.login_count > 0 %}
+                                    <span class="text-danger">({{ device.login_count }} times)</span>
+                                {% endif %}
+                            </td>
                         </tr>
                         <tr>
                             <th scope="row">Device ID</th>
