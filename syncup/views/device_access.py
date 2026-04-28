@@ -402,15 +402,20 @@ def send_notification(request):
         Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
         Device.objects.filter(push_token__in=failed).update(retry_count=F('retry_count') + 1)
     
-    # Delete temp uploaded image after sending
+    # Delete temp uploaded image after a delay (gives devices time to download it)
     uploaded_filename = data.get("uploaded_filename")
     if uploaded_filename:
-        try:
-            filepath = os.path.join(settings.MEDIA_ROOT, 'notifications', os.path.basename(uploaded_filename))
-            if os.path.isfile(filepath):
-                os.remove(filepath)
-        except Exception:
-            pass  # Non-critical, file will be cleaned up later
+        import threading
+        def _delete_after_delay():
+            import time
+            time.sleep(60)  # Wait 60 seconds for devices to download the image
+            try:
+                filepath = os.path.join(settings.MEDIA_ROOT, 'notifications', os.path.basename(uploaded_filename))
+                if os.path.isfile(filepath):
+                    os.remove(filepath)
+            except Exception:
+                pass
+        threading.Thread(target=_delete_after_delay, daemon=True).start()
     
     return JsonResponse({
         "success": True,
