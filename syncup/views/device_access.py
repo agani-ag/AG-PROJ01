@@ -244,10 +244,16 @@ def register_device(request):
             "platform": platform,
             "instance": instance,
             "last_login": now(),
-            "login_count": F('login_count') + 1,
             "is_active": True
         }
     )
+    if created:
+        device.login_count = 1
+        device.save(update_fields=["login_count"])
+    else:
+        Device.objects.filter(pk=device.pk).update(
+            login_count=F("login_count") + 1
+        )
     device.refresh_from_db()
     if (instance == "S1" or (instance_info and instance_info.login_notified)) and device:
         uid = escape_markdown_v2(user_id.upper())
