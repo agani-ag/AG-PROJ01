@@ -182,7 +182,7 @@ def syncup_public_user(email_or_username, password, device_id):
         "success": True,
         "username": user.name if user.name else user.username,
         "device_id": device_id,
-        "business_name": "SyncUp Public",
+        "business_name": user.business_name,
         "message": f"Welcome back, {user.username}!",
         "urls": urls,
         "sync_required": True,

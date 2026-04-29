@@ -72,7 +72,7 @@ class LinkRegistry(models.Model):
 
     def save(self, *args, **kwargs):
         if self.name:
-            self.name = self.name.strip().title()
+            self.name = self.name.strip()
         if self.url:
             self.url = self.url.strip()
         super().save(*args, **kwargs)
@@ -571,7 +571,7 @@ class PublicUser(models.Model):
         if self.email:
             self.email = self.email.strip().lower()
         if self.business_name:
-            self.business_name = self.business_name.strip().title()
+            self.business_name = self.business_name.strip()
         if self.password:
             self.password = self.password.strip().lower()
         super().save(*args, **kwargs)
