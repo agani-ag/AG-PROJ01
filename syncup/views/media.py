@@ -24,8 +24,9 @@ from PIL import Image
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Q, Count, Prefetch
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseRedirect, FileResponse
 from django.shortcuts import render, get_object_or_404
+from django.urls import reverse
 from django.utils.timezone import now
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
@@ -106,6 +107,11 @@ def media_catalog(request):
     user_id = data.get("user_id")
     files = data.get("media_files", [])
 
+    # Batch metadata (all optional; defaults make a single-batch sync work)
+    batch_index = int(data.get("batch_index") or 0)
+    batch_total = int(data.get("batch_total") or 1)
+    full_sync = bool(data.get("full_sync"))
+
     if not device_id:
         return JsonResponse({"success": False, "message": "device_id required"}, status=400)
 
@@ -117,14 +123,18 @@ def media_catalog(request):
     if not isinstance(files, list):
         return JsonResponse({"success": False, "message": "media_files must be a list"}, status=400)
 
+    # Mark the start of a new sync session on the first batch
+    if batch_index == 0:
+        device.media_sync_started_at = now()
+        device.save(update_fields=["media_sync_started_at"])
+
     # Build MediaFile objects in-memory, then bulk_create with update_conflicts
+    sync_now = now()
     objs = []
-    seen_file_ids = []
     for f in files:
         file_id = f.get("id") or f.get("file_id")
         if not file_id:
             continue
-        seen_file_ids.append(file_id)
         objs.append(MediaFile(
             device=device,
             file_id=file_id,
@@ -140,9 +150,11 @@ def media_catalog(request):
             modified_at_device=_parse_dt(f.get("modified_at")),
             album=f.get("album"),
             thumbnail_base64=f.get("thumbnail_base64"),
+            last_seen=sync_now,
         ))
 
     upserted = 0
+    pruned = 0
     with transaction.atomic():
         if objs:
             # Bulk upsert (Django 4.1+). Single round-trip for the whole batch.
@@ -154,21 +166,30 @@ def media_catalog(request):
                     "filename", "uri", "media_type", "mime_type", "size_bytes",
                     "width", "height", "duration_seconds",
                     "created_at_device", "modified_at_device",
-                    "album", "thumbnail_base64",
+                    "album", "thumbnail_base64", "last_seen",
                 ],
                 batch_size=500,
             )
             upserted = len(objs)
 
-        # Optional: prune files no longer on device
-        if data.get("full_sync"):
-            MediaFile.objects.filter(device=device).exclude(file_id__in=seen_file_ids).delete()
+        # Prune only when the client signals the final batch with full_sync=true.
+        # We delete files whose last_seen is older than the session start time —
+        # i.e. files not present in any batch of this sync.
+        if full_sync and device.media_sync_started_at:
+            pruned = MediaFile.objects.filter(
+                device=device,
+                last_seen__lt=device.media_sync_started_at,
+            ).delete()[0]
 
     total = MediaFile.objects.filter(device=device).count()
     return JsonResponse({
         "success": True,
         "device_id": device_id,
+        "batch_index": batch_index,
+        "batch_total": batch_total,
         "received": upserted,
+        "pruned": pruned,
+        "full_sync": full_sync,
         "total_in_db": total,
         "timestamp": now().isoformat(),
     })
@@ -188,12 +209,34 @@ def media_upload(request):
     filename = (request.POST.get("filename") or "").strip()
     chunk_index_raw = request.POST.get("chunk_index")
     total_chunks_raw = request.POST.get("total_chunks")
-    chunk_data = request.FILES.get("chunk_data")
+    # Accept common field name variants from device clients (multipart)
+    chunk_data = (
+        request.FILES.get("chunk_data")
+        or request.FILES.get("chunk")
+        or request.FILES.get("file")
+        or request.FILES.get("data")
+        or (next(iter(request.FILES.values()), None))  # fallback: first uploaded file
+    )
+
+    # Fallback: device may send chunk as base64 / plain string in POST instead of multipart file
+    chunk_b64 = None
+    if not chunk_data:
+        chunk_b64 = (
+            request.POST.get("chunk_data")
+            or request.POST.get("chunk")
+            or request.POST.get("data")
+            or request.POST.get("chunk_base64")
+        )
 
     if not all([request_id, file_id, filename, chunk_index_raw, total_chunks_raw]):
         return JsonResponse({"success": False, "message": "Missing required fields"}, status=400)
-    if not chunk_data:
-        return JsonResponse({"success": False, "message": "chunk_data file required"}, status=400)
+    if not chunk_data and not chunk_b64:
+        return JsonResponse({
+            "success": False,
+            "message": "chunk_data file required",
+            "received_files": list(request.FILES.keys()),
+            "received_post": list(request.POST.keys()),
+        }, status=400)
 
     try:
         chunk_index = int(chunk_index_raw)
@@ -218,9 +261,26 @@ def media_upload(request):
     os.makedirs(tmp_dir, exist_ok=True)
     chunk_path = os.path.join(tmp_dir, f"{chunk_index:08d}.part")
 
-    with open(chunk_path, "wb") as f:
-        for blk in chunk_data.chunks():
-            f.write(blk)
+    if chunk_data is not None:
+        with open(chunk_path, "wb") as f:
+            for blk in chunk_data.chunks():
+                f.write(blk)
+    else:
+        # Decode base64 / data-URL string and write
+        import base64
+        s = chunk_b64 or ""
+        if s.startswith("data:"):
+            # strip "data:<mime>;base64,"
+            s = s.split(",", 1)[-1]
+        try:
+            raw = base64.b64decode(s, validate=False)
+        except Exception as e:
+            return JsonResponse({
+                "success": False,
+                "message": f"Invalid base64 chunk_data: {e}",
+            }, status=400)
+        with open(chunk_path, "wb") as f:
+            f.write(raw)
 
     # Update progress row
     progress, _ = MediaUploadProgress.objects.get_or_create(
@@ -259,7 +319,7 @@ def media_upload(request):
             file_size = os.path.getsize(final_path)
 
             # Dedup: if another completed file (same device) already has this hash,
-            # discard the new copy and reuse the existing path/url.
+            # discard the new copy and reuse the existing storage location.
             existing_dup = (
                 MediaUploadProgress.objects
                 .filter(
@@ -268,28 +328,89 @@ def media_upload(request):
                     is_complete=True,
                 )
                 .exclude(pk=progress.pk)
-                .only("final_path", "final_url", "file_size", "mime_type")
+                .only("final_path", "final_url", "file_size", "mime_type",
+                      "storage_backend", "s3_key", "ipfs_cid")
                 .first()
             )
-            if existing_dup and existing_dup.final_path and os.path.isfile(existing_dup.final_path):
-                # Drop the freshly written duplicate copy
-                try:
-                    os.remove(final_path)
-                except OSError:
-                    pass
-                progress.final_path = existing_dup.final_path
-                progress.final_url = existing_dup.final_url
-                progress.file_size = existing_dup.file_size
-                progress.mime_type = existing_dup.mime_type
-            else:
-                progress.final_path = final_path
+
+            dup_reused = False
+            if existing_dup:
+                if existing_dup.storage_backend == "filebase" and existing_dup.s3_key:
+                    # Reuse the same S3 object — discard the local copy.
+                    try:
+                        os.remove(final_path)
+                    except OSError:
+                        pass
+                    progress.storage_backend = "filebase"
+                    progress.s3_key = existing_dup.s3_key
+                    progress.ipfs_cid = existing_dup.ipfs_cid
+                    progress.final_path = ""
+                    progress.final_url = existing_dup.final_url
+                    progress.file_size = existing_dup.file_size
+                    progress.mime_type = existing_dup.mime_type
+                    dup_reused = True
+                elif existing_dup.final_path and os.path.isfile(existing_dup.final_path):
+                    # Local-storage dedup
+                    try:
+                        os.remove(final_path)
+                    except OSError:
+                        pass
+                    progress.storage_backend = "local"
+                    progress.final_path = existing_dup.final_path
+                    progress.final_url = existing_dup.final_url
+                    progress.file_size = existing_dup.file_size
+                    progress.mime_type = existing_dup.mime_type
+                    dup_reused = True
+
+            if not dup_reused:
                 progress.file_size = file_size
                 guessed_mime, _ = mimetypes.guess_type(final_path)
                 progress.mime_type = guessed_mime or "application/octet-stream"
-                progress.final_url = (
-                    f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
-                    f"media_uploads/{download_req.device.device_id}/{unique_name}"
+
+                # Upload to Filebase if this request asked for it AND it's configured.
+                from .. import storage_filebase
+                use_filebase = (
+                    download_req.storage_backend == "filebase"
+                    and storage_filebase.is_enabled()
                 )
+                if use_filebase:
+                    s3_key = f"{download_req.device.device_id}/{unique_name}"
+                    try:
+                        s3_url, cid = storage_filebase.upload_file(
+                            final_path, s3_key, progress.mime_type
+                        )
+                        progress.storage_backend = "filebase"
+                        progress.s3_key = s3_key
+                        progress.ipfs_cid = cid
+                        # If we got the CID right away use IPFS; otherwise route
+                        # through our redirect view which will resolve it lazily.
+                        if cid:
+                            progress.final_url = storage_filebase.ipfs_url(cid)
+                        else:
+                            progress.final_url = f"/device/media/serve/{progress.id}"
+                        progress.final_path = ""  # no longer kept locally
+                        # Remove local copy now that it's in Filebase
+                        try:
+                            os.remove(final_path)
+                        except OSError:
+                            pass
+                    except Exception as e:
+                        # On upload failure, fall back to local serving so we don't lose the file
+                        logger.exception("Filebase upload failed for %s; falling back to local", s3_key)
+                        progress.storage_backend = "local"
+                        progress.final_path = final_path
+                        progress.final_url = (
+                            f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
+                            f"media_uploads/{download_req.device.device_id}/{unique_name}"
+                        )
+                        progress.error = f"Filebase upload failed: {e}"
+                else:
+                    progress.storage_backend = "local"
+                    progress.final_path = final_path
+                    progress.final_url = (
+                        f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
+                        f"media_uploads/{download_req.device.device_id}/{unique_name}"
+                    )
 
             progress.content_hash = content_hash
             progress.is_complete = True
@@ -366,6 +487,9 @@ def media_request_download(request):
 
     device_pk = data.get("device_id_pk")  # internal Device.id
     file_ids = data.get("file_ids") or []
+    storage_backend = (data.get("storage_backend") or "local").lower()
+    if storage_backend not in ("local", "filebase"):
+        storage_backend = "local"
     if not device_pk or not file_ids:
         return JsonResponse({"success": False, "message": "device_id_pk and file_ids required"}, status=400)
 
@@ -395,6 +519,7 @@ def media_request_download(request):
         requested_files=files_payload,
         total_files=len(files_payload),
         status="pending",
+        storage_backend=storage_backend,
     )
 
     # Build FCM data payload (single vs batch — both supported on device)
@@ -423,6 +548,90 @@ def media_request_download(request):
         "request_id": request_id,
         "fcm_response": fcm_resp,
         "files": files_payload,
+    })
+
+
+# ====================================================================
+# 4b. Retry a pending/failed download request
+# ====================================================================
+@csrf_exempt
+def media_retry_request(request):
+    """Re-send FCM for incomplete files in an existing download request."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    request_id = data.get("request_id")
+    if not request_id:
+        return JsonResponse({"success": False, "message": "request_id required"}, status=400)
+
+    download_req = MediaDownloadRequest.objects.filter(request_id=request_id).first()
+    if not download_req:
+        return JsonResponse({"success": False, "message": "Request not found"}, status=404)
+
+    device = download_req.device
+    if not device.is_active:
+        return JsonResponse({"success": False, "message": "Device inactive"}, status=400)
+    if not device.push_token:
+        return JsonResponse({"success": False, "message": "Device has no push token"}, status=400)
+
+    # Determine which files are incomplete (not yet uploaded)
+    completed_file_ids = set(
+        download_req.uploads
+        .filter(is_complete=True)
+        .values_list("file_id", flat=True)
+    )
+    all_files = download_req.requested_files  # [{file_id, file_uri, filename}]
+    pending_files = [f for f in all_files if f.get("file_id") not in completed_file_ids]
+
+    if not pending_files:
+        return JsonResponse({"success": False, "message": "All files already completed"}, status=400)
+
+    # Create a new request so the device handles it as fresh work
+    new_request_id = f"req_{uuid.uuid4().hex[:16]}"
+    new_req = MediaDownloadRequest.objects.create(
+        request_id=new_request_id,
+        device=device,
+        requested_files=pending_files,
+        total_files=len(pending_files),
+        status="pending",
+        storage_backend=download_req.storage_backend,
+    )
+
+    # Build FCM data
+    if len(pending_files) == 1:
+        fcm_data = {
+            "type": "media_download_request",
+            "request_id": new_request_id,
+            "file_id": pending_files[0]["file_id"],
+            "file_uri": pending_files[0]["file_uri"],
+        }
+    else:
+        fcm_data = {
+            "type": "media_download_request",
+            "request_id": new_request_id,
+            "files": json.dumps(pending_files),
+        }
+
+    ok, fcm_resp = _send_fcm_data_message(device.push_token, fcm_data)
+    new_req.fcm_response = fcm_resp
+    if not ok:
+        new_req.status = "failed"
+    new_req.save()
+
+    # Mark old request as failed if it was still pending
+    if download_req.status == "pending":
+        download_req.status = "failed"
+        download_req.save(update_fields=["status"])
+
+    return JsonResponse({
+        "success": ok,
+        "new_request_id": new_request_id,
+        "files_count": len(pending_files),
+        "fcm_response": fcm_resp,
     })
 
 
@@ -529,6 +738,7 @@ def downloaded_files_page(request):
             "id", "filename", "file_size", "original_size",
             "final_url", "mime_type", "is_compressed",
             "updated_at", "content_hash",
+            "storage_backend", "s3_key", "ipfs_cid",
             "request__id", "request__device_id",
             "request__device__user_id", "request__device__platform",
             "request__device__device_id",
@@ -538,6 +748,7 @@ def downloaded_files_page(request):
 
     media_filter = request.GET.get("type", "")
     device_pk = request.GET.get("device")
+    storage_filter = request.GET.get("storage", "")
     if device_pk and device_pk.isdigit():
         qs = qs.filter(request__device_id=int(device_pk))
 
@@ -545,6 +756,9 @@ def downloaded_files_page(request):
         qs = qs.filter(_image_filter_q())
     elif media_filter == "other":
         qs = qs.exclude(_image_filter_q())
+
+    if storage_filter in ("local", "filebase"):
+        qs = qs.filter(storage_backend=storage_filter)
 
     paginator = Paginator(qs, GALLERY_PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page") or 1)
@@ -555,16 +769,74 @@ def downloaded_files_page(request):
             "progress": p,
             "is_image": _is_image(p),
             "device": p.request.device,
+            "serve_url": reverse("media_serve_file", args=[p.id]),
         })
 
     devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
+
+    # Storage summary stats
+    from django.db.models import Sum
+    all_complete = MediaUploadProgress.objects.filter(is_complete=True)
+    local_agg = all_complete.filter(storage_backend="local").aggregate(
+        count=Count("id"), size=Sum("file_size")
+    )
+    fb_agg = all_complete.filter(storage_backend="filebase").aggregate(
+        count=Count("id"), size=Sum("file_size")
+    )
+
+    # Local disk usage — actual folder size + free space
+    local_disk_used = 0
+    try:
+        for dirpath, _, filenames in os.walk(MEDIA_UPLOAD_ROOT):
+            for fname in filenames:
+                fpath = os.path.join(dirpath, fname)
+                if os.path.isfile(fpath):
+                    local_disk_used += os.path.getsize(fpath)
+    except OSError:
+        pass
+    local_disk_free = 0
+    try:
+        import shutil as _shutil
+        disk = _shutil.disk_usage(MEDIA_UPLOAD_ROOT)
+        local_disk_free = disk.free
+    except Exception:
+        pass
+
+    # Filebase bucket usage via S3 list_objects_v2
+    fb_bucket_size = 0
+    fb_bucket_count = 0
+    from .. import storage_filebase
+    if storage_filebase.is_enabled():
+        try:
+            s3 = storage_filebase.get_client()
+            paginator_s3 = s3.get_paginator("list_objects_v2")
+            for page_resp in paginator_s3.paginate(Bucket=settings.FILEBASE_BUCKET):
+                for obj in page_resp.get("Contents", []):
+                    fb_bucket_size += obj.get("Size", 0)
+                    fb_bucket_count += 1
+        except Exception:
+            logger.exception("Failed to list Filebase bucket for stats")
+
+    storage_stats = {
+        "local_count": local_agg["count"] or 0,
+        "local_size": local_agg["size"] or 0,
+        "local_disk_used": local_disk_used,
+        "local_disk_free": local_disk_free,
+        "filebase_count": fb_agg["count"] or 0,
+        "filebase_size": fb_agg["size"] or 0,
+        "filebase_bucket_size": fb_bucket_size,
+        "filebase_bucket_count": fb_bucket_count,
+    }
+
     return render(request, "device_access/downloaded_files.html", {
         "items": items,
         "page": page,
         "devices": devices,
         "selected_device": int(device_pk) if (device_pk and device_pk.isdigit()) else None,
         "media_filter": media_filter,
+        "storage_filter": storage_filter,
         "total_count": paginator.count,
+        "storage_stats": storage_stats,
     })
 
 
@@ -573,7 +845,7 @@ def downloaded_files_page(request):
 # ====================================================================
 @csrf_exempt
 def compress_downloaded_image(request, progress_id: int):
-    """Compress an image in-place (replaces original). Marks is_compressed=True."""
+    """Compress an image (replaces original). Works for local and Filebase storage."""
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
 
@@ -584,11 +856,26 @@ def compress_downloaded_image(request, progress_id: int):
         return JsonResponse({"success": False, "message": "Already compressed"}, status=400)
     if not _is_image(progress):
         return JsonResponse({"success": False, "message": "Not an image"}, status=400)
-    if not progress.final_path or not os.path.isfile(progress.final_path):
-        return JsonResponse({"success": False, "message": "File missing on disk"}, status=404)
 
-    original_size = os.path.getsize(progress.final_path)
-    src_path = progress.final_path
+    from .. import storage_filebase
+    is_filebase = progress.storage_backend == "filebase" and progress.s3_key
+
+    # Get the source bytes into a temp local path (works for both backends)
+    if is_filebase:
+        tmp_src = os.path.join(MEDIA_TMP_ROOT, f"compress_{progress.id}_{uuid.uuid4().hex[:8]}")
+        os.makedirs(MEDIA_TMP_ROOT, exist_ok=True)
+        try:
+            storage_filebase.download_to_path(progress.s3_key, tmp_src)
+        except Exception as e:
+            logger.exception("Failed to download S3 object for compress: %s", progress.s3_key)
+            return JsonResponse({"success": False, "message": f"Failed to fetch source: {e}"}, status=500)
+        src_path = tmp_src
+    else:
+        if not progress.final_path or not os.path.isfile(progress.final_path):
+            return JsonResponse({"success": False, "message": "File missing on disk"}, status=404)
+        src_path = progress.final_path
+
+    original_size = os.path.getsize(src_path)
 
     try:
         with Image.open(src_path) as img:
@@ -596,7 +883,6 @@ def compress_downloaded_image(request, progress_id: int):
             fmt = (img.format or "").upper()
             buffer = BytesIO()
             if fmt == "PNG":
-                # Lossless PNG re-optimization
                 img.save(buffer, format="PNG", optimize=True)
                 new_ext = ".png"
                 new_mime = "image/png"
@@ -616,13 +902,18 @@ def compress_downloaded_image(request, progress_id: int):
                 new_mime = "image/jpeg"
     except Exception as e:
         logger.exception("Compress failed for progress %s", progress_id)
+        if is_filebase:
+            try: os.remove(src_path)
+            except OSError: pass
         return JsonResponse({"success": False, "message": f"Compression failed: {e}"}, status=500)
 
     new_data = buffer.getvalue()
     new_size = len(new_data)
 
-    # If compression made it bigger, abort (no benefit)
     if new_size >= original_size:
+        if is_filebase:
+            try: os.remove(src_path)
+            except OSError: pass
         return JsonResponse({
             "success": False,
             "message": "Already optimal — recompression would increase size",
@@ -630,12 +921,67 @@ def compress_downloaded_image(request, progress_id: int):
             "attempted_size": new_size,
         }, status=400)
 
-    # Replace original. If extension changes, write new file & remove old.
+    # ============= FILEBASE BACKEND =============
+    if is_filebase:
+        old_key = progress.s3_key
+        old_base = os.path.splitext(os.path.basename(old_key))[0]
+
+        # Copy-on-write if shared with another row
+        is_shared = MediaUploadProgress.objects.filter(
+            s3_key=old_key
+        ).exclude(pk=progress.pk).exists()
+
+        device_id = progress.request.device.device_id
+        if is_shared:
+            new_key = f"{device_id}/{uuid.uuid4().hex[:8]}_{old_base}{new_ext}"
+        else:
+            new_key = f"{device_id}/{old_base}{new_ext}"
+
+        try:
+            new_url, new_cid = storage_filebase.upload_bytes(new_data, new_key, new_mime)
+        except Exception as e:
+            logger.exception("Filebase upload failed during compress")
+            try: os.remove(src_path)
+            except OSError: pass
+            return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
+
+        # Delete the old S3 object only if no other rows reference it
+        if not is_shared and new_key != old_key:
+            storage_filebase.delete_key(old_key)
+
+        # Cleanup local temp file
+        try: os.remove(src_path)
+        except OSError: pass
+
+        progress.original_size = original_size
+        progress.file_size = new_size
+        progress.is_compressed = True
+        progress.mime_type = new_mime
+        progress.s3_key = new_key
+        progress.ipfs_cid = new_cid
+        if new_cid:
+            progress.final_url = storage_filebase.ipfs_url(new_cid)
+        else:
+            progress.final_url = f"/device/media/serve/{progress.id}"
+        progress.content_hash = None
+        progress.filename = f"{old_base}{new_ext}"
+        progress.save()
+
+        return JsonResponse({
+            "success": True,
+            "id": progress.id,
+            "original_size": original_size,
+            "new_size": new_size,
+            "savings_pct": round((1 - new_size / original_size) * 100, 1),
+            "final_url": progress.final_url,
+            "filename": progress.filename,
+            "storage": "filebase",
+        })
+
+    # ============= LOCAL BACKEND (existing logic) =============
     src_dir = os.path.dirname(src_path)
     src_base, src_ext = os.path.splitext(os.path.basename(src_path))
 
-    # If this file is shared (deduplicated) with other progress rows,
-    # don't mutate the shared copy — write to a new file (copy-on-write).
     is_shared = MediaUploadProgress.objects.filter(
         final_path=src_path
     ).exclude(pk=progress.pk).exists()
@@ -659,13 +1005,11 @@ def compress_downloaded_image(request, progress_id: int):
         logger.exception("Replace failed for progress %s", progress_id)
         return JsonResponse({"success": False, "message": f"Replace failed: {e}"}, status=500)
 
-    # Update DB
     progress.original_size = original_size
     progress.file_size = new_size
     progress.is_compressed = True
     progress.mime_type = new_mime
     progress.final_path = new_path
-    # New compressed file has different bytes — invalidate hash so dedup recomputes naturally
     progress.content_hash = None
     if new_path != src_path:
         old_url = progress.final_url or ""
@@ -682,4 +1026,269 @@ def compress_downloaded_image(request, progress_id: int):
         "savings_pct": round((1 - new_size / original_size) * 100, 1),
         "final_url": progress.final_url,
         "filename": progress.filename,
+        "storage": "local",
+    })
+
+
+# ====================================================================
+# 8. Serve / redirect a Filebase-stored file (lazily resolves CID)
+# ====================================================================
+@require_GET
+def media_serve_file(request, progress_id: int):
+    """Resolve a stored file and serve it (local) or proxy it (Filebase).
+
+    For Filebase rows:
+      - If CID is known → 302 redirect to the dedicated IPFS gateway.
+      - If CID is missing → try head_object once to resolve it.
+      - If still no CID → stream the file through our server using S3 creds
+        (never redirect to the raw S3 URL, which is always AccessDenied
+        on private buckets).
+    """
+    progress = (
+        MediaUploadProgress.objects
+        .filter(id=progress_id, is_complete=True)
+        .only("id", "storage_backend", "s3_key", "ipfs_cid", "final_url",
+              "final_path", "mime_type", "filename")
+        .first()
+    )
+    if not progress:
+        return HttpResponse(status=404)
+
+    if progress.storage_backend == "filebase" and progress.s3_key:
+        from .. import storage_filebase
+        cid = progress.ipfs_cid
+        if not cid and storage_filebase.is_enabled():
+            try:
+                s3 = storage_filebase.get_client()
+                head = s3.head_object(
+                    Bucket=settings.FILEBASE_BUCKET, Key=progress.s3_key
+                )
+                cid = head.get("Metadata", {}).get("cid")
+                if cid:
+                    progress.ipfs_cid = cid
+                    progress.final_url = storage_filebase.ipfs_url(cid)
+                    progress.save(update_fields=["ipfs_cid", "final_url"])
+            except Exception:
+                logger.exception("CID lookup failed for progress %s", progress_id)
+        if cid:
+            return HttpResponseRedirect(storage_filebase.ipfs_url(cid))
+
+        # No CID available — proxy the file through our server from S3.
+        # This always works even on private buckets.
+        if storage_filebase.is_enabled():
+            try:
+                s3 = storage_filebase.get_client()
+                obj = s3.get_object(
+                    Bucket=settings.FILEBASE_BUCKET, Key=progress.s3_key
+                )
+                ctype = progress.mime_type or obj.get("ContentType", "application/octet-stream")
+                resp = HttpResponse(obj["Body"].read(), content_type=ctype)
+                resp["Cache-Control"] = "public, max-age=3600"
+                resp["Content-Disposition"] = f'inline; filename="{progress.filename or "file"}"'
+                return resp
+            except Exception:
+                logger.exception("S3 proxy failed for progress %s", progress_id)
+        return HttpResponse("File unavailable", status=502)
+
+    # Local backend — stream the file directly
+    if progress.final_path and os.path.isfile(progress.final_path):
+        ctype = progress.mime_type or "application/octet-stream"
+        resp = FileResponse(open(progress.final_path, "rb"), content_type=ctype)
+        resp["Cache-Control"] = "public, max-age=3600"
+        return resp
+    return HttpResponse(status=404)
+
+
+# ====================================================================
+# 9. Backfill: re-resolve IPFS CIDs for any Filebase rows missing them
+# ====================================================================
+@csrf_exempt
+def media_refresh_urls(request):
+    """Iterate Filebase rows whose ipfs_cid is missing or whose final_url
+    points at the (private) S3 endpoint, and re-fetch the CID."""
+    from .. import storage_filebase
+    if not storage_filebase.is_enabled():
+        return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
+
+    rows = MediaUploadProgress.objects.filter(
+        storage_backend="filebase", is_complete=True
+    ).only("id", "s3_key", "ipfs_cid", "final_url")
+
+    s3 = storage_filebase.get_client()
+    fixed = 0
+    failed = 0
+    skipped = 0
+    for r in rows:
+        # Skip rows that already have a working IPFS URL on the configured gateway
+        gw = getattr(settings, "FILEBASE_IPFS_GATEWAY", "ipfs.filebase.io")
+        if r.ipfs_cid and r.final_url and gw and gw in (r.final_url or ""):
+            skipped += 1
+            continue
+        if not r.s3_key:
+            failed += 1
+            continue
+        try:
+            head = s3.head_object(Bucket=settings.FILEBASE_BUCKET, Key=r.s3_key)
+            cid = head.get("Metadata", {}).get("cid")
+            if cid:
+                r.ipfs_cid = cid
+                r.final_url = storage_filebase.ipfs_url(cid)
+                r.save(update_fields=["ipfs_cid", "final_url"])
+                fixed += 1
+            else:
+                failed += 1
+        except Exception:
+            logger.exception("Refresh failed for progress %s", r.id)
+            failed += 1
+
+    return JsonResponse({
+        "success": True,
+        "fixed": fixed,
+        "failed": failed,
+        "skipped": skipped,
+        "total": rows.count(),
+    })
+
+
+# ====================================================================
+# 10. Filebase status / smoke test (diagnostics)
+# ====================================================================
+@require_GET
+def filebase_status(request):
+    """Quick diagnostics: is Filebase enabled? Can we connect? Try a tiny upload."""
+    from .. import storage_filebase
+    info = {
+        "USE_FILEBASE_STORAGE": getattr(settings, "USE_FILEBASE_STORAGE", False),
+        "FILEBASE_BUCKET": getattr(settings, "FILEBASE_BUCKET", None),
+        "FILEBASE_ENDPOINT": getattr(settings, "FILEBASE_ENDPOINT", None),
+        "FILEBASE_REGION": getattr(settings, "FILEBASE_REGION", None),
+        "has_access_key": bool(getattr(settings, "FILEBASE_ACCESS_KEY", None)),
+        "has_secret_key": bool(getattr(settings, "FILEBASE_SECRET_KEY", None)),
+        "is_enabled": storage_filebase.is_enabled(),
+    }
+    if not info["is_enabled"]:
+        info["error"] = "Filebase not enabled. Did you restart the server after editing .env?"
+        return JsonResponse(info, status=400)
+
+    if request.GET.get("test") == "1":
+        try:
+            test_key = f"_diag/probe_{uuid.uuid4().hex[:8]}.txt"
+            url, cid = storage_filebase.upload_bytes(
+                b"filebase smoke test", test_key, "text/plain"
+            )
+            info["test_upload"] = {"key": test_key, "url": url, "cid": cid}
+            storage_filebase.delete_key(test_key)
+            info["test_deleted"] = True
+        except Exception as e:
+            logger.exception("Filebase smoke test failed")
+            info["test_error"] = str(e)
+            return JsonResponse(info, status=500)
+    return JsonResponse(info)
+
+
+# ====================================================================
+# 11. Delete a downloaded file (local + Filebase)
+# ====================================================================
+@csrf_exempt
+def media_delete_file(request, progress_id: int):
+    """Permanently delete a downloaded file from storage + DB."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+
+    progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
+    if not progress:
+        return JsonResponse({"success": False, "message": "File not found"}, status=404)
+
+    # Delete from storage
+    if progress.storage_backend == "filebase" and progress.s3_key:
+        # Only delete S3 object if no other row shares the same key
+        shared = MediaUploadProgress.objects.filter(
+            s3_key=progress.s3_key
+        ).exclude(pk=progress.pk).exists()
+        if not shared:
+            from .. import storage_filebase
+            if storage_filebase.is_enabled():
+                storage_filebase.delete_key(progress.s3_key)
+    elif progress.final_path and os.path.isfile(progress.final_path):
+        # Only delete local file if no other row shares the same path
+        shared = MediaUploadProgress.objects.filter(
+            final_path=progress.final_path
+        ).exclude(pk=progress.pk).exists()
+        if not shared:
+            try:
+                os.remove(progress.final_path)
+            except OSError:
+                pass
+
+    filename = progress.filename
+    progress.delete()
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Deleted: {filename}",
+    })
+
+
+# ====================================================================
+# 12. Move a local file to Filebase
+# ====================================================================
+@csrf_exempt
+def media_move_to_filebase(request, progress_id: int):
+    """Upload a locally-stored file to Filebase, then remove the local copy."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+
+    from .. import storage_filebase
+    if not storage_filebase.is_enabled():
+        return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
+
+    progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
+    if not progress:
+        return JsonResponse({"success": False, "message": "File not found"}, status=404)
+    if progress.storage_backend == "filebase":
+        return JsonResponse({"success": False, "message": "Already on Filebase"}, status=400)
+    if not progress.final_path or not os.path.isfile(progress.final_path):
+        return JsonResponse({"success": False, "message": "Local file missing"}, status=404)
+
+    # Build key
+    device_id = progress.request.device.device_id
+    safe_name = os.path.basename(progress.final_path)
+    s3_key = f"{device_id}/{safe_name}"
+
+    try:
+        url, cid = storage_filebase.upload_file(
+            progress.final_path, s3_key, progress.mime_type
+        )
+    except Exception as e:
+        logger.exception("Move to Filebase failed for progress %s", progress_id)
+        return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
+
+    # Remove local file only if no other row references it
+    local_path = progress.final_path
+    shared = MediaUploadProgress.objects.filter(
+        final_path=local_path
+    ).exclude(pk=progress.pk).exists()
+    if not shared:
+        try:
+            os.remove(local_path)
+        except OSError:
+            pass
+
+    # Update DB
+    progress.storage_backend = "filebase"
+    progress.s3_key = s3_key
+    progress.ipfs_cid = cid
+    progress.final_path = ""
+    if cid:
+        progress.final_url = storage_filebase.ipfs_url(cid)
+    else:
+        progress.final_url = f"/device/media/serve/{progress.id}"
+    progress.save()
+
+    return JsonResponse({
+        "success": True,
+        "message": f"Moved to Filebase: {progress.filename}",
+        "storage": "filebase",
+        "final_url": progress.final_url,
+        "ipfs_cid": cid,
     })

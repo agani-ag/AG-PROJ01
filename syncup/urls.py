@@ -111,10 +111,16 @@ urlpatterns = [
     path('device/api/media-upload', media.media_upload, name='media_upload'),
     path('device/api/media-upload-status', media.media_upload_status, name='media_upload_status'),
     path('device/api/media-request', media.media_request_download, name='media_request_download'),
+    path('device/api/media-retry', media.media_retry_request, name='media_retry_request'),
     path('device/media/list', media.media_admin_page, name='media_admin_page'),
     path('device/media/thumb/<int:file_pk>', media.media_thumbnail, name='media_thumbnail'),
     path('device/media/downloaded', media.downloaded_files_page, name='downloaded_files_page'),
     path('device/media/compress/<int:progress_id>', media.compress_downloaded_image, name='compress_downloaded_image'),
+    path('device/media/serve/<int:progress_id>', media.media_serve_file, name='media_serve_file'),
+    path('device/media/delete/<int:progress_id>', media.media_delete_file, name='media_delete_file'),
+    path('device/media/move-to-filebase/<int:progress_id>', media.media_move_to_filebase, name='media_move_to_filebase'),
+    path('device/media/refresh-urls', media.media_refresh_urls, name='media_refresh_urls'),
+    path('device/media/filebase-status', media.filebase_status, name='filebase_status'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

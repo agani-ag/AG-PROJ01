@@ -279,7 +279,7 @@ def unregister_device(request):
         return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     device_id = data.get("device_id")
     user_id = data.get("user_id")
-    updated, _ = Device.objects.filter(
+    updated = Device.objects.filter(
         device_id=device_id,
         user_id=user_id,
     ).update(is_active=False)

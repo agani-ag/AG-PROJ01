@@ -426,6 +426,7 @@ class Device(models.Model):
     retry_count = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     login_count = models.IntegerField(default=0)
+    media_sync_started_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user_id} - {self.device_id}"
@@ -662,6 +663,7 @@ class MediaDownloadRequest(models.Model):
     failed = models.IntegerField(default=0)
     results = models.JSONField(default=list, blank=True)
     fcm_response = models.JSONField(blank=True, null=True)
+    storage_backend = models.CharField(max_length=20, default="local")  # 'local' | 'filebase'
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
@@ -688,6 +690,9 @@ class MediaUploadProgress(models.Model):
     original_size = models.BigIntegerField(null=True, blank=True)
     mime_type = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     content_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    storage_backend = models.CharField(max_length=20, default="local", db_index=True)  # 'local' | 'filebase'
+    s3_key = models.CharField(max_length=1000, blank=True, null=True)
+    ipfs_cid = models.CharField(max_length=128, blank=True, null=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
