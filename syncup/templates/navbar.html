@@ -54,6 +54,10 @@
                         <h6 class="dropdown-header">Device Access</h6>
                         <li><a class="dropdown-item protected-link" href="{% url 'device_list' %}">Device List</a></li>
                         <li><a class="dropdown-item protected-link" href="{% url 'audit_errors_list' %}">Audit Errors</a></li>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Media</h6>
+                        <li><a class="dropdown-item protected-link" href="{% url 'media_admin_page' %}">Media Catalog</a></li>
+                        <li><a class="dropdown-item protected-link" href="{% url 'downloaded_files_page' %}">Downloaded Files</a></li>
                     </ul>
                 </li>
                 {% endif %}
