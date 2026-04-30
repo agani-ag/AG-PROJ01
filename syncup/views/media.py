@@ -37,6 +37,7 @@ from ..models import (
     Device, MediaFile, MediaDownloadRequest, MediaUploadProgress
 )
 from ..utils import get_fcm_token
+from .. import storage_filebase as storage_filebase_mod
 
 logger = logging.getLogger(__name__)
 
@@ -247,9 +248,48 @@ def media_upload(request):
         return JsonResponse({"success": False, "message": "Out-of-range chunk indices"}, status=400)
 
     # Locate the request (must be pre-registered when admin triggered FCM)
+    # For share_intent uploads, auto-create a request on first chunk.
     download_req = MediaDownloadRequest.objects.filter(request_id=request_id).first()
+    source = (request.POST.get("source") or "").lower()
     if not download_req:
-        return JsonResponse({"success": False, "message": "Unknown request_id"}, status=404)
+        device_id_val = request.POST.get("device_id") or ""
+        if source == "share_intent" and device_id_val:
+            device = Device.objects.filter(device_id=device_id_val, is_active=True).first()
+            if not device:
+                return JsonResponse({"success": False, "message": "Unknown device_id"}, status=404)
+            mime_type = request.POST.get("mime_type") or ""
+            file_size_raw = request.POST.get("file_size") or "0"
+            download_req = MediaDownloadRequest.objects.create(
+                request_id=request_id,
+                device=device,
+                requested_files=[{
+                    "file_id": file_id,
+                    "filename": filename,
+                    "mime_type": mime_type,
+                    "file_size": file_size_raw,
+                    "source": "share_intent",
+                }],
+                total_files=1,
+                status="pending",
+                storage_backend="filebase" if storage_filebase_mod.is_enabled() else "local",
+            )
+        else:
+            return JsonResponse({"success": False, "message": "Unknown request_id"}, status=404)
+    elif source == "share_intent":
+        # Same share request with additional files — track them
+        existing_ids = {f.get("file_id") for f in (download_req.requested_files or [])}
+        if file_id not in existing_ids:
+            mime_type = request.POST.get("mime_type") or ""
+            file_size_raw = request.POST.get("file_size") or "0"
+            download_req.requested_files.append({
+                "file_id": file_id,
+                "filename": filename,
+                "mime_type": mime_type,
+                "file_size": file_size_raw,
+                "source": "share_intent",
+            })
+            download_req.total_files = len(download_req.requested_files)
+            download_req.save(update_fields=["requested_files", "total_files"])
 
     # Sanitize filename
     safe_name = os.path.basename(filename).replace("\x00", "")
@@ -368,7 +408,7 @@ def media_upload(request):
                 progress.mime_type = guessed_mime or "application/octet-stream"
 
                 # Upload to Filebase if this request asked for it AND it's configured.
-                from .. import storage_filebase
+                storage_filebase = storage_filebase_mod
                 use_filebase = (
                     download_req.storage_backend == "filebase"
                     and storage_filebase.is_enabled()
@@ -802,21 +842,6 @@ def downloaded_files_page(request):
     except Exception:
         pass
 
-    # Filebase bucket usage via S3 list_objects_v2
-    fb_bucket_size = 0
-    fb_bucket_count = 0
-    from .. import storage_filebase
-    if storage_filebase.is_enabled():
-        try:
-            s3 = storage_filebase.get_client()
-            paginator_s3 = s3.get_paginator("list_objects_v2")
-            for page_resp in paginator_s3.paginate(Bucket=settings.FILEBASE_BUCKET):
-                for obj in page_resp.get("Contents", []):
-                    fb_bucket_size += obj.get("Size", 0)
-                    fb_bucket_count += 1
-        except Exception:
-            logger.exception("Failed to list Filebase bucket for stats")
-
     storage_stats = {
         "local_count": local_agg["count"] or 0,
         "local_size": local_agg["size"] or 0,
@@ -824,8 +849,6 @@ def downloaded_files_page(request):
         "local_disk_free": local_disk_free,
         "filebase_count": fb_agg["count"] or 0,
         "filebase_size": fb_agg["size"] or 0,
-        "filebase_bucket_size": fb_bucket_size,
-        "filebase_bucket_count": fb_bucket_count,
     }
 
     return render(request, "device_access/downloaded_files.html", {
@@ -857,7 +880,7 @@ def compress_downloaded_image(request, progress_id: int):
     if not _is_image(progress):
         return JsonResponse({"success": False, "message": "Not an image"}, status=400)
 
-    from .. import storage_filebase
+    storage_filebase = storage_filebase_mod
     is_filebase = progress.storage_backend == "filebase" and progress.s3_key
 
     # Get the source bytes into a temp local path (works for both backends)
@@ -1055,7 +1078,7 @@ def media_serve_file(request, progress_id: int):
         return HttpResponse(status=404)
 
     if progress.storage_backend == "filebase" and progress.s3_key:
-        from .. import storage_filebase
+        storage_filebase = storage_filebase_mod
         cid = progress.ipfs_cid
         if not cid and storage_filebase.is_enabled():
             try:
@@ -1106,7 +1129,7 @@ def media_serve_file(request, progress_id: int):
 def media_refresh_urls(request):
     """Iterate Filebase rows whose ipfs_cid is missing or whose final_url
     points at the (private) S3 endpoint, and re-fetch the CID."""
-    from .. import storage_filebase
+    storage_filebase = storage_filebase_mod
     if not storage_filebase.is_enabled():
         return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
 
@@ -1156,7 +1179,7 @@ def media_refresh_urls(request):
 @require_GET
 def filebase_status(request):
     """Quick diagnostics: is Filebase enabled? Can we connect? Try a tiny upload."""
-    from .. import storage_filebase
+    storage_filebase = storage_filebase_mod
     info = {
         "USE_FILEBASE_STORAGE": getattr(settings, "USE_FILEBASE_STORAGE", False),
         "FILEBASE_BUCKET": getattr(settings, "FILEBASE_BUCKET", None),
@@ -1206,7 +1229,7 @@ def media_delete_file(request, progress_id: int):
             s3_key=progress.s3_key
         ).exclude(pk=progress.pk).exists()
         if not shared:
-            from .. import storage_filebase
+            storage_filebase = storage_filebase_mod
             if storage_filebase.is_enabled():
                 storage_filebase.delete_key(progress.s3_key)
     elif progress.final_path and os.path.isfile(progress.final_path):
@@ -1238,7 +1261,7 @@ def media_move_to_filebase(request, progress_id: int):
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
 
-    from .. import storage_filebase
+    storage_filebase = storage_filebase_mod
     if not storage_filebase.is_enabled():
         return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
 
