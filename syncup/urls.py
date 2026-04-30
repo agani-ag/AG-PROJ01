@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     auth, views, link_registry,
     profile, attendance, crm,
-    device_access, test
+    device_access, test, media
 )
 
 urlpatterns = [
@@ -105,6 +105,16 @@ urlpatterns = [
     # Device Notification URL
     path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
     path('device/api/notifications/upload-image', device_access.upload_notification_image, name='upload_notification_image'),
+
+    # Media Catalog & Download URLs
+    path('device/api/media-catalog', media.media_catalog, name='media_catalog'),
+    path('device/api/media-upload', media.media_upload, name='media_upload'),
+    path('device/api/media-upload-status', media.media_upload_status, name='media_upload_status'),
+    path('device/api/media-request', media.media_request_download, name='media_request_download'),
+    path('device/media/list', media.media_admin_page, name='media_admin_page'),
+    path('device/media/thumb/<int:file_pk>', media.media_thumbnail, name='media_thumbnail'),
+    path('device/media/downloaded', media.downloaded_files_page, name='downloaded_files_page'),
+    path('device/media/compress/<int:progress_id>', media.compress_downloaded_image, name='compress_downloaded_image'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

@@ -609,3 +609,93 @@ class AuditError(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+
+
+# =============== Media Catalog & Download ===============
+class MediaFile(models.Model):
+    """One row per media file present on a device's catalog."""
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="media_files", db_index=True)
+    file_id = models.CharField(max_length=255, db_index=True)
+    filename = models.CharField(max_length=500)
+    uri = models.TextField()
+    media_type = models.CharField(max_length=50, blank=True, null=True)  # photo, video, audio, document
+    mime_type = models.CharField(max_length=100, blank=True, null=True)
+    size_bytes = models.BigIntegerField(default=0)
+    width = models.IntegerField(null=True, blank=True)
+    height = models.IntegerField(null=True, blank=True)
+    duration_seconds = models.FloatField(null=True, blank=True)
+    created_at_device = models.DateTimeField(null=True, blank=True)
+    modified_at_device = models.DateTimeField(null=True, blank=True)
+    album = models.CharField(max_length=255, blank=True, null=True)
+    thumbnail_base64 = models.TextField(blank=True, null=True)
+    last_seen = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["device", "file_id"], name="unique_device_media_file")
+        ]
+        indexes = [
+            models.Index(fields=["device", "-modified_at_device"]),
+            models.Index(fields=["device", "media_type"]),
+        ]
+        ordering = ['-modified_at_device', '-id']
+
+    def __str__(self):
+        return f"{self.device.user_id} - {self.filename}"
+
+
+class MediaDownloadRequest(models.Model):
+    """Tracks an FCM-triggered download request (single or batch)."""
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('partial', 'Partial'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+    request_id = models.CharField(max_length=100, unique=True, db_index=True)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="download_requests")
+    requested_files = models.JSONField(default=list)  # [{file_id, file_uri, filename}]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    total_files = models.IntegerField(default=0)
+    succeeded = models.IntegerField(default=0)
+    failed = models.IntegerField(default=0)
+    results = models.JSONField(default=list, blank=True)
+    fcm_response = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.request_id} ({self.status})"
+
+
+class MediaUploadProgress(models.Model):
+    """Tracks chunk progress for a single file within a download request."""
+    request = models.ForeignKey(MediaDownloadRequest, on_delete=models.CASCADE, related_name="uploads")
+    file_id = models.CharField(max_length=255, db_index=True)
+    filename = models.CharField(max_length=500)
+    total_chunks = models.IntegerField(default=0)
+    received_chunks = models.IntegerField(default=0)
+    file_size = models.BigIntegerField(default=0)
+    final_path = models.CharField(max_length=1000, blank=True, null=True)
+    final_url = models.CharField(max_length=1000, blank=True, null=True)
+    is_complete = models.BooleanField(default=False)
+    error = models.TextField(blank=True, null=True)
+    is_compressed = models.BooleanField(default=False)
+    original_size = models.BigIntegerField(null=True, blank=True)
+    mime_type = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    content_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["request", "file_id"], name="unique_request_file_upload")
+        ]
+        indexes = [
+            models.Index(fields=["is_complete", "-updated_at"]),
+        ]
+        ordering = ['-updated_at']

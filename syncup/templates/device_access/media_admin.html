@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Media Catalog{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-xl-11">
+    <div class="card shadow-sm p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0"><i class="fas fa-photo-video me-2"></i>Media Catalog</h4>
+        <div class="d-flex gap-2">
+          <a href="{% url 'downloaded_files_page' %}" class="btn btn-outline-success btn-sm"><i class="fas fa-folder-open me-1"></i>Downloaded Files</a>
+          <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i>Devices</a>
+        </div>
+      </div>
+
+      <form method="get" class="row g-2 mb-3">
+        <div class="col-md-6">
+          <select name="device" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">— Select a device —</option>
+            {% for d in devices %}
+              <option value="{{ d.id }}" {% if selected_device and selected_device.id == d.id %}selected{% endif %}>
+                {{ d.user_id|capfirst }} | {{ d.platform }} | {{ d.device_id }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </form>
+
+      {% if selected_device %}
+        <h5 class="fw-bold mt-2">Files <span class="text-muted fs-6">(showing {{ files_page|length }} of {{ catalog_total }})</span></h5>
+        {% if files_page %}
+        <div class="table-responsive" style="max-height:500px;">
+          <table class="table table-sm table-bordered table-striped align-middle">
+            <thead class="table-dark sticky-top">
+              <tr>
+                <th><input type="checkbox" id="select-all"></th>
+                <th>Thumb</th>
+                <th>Filename</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Album</th>
+                <th>Modified</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in files_page %}
+              <tr>
+                <td><input type="checkbox" class="file-cb" value="{{ f.file_id }}"></td>
+                <td>
+                  <img loading="lazy" src="{% url 'media_thumbnail' f.id %}" style="max-width:48px;max-height:48px;border-radius:4px;background:#eee;" onerror="this.style.display='none'">
+                </td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;">{{ f.filename }}</td>
+                <td>{{ f.media_type|default:"-" }}</td>
+                <td>{{ f.size_bytes|filesizeformat }}</td>
+                <td>{{ f.album|default:"-" }}</td>
+                <td>{{ f.modified_at_device|date:"d-m-Y H:i" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if files_page.paginator.num_pages > 1 %}
+        <nav class="mt-2"><ul class="pagination pagination-sm mb-0">
+          {% if files_page.has_previous %}
+            <li class="page-item"><a class="page-link" href="?device={{ selected_device.id }}&page={{ files_page.previous_page_number }}">«</a></li>
+          {% endif %}
+          <li class="page-item disabled"><span class="page-link">Page {{ files_page.number }} / {{ files_page.paginator.num_pages }}</span></li>
+          {% if files_page.has_next %}
+            <li class="page-item"><a class="page-link" href="?device={{ selected_device.id }}&page={{ files_page.next_page_number }}">»</a></li>
+          {% endif %}
+        </ul></nav>
+        {% endif %}
+        <div class="d-flex gap-2 mt-2">
+          <button class="btn btn-primary btn-sm" onclick="requestDownload()"><i class="fas fa-download me-1"></i>Request Download (selected on this page)</button>
+          <span id="status-msg" class="ms-2 align-self-center text-muted"></span>
+        </div>
+        {% else %}
+          <div class="alert alert-info">No catalog yet for this device.</div>
+        {% endif %}
+
+        <hr class="my-4">
+
+        <h5 class="fw-bold">Recent Download Requests</h5>
+        {% if requests %}
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>Request ID</th>
+                <th>Status</th>
+                <th>Total / OK / Fail</th>
+                <th>Created</th>
+                <th>Completed</th>
+                <th>Files</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in requests %}
+              <tr>
+                <td><code>{{ r.request_id }}</code></td>
+                <td>
+                  {% if r.status == 'completed' %}<span class="badge bg-success">{{ r.status }}</span>
+                  {% elif r.status == 'partial' %}<span class="badge bg-warning text-dark">{{ r.status }}</span>
+                  {% elif r.status == 'failed' %}<span class="badge bg-danger">{{ r.status }}</span>
+                  {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
+                </td>
+                <td>{{ r.total_files }} / {{ r.succeeded }} / {{ r.failed }}</td>
+                <td>{{ r.created_at|date:"d-m-Y H:i:s" }}</td>
+                <td>{{ r.completed_at|date:"d-m-Y H:i:s"|default:"-" }}</td>
+                <td>
+                  {% for u in r.uploads.all %}
+                    <div style="font-size:0.78rem;">
+                      {% if u.is_complete and u.final_url %}
+                        <a href="{{ u.final_url }}" target="_blank">{{ u.filename }}</a>
+                        <span class="text-success">({{ u.file_size|filesizeformat }})</span>
+                      {% else %}
+                        {{ u.filename }} <span class="text-muted">({{ u.received_chunks }}/{{ u.total_chunks }})</span>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <div class="text-muted">No requests yet.</div>
+        {% endif %}
+      {% else %}
+        <div class="alert alert-secondary">Select a device above to view its media catalog.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            document.querySelectorAll('.file-cb').forEach(cb => cb.checked = this.checked);
+        });
+    }
+});
+
+function requestDownload() {
+    const ids = Array.from(document.querySelectorAll('.file-cb:checked')).map(cb => cb.value);
+    if (!ids.length) {
+        Swal.fire('Nothing selected', 'Please tick at least one file.', 'info');
+        return;
+    }
+    Swal.fire({
+        title: 'Send download request?',
+        text: `${ids.length} file(s) will be requested via FCM.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Send',
+        confirmButtonColor: '#667eea',
+    }).then((res) => {
+        if (!res.isConfirmed) return;
+        Swal.fire({ title: 'Sending FCM...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        $.ajax({
+            url: "{% url 'media_request_download' %}",
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                device_id_pk: {{ selected_device.id }},
+                file_ids: ids,
+            }),
+            success: function(resp) {
+                if (resp.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Request sent',
+                        html: `Request ID: <code>${resp.request_id}</code><br>The device will upload chunks shortly. Refresh to track progress.`,
+                        confirmButtonColor: '#667eea',
+                    }).then(() => location.reload());
+                } else {
+                    Swal.fire('Failed', JSON.stringify(resp.fcm_response || resp), 'error');
+                }
+            },
+            error: function(xhr) {
+                Swal.fire('Error', xhr.responseText || 'Request failed', 'error');
+            }
+        });
+    });
+}
+</script>
+{% endblock %}
