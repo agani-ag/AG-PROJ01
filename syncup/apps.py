@@ -8,4 +8,3 @@ class SyncupConfig(AppConfig):
         from django.conf import settings
         from .utils import init_fcm
         init_fcm(settings.SERVICE_ACCOUNT_FILE)
-        from . import signals  # noqa: F401  — register signal handlers

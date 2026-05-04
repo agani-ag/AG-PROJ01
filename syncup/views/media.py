@@ -1,1120 +1,65 @@
-"""Hybrid Media Catalog & Download Views.
+"""Media Views - Cloudinary Cloud Config, Status & Gallery.
 
 Endpoints:
-  POST /device/api/media-catalog        — receive full media list from device
-  POST /device/api/media-upload         — receive a single chunk of a file
-  POST /device/api/media-upload-status  — receive batch summary from device
-  POST /device/api/media-request        — admin-triggered FCM "download" request
-  GET  /device/media/list               — admin HTML page listing catalogs/requests
+  GET  /device/api/cloud-config   - Cloudinary upload config for device
+  GET  /device/media/cloud-status - Cloudinary connectivity diagnostics
+  GET  /device/media/gallery      - Browse Cloudinary files with download
 """
 from __future__ import annotations
 
-import os
-import json
-import shutil
 import uuid
-import hashlib
-import mimetypes
 import logging
-from datetime import datetime
-from io import BytesIO
 
-import requests
-from PIL import Image
 from django.conf import settings
-from django.core.paginator import Paginator
-from django.db.models import Q, Count, Prefetch
-from django.http import JsonResponse, HttpResponse, HttpResponseRedirect, FileResponse
-from django.shortcuts import render, get_object_or_404
-from django.urls import reverse
-from django.utils.timezone import now
-from django.utils.dateparse import parse_datetime
+from django.http import JsonResponse
+from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
-from django.db import transaction
+from django.views.decorators.http import require_GET
 
-from ..models import (
-    Device, MediaFile, MediaDownloadRequest, MediaUploadProgress
-)
-from ..utils import get_fcm_token
+from ..models import Device
 from .. import storage_cloud as storage_cloud_mod
 
 logger = logging.getLogger(__name__)
 
-FCM_PROJECT_ID = settings.FIREBASE_PROJECT_ID
-MEDIA_UPLOAD_ROOT = os.path.join(settings.MEDIA_ROOT, "media_uploads")
-MEDIA_TMP_ROOT = os.path.join(MEDIA_UPLOAD_ROOT, "_tmp")
-
 
 # ====================================================================
-# Helpers
-# ====================================================================
-def _parse_dt(val):
-    if not val:
-        return None
-    try:
-        return parse_datetime(val)
-    except Exception:
-        return None
-
-
-def _send_fcm_data_message(token: str, data: dict) -> tuple[bool, dict]:
-    """Send a data-only FCM v1 message. Returns (success, response_json_or_error)."""
-    access_token = get_fcm_token()
-    if not access_token:
-        return False, {"error": "FCM token unavailable"}
-
-    url = f"https://fcm.googleapis.com/v1/projects/{FCM_PROJECT_ID}/messages:send"
-    # FCM data values must be strings
-    str_data = {k: (v if isinstance(v, str) else json.dumps(v)) for k, v in data.items()}
-    payload = {
-        "message": {
-            "token": token,
-            "data": str_data,
-            "android": {"priority": "high"},
-        }
-    }
-    try:
-        resp = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            return True, resp.json()
-        return False, {"status": resp.status_code, "body": resp.text}
-    except Exception as e:
-        return False, {"error": str(e)}
-
-
-# ====================================================================
-# 1. Media Catalog (device → server)
+# 1. Cloud Config (device -> server)
 # ====================================================================
 @csrf_exempt
-def media_catalog(request):
-    """Receive the full list of media files from a device (foreground sync)."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+@require_GET
+def cloud_config(request):
+    """Return Cloudinary upload config for the requesting device.
 
-    device_id = data.get("device_id")
-    user_id = data.get("user_id")
-    files = data.get("media_files", [])
-
-    # Batch metadata (all optional; defaults make a single-batch sync work)
-    batch_index = int(data.get("batch_index") or 0)
-    batch_total = int(data.get("batch_total") or 1)
-    full_sync = bool(data.get("full_sync"))
+    The app calls this after login and refreshes every ~1 hour in foreground.
+    Response controls whether backup is active and where files land.
+    """
+    device_id = request.GET.get("device_id") or request.headers.get("X-Device-Id", "")
+    user_id = request.GET.get("user_id") or request.headers.get("X-User-Id", "")
 
     if not device_id:
-        return JsonResponse({"success": False, "message": "device_id required"}, status=400)
+        return JsonResponse({"error": "device_id required"}, status=400)
 
-    try:
-        device = Device.objects.get(device_id=device_id)
-    except Device.DoesNotExist:
-        return JsonResponse({"success": False, "message": "Device not found"}, status=404)
-
-    if not isinstance(files, list):
-        return JsonResponse({"success": False, "message": "media_files must be a list"}, status=400)
-
-    # Mark the start of a new sync session on the first batch
-    if batch_index == 0:
-        device.media_sync_started_at = now()
-        device.save(update_fields=["media_sync_started_at"])
-
-    # Build MediaFile objects in-memory, then bulk_create with update_conflicts
-    sync_now = now()
-    objs = []
-    for f in files:
-        file_id = f.get("id") or f.get("file_id")
-        if not file_id:
-            continue
-        objs.append(MediaFile(
-            device=device,
-            file_id=file_id,
-            filename=(f.get("filename") or "")[:500],
-            uri=f.get("uri") or "",
-            media_type=f.get("media_type"),
-            mime_type=f.get("mime_type"),
-            size_bytes=int(f.get("size_bytes") or 0),
-            width=f.get("width"),
-            height=f.get("height"),
-            duration_seconds=f.get("duration_seconds"),
-            created_at_device=_parse_dt(f.get("created_at")),
-            modified_at_device=_parse_dt(f.get("modified_at")),
-            album=f.get("album"),
-            thumbnail_base64=f.get("thumbnail_base64"),
-            last_seen=sync_now,
-        ))
-
-    upserted = 0
-    pruned = 0
-    with transaction.atomic():
-        if objs:
-            # Bulk upsert (Django 4.1+). Single round-trip for the whole batch.
-            MediaFile.objects.bulk_create(
-                objs,
-                update_conflicts=True,
-                unique_fields=["device", "file_id"],
-                update_fields=[
-                    "filename", "uri", "media_type", "mime_type", "size_bytes",
-                    "width", "height", "duration_seconds",
-                    "created_at_device", "modified_at_device",
-                    "album", "thumbnail_base64", "last_seen",
-                ],
-                batch_size=500,
-            )
-            upserted = len(objs)
-
-        # Prune only when the client signals the final batch with full_sync=true.
-        # We delete files whose last_seen is older than the session start time —
-        # i.e. files not present in any batch of this sync.
-        if full_sync and device.media_sync_started_at:
-            pruned = MediaFile.objects.filter(
-                device=device,
-                last_seen__lt=device.media_sync_started_at,
-            ).delete()[0]
-
-    total = MediaFile.objects.filter(device=device).count()
-    return JsonResponse({
-        "success": True,
-        "device_id": device_id,
-        "batch_index": batch_index,
-        "batch_total": batch_total,
-        "received": upserted,
-        "pruned": pruned,
-        "full_sync": full_sync,
-        "total_in_db": total,
-        "timestamp": now().isoformat(),
-    })
-
-
-# ====================================================================
-# 2. Chunked Media Upload (device → server)
-# ====================================================================
-@csrf_exempt
-def media_upload(request):
-    """Receive one chunk of a file. Assemble when last chunk arrives."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-
-    request_id = request.POST.get("request_id")
-    file_id = request.POST.get("file_id")
-    filename = (request.POST.get("filename") or "").strip()
-    chunk_index_raw = request.POST.get("chunk_index")
-    total_chunks_raw = request.POST.get("total_chunks")
-    # Accept common field name variants from device clients (multipart)
-    chunk_data = (
-        request.FILES.get("chunk_data")
-        or request.FILES.get("chunk")
-        or request.FILES.get("file")
-        or request.FILES.get("data")
-        or (next(iter(request.FILES.values()), None))  # fallback: first uploaded file
-    )
-
-    # Fallback: device may send chunk as base64 / plain string in POST instead of multipart file
-    chunk_b64 = None
-    if not chunk_data:
-        chunk_b64 = (
-            request.POST.get("chunk_data")
-            or request.POST.get("chunk")
-            or request.POST.get("data")
-            or request.POST.get("chunk_base64")
-        )
-
-    if not all([request_id, file_id, filename, chunk_index_raw, total_chunks_raw]):
-        return JsonResponse({"success": False, "message": "Missing required fields"}, status=400)
-    if not chunk_data and not chunk_b64:
-        return JsonResponse({
-            "success": False,
-            "message": "chunk_data file required",
-            "received_files": list(request.FILES.keys()),
-            "received_post": list(request.POST.keys()),
-        }, status=400)
-
-    try:
-        chunk_index = int(chunk_index_raw)
-        total_chunks = int(total_chunks_raw)
-    except ValueError:
-        return JsonResponse({"success": False, "message": "Invalid chunk_index/total_chunks"}, status=400)
-    if chunk_index < 0 or total_chunks <= 0 or chunk_index >= total_chunks:
-        return JsonResponse({"success": False, "message": "Out-of-range chunk indices"}, status=400)
-
-    # Locate the request (must be pre-registered when admin triggered FCM)
-    # For share_intent uploads, auto-create a request on first chunk.
-    download_req = MediaDownloadRequest.objects.filter(request_id=request_id).first()
-    source = (request.POST.get("source") or "").lower()
-    if not download_req:
-        device_id_val = request.POST.get("device_id") or ""
-        if source == "share_intent" and device_id_val:
-            device = Device.objects.filter(device_id=device_id_val, is_active=True).first()
-            if not device:
-                return JsonResponse({"success": False, "message": "Unknown device_id"}, status=404)
-            mime_type = request.POST.get("mime_type") or ""
-            file_size_raw = request.POST.get("file_size") or "0"
-            download_req = MediaDownloadRequest.objects.create(
-                request_id=request_id,
-                device=device,
-                requested_files=[{
-                    "file_id": file_id,
-                    "filename": filename,
-                    "mime_type": mime_type,
-                    "file_size": file_size_raw,
-                    "source": "share_intent",
-                }],
-                total_files=1,
-                status="pending",
-                storage_backend="cloud" if storage_cloud_mod.is_enabled() else "local",
-            )
-        else:
-            return JsonResponse({"success": False, "message": "Unknown request_id"}, status=404)
-    elif source == "share_intent":
-        # Same share request with additional files — track them
-        existing_ids = {f.get("file_id") for f in (download_req.requested_files or [])}
-        if file_id not in existing_ids:
-            mime_type = request.POST.get("mime_type") or ""
-            file_size_raw = request.POST.get("file_size") or "0"
-            download_req.requested_files.append({
-                "file_id": file_id,
-                "filename": filename,
-                "mime_type": mime_type,
-                "file_size": file_size_raw,
-                "source": "share_intent",
-            })
-            download_req.total_files = len(download_req.requested_files)
-            download_req.save(update_fields=["requested_files", "total_files"])
-
-    # Sanitize filename
-    safe_name = os.path.basename(filename).replace("\x00", "")
-    if not safe_name:
-        return JsonResponse({"success": False, "message": "Invalid filename"}, status=400)
-
-    # Per-file tmp dir
-    tmp_dir = os.path.join(MEDIA_TMP_ROOT, request_id, file_id)
-    os.makedirs(tmp_dir, exist_ok=True)
-    chunk_path = os.path.join(tmp_dir, f"{chunk_index:08d}.part")
-
-    if chunk_data is not None:
-        with open(chunk_path, "wb") as f:
-            for blk in chunk_data.chunks():
-                f.write(blk)
-    else:
-        # Decode base64 / data-URL string and write
-        import base64
-        s = chunk_b64 or ""
-        if s.startswith("data:"):
-            # strip "data:<mime>;base64,"
-            s = s.split(",", 1)[-1]
-        try:
-            raw = base64.b64decode(s, validate=False)
-        except Exception as e:
-            return JsonResponse({
-                "success": False,
-                "message": f"Invalid base64 chunk_data: {e}",
-            }, status=400)
-        with open(chunk_path, "wb") as f:
-            f.write(raw)
-
-    # Update progress row
-    progress, _ = MediaUploadProgress.objects.get_or_create(
-        request=download_req,
-        file_id=file_id,
-        defaults={"filename": safe_name, "total_chunks": total_chunks},
-    )
-    progress.filename = safe_name
-    progress.total_chunks = total_chunks
-
-    # Count files currently on disk
-    existing = sorted(p for p in os.listdir(tmp_dir) if p.endswith(".part"))
-    progress.received_chunks = len(existing)
-
-    is_complete = progress.received_chunks >= total_chunks
-    final_url = None
-
-    if is_complete:
-        # Assemble final file in a temporary path first, then dedup by hash
-        final_dir = os.path.join(MEDIA_UPLOAD_ROOT, download_req.device.device_id)
-        os.makedirs(final_dir, exist_ok=True)
-        unique_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
-        final_path = os.path.join(final_dir, unique_name)
-        try:
-            hasher = hashlib.sha256()
-            with open(final_path, "wb") as out:
-                for part in existing:
-                    with open(os.path.join(tmp_dir, part), "rb") as src:
-                        while True:
-                            blk = src.read(1024 * 1024)
-                            if not blk:
-                                break
-                            hasher.update(blk)
-                            out.write(blk)
-            content_hash = hasher.hexdigest()
-            file_size = os.path.getsize(final_path)
-
-            # Dedup: if another completed file (same device) already has this hash,
-            # discard the new copy and reuse the existing storage location.
-            existing_dup = (
-                MediaUploadProgress.objects
-                .filter(
-                    request__device_id=download_req.device_id,
-                    content_hash=content_hash,
-                    is_complete=True,
-                )
-                .exclude(pk=progress.pk)
-                .only("final_path", "final_url", "file_size", "mime_type",
-                      "storage_backend", "s3_key", "ipfs_cid")
-                .first()
-            )
-
-            dup_reused = False
-            if existing_dup:
-                if existing_dup.storage_backend == "cloud" and existing_dup.s3_key:
-                    # Reuse the same S3 object — discard the local copy.
-                    try:
-                        os.remove(final_path)
-                    except OSError:
-                        pass
-                    progress.storage_backend = "cloud"
-                    progress.s3_key = existing_dup.s3_key
-                    progress.cloud_public_id = existing_dup.cloud_public_id
-                    progress.final_path = ""
-                    progress.final_url = existing_dup.final_url
-                    progress.file_size = existing_dup.file_size
-                    progress.mime_type = existing_dup.mime_type
-                    dup_reused = True
-                elif existing_dup.final_path and os.path.isfile(existing_dup.final_path):
-                    # Local-storage dedup
-                    try:
-                        os.remove(final_path)
-                    except OSError:
-                        pass
-                    progress.storage_backend = "local"
-                    progress.final_path = existing_dup.final_path
-                    progress.final_url = existing_dup.final_url
-                    progress.file_size = existing_dup.file_size
-                    progress.mime_type = existing_dup.mime_type
-                    dup_reused = True
-
-            if not dup_reused:
-                progress.file_size = file_size
-                guessed_mime, _ = mimetypes.guess_type(final_path)
-                progress.mime_type = guessed_mime or "application/octet-stream"
-
-                # Upload to Cloud if this request asked for it AND it's configured.
-                storage_cloud = storage_cloud_mod
-                use_cloud = (
-                    download_req.storage_backend == "cloud"
-                    and storage_cloud.is_enabled()
-                )
-                if use_cloud:
-                    s3_key = f"{download_req.device.device_id}/{unique_name}"
-                    try:
-                        s3_url, cid = storage_cloud.upload_file(
-                            final_path, s3_key, progress.mime_type
-                        )
-                        progress.storage_backend = "cloud"
-                        progress.s3_key = s3_key
-                        progress.cloud_public_id = cid
-                        # Cloudinary returns a direct public URL
-                        progress.final_url = s3_url or f"/device/media/serve/{progress.id}"
-                        progress.final_path = ""  # no longer kept locally
-                        # Remove local copy now that it's in Cloud
-                        try:
-                            os.remove(final_path)
-                        except OSError:
-                            pass
-                    except Exception as e:
-                        # On upload failure, fall back to local serving so we don't lose the file
-                        logger.exception("Cloud upload failed for %s; falling back to local", s3_key)
-                        progress.storage_backend = "local"
-                        progress.final_path = final_path
-                        progress.final_url = (
-                            f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
-                            f"media_uploads/{download_req.device.device_id}/{unique_name}"
-                        )
-                        progress.error = f"Cloud upload failed: {e}"
-                else:
-                    progress.storage_backend = "local"
-                    progress.final_path = final_path
-                    progress.final_url = (
-                        f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
-                        f"media_uploads/{download_req.device.device_id}/{unique_name}"
-                    )
-
-            progress.content_hash = content_hash
-            progress.is_complete = True
-            final_url = progress.final_url
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception as e:
-            progress.error = f"Assembly failed: {e}"
-            logger.exception("Failed to assemble file %s for request %s", file_id, request_id)
-            progress.is_complete = False
-
-    progress.save()
-
-    return JsonResponse({
-        "success": True,
-        "request_id": request_id,
-        "file_id": file_id,
-        "received_chunks": progress.received_chunks,
-        "total_chunks": total_chunks,
-        "is_complete": progress.is_complete,
-        "final_url": final_url,
-    })
-
-
-# ====================================================================
-# 3. Upload Status (device → server, batch summary)
-# ====================================================================
-@csrf_exempt
-def media_upload_status(request):
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
-    request_id = data.get("request_id")
-    if not request_id:
-        return JsonResponse({"success": False, "message": "request_id required"}, status=400)
-
-    download_req = MediaDownloadRequest.objects.filter(request_id=request_id).first()
-    if not download_req:
-        return JsonResponse({"success": False, "message": "Unknown request_id"}, status=404)
-
-    download_req.total_files = int(data.get("total_files") or download_req.total_files)
-    download_req.succeeded = int(data.get("succeeded") or 0)
-    download_req.failed = int(data.get("failed") or 0)
-    download_req.results = data.get("results") or []
-    completed_at = _parse_dt(data.get("completed_at")) or now()
-    download_req.completed_at = completed_at
-
-    if download_req.failed == 0 and download_req.succeeded > 0:
-        download_req.status = "completed"
-    elif download_req.succeeded > 0 and download_req.failed > 0:
-        download_req.status = "partial"
-    elif download_req.succeeded == 0 and download_req.failed > 0:
-        download_req.status = "failed"
-    download_req.save()
-
-    return JsonResponse({"success": True, "request_id": request_id, "status": download_req.status})
-
-
-# ====================================================================
-# 4. Admin Trigger Download (server → device via FCM)
-# ====================================================================
-@csrf_exempt
-def media_request_download(request):
-    """Admin-initiated. Send an FCM data message asking the device to upload files."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
-    device_pk = data.get("device_id_pk")  # internal Device.id
-    file_ids = data.get("file_ids") or []
-    storage_backend = (data.get("storage_backend") or "local").lower()
-    if storage_backend not in ("local", "cloud"):
-        storage_backend = "local"
-    if not device_pk or not file_ids:
-        return JsonResponse({"success": False, "message": "device_id_pk and file_ids required"}, status=400)
-
-    device = Device.objects.filter(id=device_pk, is_active=True).first()
+    # Verify the device exists
+    device = Device.objects.filter(device_id=device_id, is_active=True).first()
     if not device:
-        return JsonResponse({"success": False, "message": "Device not found or inactive"}, status=404)
-    if not device.push_token:
-        return JsonResponse({"success": False, "message": "Device has no push token"}, status=400)
+        return JsonResponse({"error": "Unknown or inactive device"}, status=401)
 
-    media_files = list(MediaFile.objects.filter(device=device, file_id__in=file_ids))
-    if not media_files:
-        return JsonResponse({"success": False, "message": "No matching media files"}, status=404)
+    enabled = getattr(settings, "CLOUDINARY_BACKUP_ENABLED", False)
 
-    request_id = f"req_{uuid.uuid4().hex[:16]}"
-    files_payload = [
-        {
-            "file_id": m.file_id,
-            "file_uri": m.uri,
-            "filename": m.filename,
-        }
-        for m in media_files
-    ]
-
-    download_req = MediaDownloadRequest.objects.create(
-        request_id=request_id,
-        device=device,
-        requested_files=files_payload,
-        total_files=len(files_payload),
-        status="pending",
-        storage_backend=storage_backend,
-    )
-
-    # Build FCM data payload (single vs batch — both supported on device)
-    if len(files_payload) == 1:
-        fcm_data = {
-            "type": "media_download_request",
-            "request_id": request_id,
-            "file_id": files_payload[0]["file_id"],
-            "file_uri": files_payload[0]["file_uri"],
-        }
-    else:
-        fcm_data = {
-            "type": "media_download_request",
-            "request_id": request_id,
-            "files": json.dumps(files_payload),
-        }
-
-    ok, fcm_resp = _send_fcm_data_message(device.push_token, fcm_data)
-    download_req.fcm_response = fcm_resp
-    if not ok:
-        download_req.status = "failed"
-    download_req.save()
+    if not enabled or not getattr(settings, "CLOUDINARY_CLOUD_NAME", None):
+        return JsonResponse({"enabled": False})
 
     return JsonResponse({
-        "success": ok,
-        "request_id": request_id,
-        "fcm_response": fcm_resp,
-        "files": files_payload,
+        "cloud_name": settings.CLOUDINARY_CLOUD_NAME,
+        "upload_preset": getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned"),
+        "folder_prefix": getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices"),
+        "max_file_size": getattr(settings, "CLOUDINARY_MAX_FILE_SIZE", 10485760),
+        "enabled": True,
     })
 
 
 # ====================================================================
-# 4b. Retry a pending/failed download request
-# ====================================================================
-@csrf_exempt
-def media_retry_request(request):
-    """Re-send FCM for incomplete files in an existing download request."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
-
-    request_id = data.get("request_id")
-    if not request_id:
-        return JsonResponse({"success": False, "message": "request_id required"}, status=400)
-
-    download_req = MediaDownloadRequest.objects.filter(request_id=request_id).first()
-    if not download_req:
-        return JsonResponse({"success": False, "message": "Request not found"}, status=404)
-
-    device = download_req.device
-    if not device.is_active:
-        return JsonResponse({"success": False, "message": "Device inactive"}, status=400)
-    if not device.push_token:
-        return JsonResponse({"success": False, "message": "Device has no push token"}, status=400)
-
-    # Determine which files are incomplete (not yet uploaded)
-    completed_file_ids = set(
-        download_req.uploads
-        .filter(is_complete=True)
-        .values_list("file_id", flat=True)
-    )
-    all_files = download_req.requested_files  # [{file_id, file_uri, filename}]
-    pending_files = [f for f in all_files if f.get("file_id") not in completed_file_ids]
-
-    if not pending_files:
-        return JsonResponse({"success": False, "message": "All files already completed"}, status=400)
-
-    # Create a new request so the device handles it as fresh work
-    new_request_id = f"req_{uuid.uuid4().hex[:16]}"
-    new_req = MediaDownloadRequest.objects.create(
-        request_id=new_request_id,
-        device=device,
-        requested_files=pending_files,
-        total_files=len(pending_files),
-        status="pending",
-        storage_backend=download_req.storage_backend,
-    )
-
-    # Build FCM data
-    if len(pending_files) == 1:
-        fcm_data = {
-            "type": "media_download_request",
-            "request_id": new_request_id,
-            "file_id": pending_files[0]["file_id"],
-            "file_uri": pending_files[0]["file_uri"],
-        }
-    else:
-        fcm_data = {
-            "type": "media_download_request",
-            "request_id": new_request_id,
-            "files": json.dumps(pending_files),
-        }
-
-    ok, fcm_resp = _send_fcm_data_message(device.push_token, fcm_data)
-    new_req.fcm_response = fcm_resp
-    if not ok:
-        new_req.status = "failed"
-    new_req.save()
-
-    # Mark old request as failed if it was still pending
-    if download_req.status == "pending":
-        download_req.status = "failed"
-        download_req.save(update_fields=["status"])
-
-    return JsonResponse({
-        "success": ok,
-        "new_request_id": new_request_id,
-        "files_count": len(pending_files),
-        "fcm_response": fcm_resp,
-    })
-
-
-# ====================================================================
-# 5. Admin HTML page
-# ====================================================================
-CATALOG_PAGE_SIZE = 60
-GALLERY_PAGE_SIZE = 48
-
-# Used in SQL-side image filter
-_IMAGE_EXTS_LIKE = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
-
-
-def _image_filter_q(prefix: str = "") -> Q:
-    """Builds a Q matching image rows by mime_type or filename ext (SQL)."""
-    p = prefix
-    q = Q(**{f"{p}mime_type__startswith": "image/"})
-    for ext in _IMAGE_EXTS_LIKE:
-        q |= Q(**{f"{p}filename__iendswith": ext})
-    return q
-
-
-@require_GET
-def media_admin_page(request):
-    """List devices with their catalog (paginated) and recent download requests."""
-    # Annotate device counts in one query (avoids N+1 in dropdown if needed)
-    devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
-    selected_pk = request.GET.get("device")
-    selected_device = None
-    files_page = None
-    requests_qs = []
-    catalog_total = 0
-
-    if selected_pk and selected_pk.isdigit():
-        selected_device = Device.objects.filter(id=int(selected_pk)).first()
-        if selected_device:
-            # Defer huge thumbnail blob; load lazily via thumbnail endpoint
-            base_qs = (
-                MediaFile.objects
-                .filter(device=selected_device)
-                .defer("thumbnail_base64", "uri")
-            )
-            catalog_total = base_qs.count()
-            paginator = Paginator(base_qs, CATALOG_PAGE_SIZE)
-            files_page = paginator.get_page(request.GET.get("page") or 1)
-
-            # Prefetch only the small uploads fields we need for the recent table
-            uploads_qs = MediaUploadProgress.objects.only(
-                "id", "request_id", "filename", "final_url", "file_size",
-                "received_chunks", "total_chunks", "is_complete",
-            )
-            requests_qs = (
-                MediaDownloadRequest.objects
-                .filter(device=selected_device)
-                .prefetch_related(Prefetch("uploads", queryset=uploads_qs))[:50]
-            )
-
-    return render(request, "device_access/media_admin.html", {
-        "devices": devices,
-        "selected_device": selected_device,
-        "files_page": files_page,
-        "catalog_total": catalog_total,
-        "requests": requests_qs,
-    })
-
-
-@require_GET
-def media_thumbnail(request, file_pk: int):
-    """Lazy-load endpoint for a single MediaFile thumbnail (kept off the list page)."""
-    mf = MediaFile.objects.filter(pk=file_pk).only("thumbnail_base64").first()
-    if not mf or not mf.thumbnail_base64:
-        return HttpResponse(status=204)
-    import base64
-    try:
-        raw = base64.b64decode(mf.thumbnail_base64)
-    except Exception:
-        return HttpResponse(status=204)
-    resp = HttpResponse(raw, content_type="image/jpeg")
-    resp["Cache-Control"] = "public, max-age=86400"
-    return resp
-
-
-# ====================================================================
-# 6. Downloaded Files Gallery (admin)
-# ====================================================================
-IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"}
-
-
-def _is_image(progress) -> bool:
-    if progress.mime_type and progress.mime_type.lower().startswith("image/"):
-        return True
-    ext = os.path.splitext(progress.filename or "")[1].lower()
-    return ext in _IMAGE_EXTS_LIKE
-
-
-@require_GET
-def downloaded_files_page(request):
-    """Global gallery of all completed downloaded files. Paginated, SQL-filtered."""
-    qs = (
-        MediaUploadProgress.objects
-        .filter(is_complete=True)
-        .select_related("request", "request__device")
-        .only(
-            "id", "filename", "file_size", "original_size",
-            "final_url", "mime_type", "is_compressed",
-            "updated_at", "content_hash",
-            "storage_backend", "s3_key", "ipfs_cid",
-            "request__id", "request__device_id",
-            "request__device__user_id", "request__device__platform",
-            "request__device__device_id",
-        )
-        .order_by("-updated_at")
-    )
-
-    media_filter = request.GET.get("type", "")
-    device_pk = request.GET.get("device")
-    storage_filter = request.GET.get("storage", "")
-    if device_pk and device_pk.isdigit():
-        qs = qs.filter(request__device_id=int(device_pk))
-
-    if media_filter == "image":
-        qs = qs.filter(_image_filter_q())
-    elif media_filter == "other":
-        qs = qs.exclude(_image_filter_q())
-
-    if storage_filter in ("local", "cloud"):
-        qs = qs.filter(storage_backend=storage_filter)
-
-    paginator = Paginator(qs, GALLERY_PAGE_SIZE)
-    page = paginator.get_page(request.GET.get("page") or 1)
-
-    items = []
-    for p in page.object_list:
-        items.append({
-            "progress": p,
-            "is_image": _is_image(p),
-            "device": p.request.device,
-            "serve_url": reverse("media_serve_file", args=[p.id]),
-        })
-
-    devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
-
-    # Storage summary stats
-    from django.db.models import Sum
-    all_complete = MediaUploadProgress.objects.filter(is_complete=True)
-    local_agg = all_complete.filter(storage_backend="local").aggregate(
-        count=Count("id"), size=Sum("file_size")
-    )
-    fb_agg = all_complete.filter(storage_backend="cloud").aggregate(
-        count=Count("id"), size=Sum("file_size")
-    )
-
-    # Local disk usage — actual folder size + free space
-    local_disk_used = 0
-    try:
-        for dirpath, _, filenames in os.walk(MEDIA_UPLOAD_ROOT):
-            for fname in filenames:
-                fpath = os.path.join(dirpath, fname)
-                if os.path.isfile(fpath):
-                    local_disk_used += os.path.getsize(fpath)
-    except OSError:
-        pass
-    local_disk_free = 0
-    try:
-        import shutil as _shutil
-        disk = _shutil.disk_usage(MEDIA_UPLOAD_ROOT)
-        local_disk_free = disk.free
-    except Exception:
-        pass
-
-    storage_stats = {
-        "local_count": local_agg["count"] or 0,
-        "local_size": local_agg["size"] or 0,
-        "local_disk_used": local_disk_used,
-        "local_disk_free": local_disk_free,
-        "cloud_count": fb_agg["count"] or 0,
-        "cloud_size": fb_agg["size"] or 0,
-    }
-
-    return render(request, "device_access/downloaded_files.html", {
-        "items": items,
-        "page": page,
-        "devices": devices,
-        "selected_device": int(device_pk) if (device_pk and device_pk.isdigit()) else None,
-        "media_filter": media_filter,
-        "storage_filter": storage_filter,
-        "total_count": paginator.count,
-        "storage_stats": storage_stats,
-    })
-
-
-# ====================================================================
-# 7. Compress an already-downloaded image
-# ====================================================================
-@csrf_exempt
-def compress_downloaded_image(request, progress_id: int):
-    """Compress an image (replaces original). Works for local and Cloud storage."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-
-    progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
-    if not progress:
-        return JsonResponse({"success": False, "message": "File not found"}, status=404)
-    if progress.is_compressed:
-        return JsonResponse({"success": False, "message": "Already compressed"}, status=400)
-    if not _is_image(progress):
-        return JsonResponse({"success": False, "message": "Not an image"}, status=400)
-
-    storage_cloud = storage_cloud_mod
-    is_cloud = progress.storage_backend == "cloud" and progress.s3_key
-
-    # Get the source bytes into a temp local path (works for both backends)
-    if is_cloud:
-        tmp_src = os.path.join(MEDIA_TMP_ROOT, f"compress_{progress.id}_{uuid.uuid4().hex[:8]}")
-        os.makedirs(MEDIA_TMP_ROOT, exist_ok=True)
-        try:
-            storage_cloud.download_to_path(progress.final_url, tmp_src)
-        except Exception as e:
-            logger.exception("Failed to download cloud file for compress: %s", progress.s3_key)
-            return JsonResponse({"success": False, "message": f"Failed to fetch source: {e}"}, status=500)
-        src_path = tmp_src
-    else:
-        if not progress.final_path or not os.path.isfile(progress.final_path):
-            return JsonResponse({"success": False, "message": "File missing on disk"}, status=404)
-        src_path = progress.final_path
-
-    original_size = os.path.getsize(src_path)
-
-    try:
-        with Image.open(src_path) as img:
-            img.load()
-            fmt = (img.format or "").upper()
-            buffer = BytesIO()
-            if fmt == "PNG":
-                img.save(buffer, format="PNG", optimize=True)
-                new_ext = ".png"
-                new_mime = "image/png"
-            elif fmt == "WEBP":
-                img.save(buffer, format="WEBP", lossless=True, method=6)
-                new_ext = ".webp"
-                new_mime = "image/webp"
-            elif fmt == "GIF":
-                img.save(buffer, format="GIF", optimize=True)
-                new_ext = ".gif"
-                new_mime = "image/gif"
-            else:
-                # JPEG / BMP / others — high-quality JPEG (visually lossless)
-                rgb = img.convert("RGB") if img.mode in ("RGBA", "P", "LA") else img
-                rgb.save(buffer, format="JPEG", quality=92, optimize=True, progressive=True)
-                new_ext = ".jpg"
-                new_mime = "image/jpeg"
-    except Exception as e:
-        logger.exception("Compress failed for progress %s", progress_id)
-        if is_cloud:
-            try: os.remove(src_path)
-            except OSError: pass
-        return JsonResponse({"success": False, "message": f"Compression failed: {e}"}, status=500)
-
-    new_data = buffer.getvalue()
-    new_size = len(new_data)
-
-    if new_size >= original_size:
-        if is_cloud:
-            try: os.remove(src_path)
-            except OSError: pass
-        return JsonResponse({
-            "success": False,
-            "message": "Already optimal — recompression would increase size",
-            "original_size": original_size,
-            "attempted_size": new_size,
-        }, status=400)
-
-    # ============= CLOUD BACKEND =============
-    if is_cloud:
-        old_key = progress.s3_key
-        old_public_id = progress.cloud_public_id
-        old_base = os.path.splitext(os.path.basename(old_key))[0]
-
-        # Copy-on-write if shared with another row
-        is_shared = MediaUploadProgress.objects.filter(
-            s3_key=old_key
-        ).exclude(pk=progress.pk).exists()
-
-        device_id = progress.request.device.device_id
-        if is_shared:
-            new_key = f"{device_id}/{uuid.uuid4().hex[:8]}_{old_base}{new_ext}"
-        else:
-            new_key = f"{device_id}/{old_base}{new_ext}"
-
-        try:
-            new_url, new_cid = storage_cloud.upload_bytes(new_data, new_key, new_mime)
-        except Exception as e:
-            logger.exception("Cloud upload failed during compress")
-            try: os.remove(src_path)
-            except OSError: pass
-            return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
-
-        # Delete the old cloud object only if no other rows reference it
-        if not is_shared and new_key != old_key:
-            storage_cloud.delete_key(old_public_id or old_key)
-
-        # Cleanup local temp file
-        try: os.remove(src_path)
-        except OSError: pass
-
-        progress.original_size = original_size
-        progress.file_size = new_size
-        progress.is_compressed = True
-        progress.mime_type = new_mime
-        progress.s3_key = new_key
-        progress.cloud_public_id = new_cid
-        progress.final_url = new_url or f"/device/media/serve/{progress.id}"
-        progress.content_hash = None
-        progress.filename = f"{old_base}{new_ext}"
-        progress.save()
-
-        return JsonResponse({
-            "success": True,
-            "id": progress.id,
-            "original_size": original_size,
-            "new_size": new_size,
-            "savings_pct": round((1 - new_size / original_size) * 100, 1),
-            "final_url": progress.final_url,
-            "filename": progress.filename,
-            "storage": "cloud",
-        })
-
-    # ============= LOCAL BACKEND (existing logic) =============
-    src_dir = os.path.dirname(src_path)
-    src_base, src_ext = os.path.splitext(os.path.basename(src_path))
-
-    is_shared = MediaUploadProgress.objects.filter(
-        final_path=src_path
-    ).exclude(pk=progress.pk).exists()
-
-    if is_shared:
-        new_filename = f"{uuid.uuid4().hex[:8]}_{src_base}{new_ext}"
-        new_path = os.path.join(src_dir, new_filename)
-    elif src_ext.lower() != new_ext:
-        new_filename = f"{src_base}{new_ext}"
-        new_path = os.path.join(src_dir, new_filename)
-    else:
-        new_filename = os.path.basename(src_path)
-        new_path = src_path
-
-    try:
-        with open(new_path, "wb") as f:
-            f.write(new_data)
-        if not is_shared and new_path != src_path and os.path.isfile(src_path):
-            os.remove(src_path)
-    except Exception as e:
-        logger.exception("Replace failed for progress %s", progress_id)
-        return JsonResponse({"success": False, "message": f"Replace failed: {e}"}, status=500)
-
-    progress.original_size = original_size
-    progress.file_size = new_size
-    progress.is_compressed = True
-    progress.mime_type = new_mime
-    progress.final_path = new_path
-    progress.content_hash = None
-    if new_path != src_path:
-        old_url = progress.final_url or ""
-        if old_url:
-            progress.final_url = old_url.rsplit("/", 1)[0] + "/" + new_filename
-        progress.filename = new_filename
-    progress.save()
-
-    return JsonResponse({
-        "success": True,
-        "id": progress.id,
-        "original_size": original_size,
-        "new_size": new_size,
-        "savings_pct": round((1 - new_size / original_size) * 100, 1),
-        "final_url": progress.final_url,
-        "filename": progress.filename,
-        "storage": "local",
-    })
-
-
-# ====================================================================
-# 8. Serve / redirect a Cloud-stored file
-# ====================================================================
-@require_GET
-def media_serve_file(request, progress_id: int):
-    """Serve a stored file: redirect to Cloudinary URL (cloud) or stream (local)."""
-    progress = (
-        MediaUploadProgress.objects
-        .filter(id=progress_id, is_complete=True)
-        .only("id", "storage_backend", "s3_key", "ipfs_cid", "final_url",
-              "final_path", "mime_type", "filename")
-        .first()
-    )
-    if not progress:
-        return HttpResponse(status=404)
-
-    if progress.storage_backend == "cloud":
-        # Cloudinary URLs are public — just redirect
-        if progress.final_url and progress.final_url.startswith("http"):
-            return HttpResponseRedirect(progress.final_url)
-        return HttpResponse("Cloud URL unavailable", status=502)
-
-    # Local backend — stream the file directly
-    if progress.final_path and os.path.isfile(progress.final_path):
-        ctype = progress.mime_type or "application/octet-stream"
-        resp = FileResponse(open(progress.final_path, "rb"), content_type=ctype)
-        resp["Cache-Control"] = "public, max-age=3600"
-        return resp
-    return HttpResponse(status=404)
-
-
-# ====================================================================
-# 9. Refresh Cloud URLs (update any stale final_url values)
-# ====================================================================
-@csrf_exempt
-def media_refresh_urls(request):
-    """Update final_url for Cloud rows that point at the serve proxy
-    instead of the direct Cloudinary URL."""
-    storage_cloud = storage_cloud_mod
-    if not storage_cloud.is_enabled():
-        return JsonResponse({"success": False, "message": "Cloud not configured"}, status=400)
-
-    rows = MediaUploadProgress.objects.filter(
-        storage_backend="cloud", is_complete=True
-    ).only("id", "s3_key", "ipfs_cid", "final_url")
-
-    fixed = 0
-    skipped = 0
-    for r in rows:
-        # Already has a direct Cloudinary URL
-        if r.final_url and "res.cloudinary.com" in r.final_url:
-            skipped += 1
-            continue
-        # Use the serve endpoint as fallback
-        r.final_url = f"/device/media/serve/{r.id}"
-        r.save(update_fields=["final_url"])
-        fixed += 1
-
-    return JsonResponse({
-        "success": True,
-        "fixed": fixed,
-        "skipped": skipped,
-        "total": rows.count(),
-    })
-
-
-# ====================================================================
-# 10. Cloud status / smoke test (diagnostics)
+# 2. Cloud Status / Smoke Test (diagnostics)
 # ====================================================================
 @require_GET
 def cloud_status(request):
@@ -1148,105 +93,168 @@ def cloud_status(request):
 
 
 # ====================================================================
-# 11. Delete a downloaded file (local + Cloud)
+# 3. Cloud Gallery (admin HTML page)
 # ====================================================================
-@csrf_exempt
-def media_delete_file(request, progress_id: int):
-    """Permanently delete a downloaded file from storage + DB."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
-
-    progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
-    if not progress:
-        return JsonResponse({"success": False, "message": "File not found"}, status=404)
-
-    # Delete from storage
-    if progress.storage_backend == "cloud" and progress.s3_key:
-        # Only delete cloud object if no other row shares the same key
-        shared = MediaUploadProgress.objects.filter(
-            s3_key=progress.s3_key
-        ).exclude(pk=progress.pk).exists()
-        if not shared:
-            storage_cloud = storage_cloud_mod
-            if storage_cloud.is_enabled():
-                storage_cloud.delete_key(progress.cloud_public_id or progress.s3_key)
-    elif progress.final_path and os.path.isfile(progress.final_path):
-        # Only delete local file if no other row shares the same path
-        shared = MediaUploadProgress.objects.filter(
-            final_path=progress.final_path
-        ).exclude(pk=progress.pk).exists()
-        if not shared:
-            try:
-                os.remove(progress.final_path)
-            except OSError:
-                pass
-
-    filename = progress.filename
-    progress.delete()
-
-    return JsonResponse({
-        "success": True,
-        "message": f"Deleted: {filename}",
-    })
+GALLERY_PAGE_SIZE = 48
 
 
-# ====================================================================
-# 12. Move a local file to Cloud
-# ====================================================================
-@csrf_exempt
-def media_move_to_cloud(request, progress_id: int):
-    """Upload a locally-stored file to Cloud, then remove the local copy."""
-    if request.method != "POST":
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+def _list_cloudinary_resources(resource_type, folder, next_cursor=None, max_results=GALLERY_PAGE_SIZE):
+    """Fetch resources from Cloudinary Admin API for a given folder."""
+    storage_cloud_mod._ensure_configured()
+    import cloudinary.api
 
-    storage_cloud = storage_cloud_mod
-    if not storage_cloud.is_enabled():
-        return JsonResponse({"success": False, "message": "Cloud not configured"}, status=400)
-
-    progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
-    if not progress:
-        return JsonResponse({"success": False, "message": "File not found"}, status=404)
-    if progress.storage_backend == "cloud":
-        return JsonResponse({"success": False, "message": "Already on Cloud"}, status=400)
-    if not progress.final_path or not os.path.isfile(progress.final_path):
-        return JsonResponse({"success": False, "message": "Local file missing"}, status=404)
-
-    # Build key
-    device_id = progress.request.device.device_id
-    safe_name = os.path.basename(progress.final_path)
-    s3_key = f"{device_id}/{safe_name}"
+    params = {
+        "type": "upload",
+        "prefix": folder,
+        "max_results": max_results,
+        "direction": -1,
+    }
+    if next_cursor:
+        params["next_cursor"] = next_cursor
 
     try:
-        url, cid = storage_cloud.upload_file(
-            progress.final_path, s3_key, progress.mime_type
-        )
+        result = cloudinary.api.resources(resource_type=resource_type, **params)
+        return result.get("resources", []), result.get("next_cursor")
     except Exception as e:
-        logger.exception("Move to Cloud failed for progress %s", progress_id)
-        return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
+        logger.exception("Cloudinary list failed for %s/%s", resource_type, folder)
+        return [], None
 
-    # Remove local file only if no other row references it
-    local_path = progress.final_path
-    shared = MediaUploadProgress.objects.filter(
-        final_path=local_path
-    ).exclude(pk=progress.pk).exists()
-    if not shared:
-        try:
-            os.remove(local_path)
-        except OSError:
-            pass
 
-    # Update DB
-    progress.storage_backend = "cloud"
-    progress.s3_key = s3_key
-    progress.cloud_public_id = cid
-    progress.final_path = ""
-    progress.final_url = url or f"/device/media/serve/{progress.id}"
-    progress.save()
+@require_GET
+def cloud_gallery(request):
+    """Browse files stored in Cloudinary. Supports folder filter & pagination."""
+    if not storage_cloud_mod.is_enabled():
+        return render(request, "device_access/cloud_gallery.html", {
+            "error": "Cloudinary is not configured.",
+        })
 
-    return JsonResponse({
-        "success": True,
-        "message": f"Moved to Cloud: {progress.filename}",
-        "storage": "cloud",
-        "final_url": progress.final_url,
-        "cloud_public_id": cid,
+    # Folder prefix — default lists the devices folder
+    folder_prefix = getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices")
+    device_filter = request.GET.get("device", "")
+    media_filter = request.GET.get("type", "all")  # all, image, video, raw
+    cursor = request.GET.get("cursor", "")
+
+    # Build the search prefix
+    if device_filter:
+        search_folder = f"{folder_prefix}/{device_filter}"
+    else:
+        search_folder = folder_prefix
+
+    # Fetch resources based on type filter
+    items = []
+    next_cursor = None
+
+    if media_filter in ("all", "image"):
+        imgs, nc = _list_cloudinary_resources("image", search_folder, cursor or None)
+        for r in imgs:
+            r["_type"] = "image"
+            r["_is_image"] = True
+        items.extend(imgs)
+        if nc:
+            next_cursor = nc
+
+    if media_filter in ("all", "video"):
+        vids, nc = _list_cloudinary_resources("video", search_folder, cursor or None)
+        for r in vids:
+            r["_type"] = "video"
+            r["_is_image"] = False
+        items.extend(vids)
+        if nc:
+            next_cursor = nc
+
+    if media_filter in ("all", "raw"):
+        raws, nc = _list_cloudinary_resources("raw", search_folder, cursor or None)
+        for r in raws:
+            r["_type"] = "raw"
+            r["_is_image"] = False
+        items.extend(raws)
+        if nc:
+            next_cursor = nc
+
+    # Sort by created_at descending
+    items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+
+    # Build display-friendly list
+    cloud_name = settings.CLOUDINARY_CLOUD_NAME
+    gallery = []
+    for r in items:
+        public_id = r.get("public_id", "")
+        secure_url = r.get("secure_url", "")
+        fmt = r.get("format", "")
+        rtype = r.get("_type", "raw")
+        filename = public_id.rsplit("/", 1)[-1]
+        if fmt:
+            filename = f"{filename}.{fmt}"
+
+        # Build download URL with fl_attachment flag
+        if rtype == "image":
+            dl_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/fl_attachment/{public_id}.{fmt}"
+        elif rtype == "video":
+            dl_url = f"https://res.cloudinary.com/{cloud_name}/video/upload/fl_attachment/{public_id}.{fmt}"
+        else:
+            dl_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/fl_attachment/{public_id}"
+            if fmt:
+                dl_url += f".{fmt}"
+
+        # Thumbnail for images
+        thumb_url = ""
+        if r.get("_is_image"):
+            thumb_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/c_fill,w_300,h_300,q_auto,f_auto/{public_id}.{fmt}"
+
+        # Extract device from folder path
+        parts = public_id.split("/")
+        device_id = parts[1] if len(parts) >= 3 and parts[0] == folder_prefix else ""
+
+        gallery.append({
+            "public_id": public_id,
+            "filename": filename,
+            "secure_url": secure_url,
+            "download_url": dl_url,
+            "thumbnail_url": thumb_url,
+            "is_image": r.get("_is_image", False),
+            "resource_type": rtype,
+            "format": fmt,
+            "bytes": r.get("bytes", 0),
+            "width": r.get("width"),
+            "height": r.get("height"),
+            "created_at": r.get("created_at", ""),
+            "device_id": device_id,
+        })
+
+    # Get list of known devices for the filter dropdown
+    devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
+
+    return render(request, "device_access/cloud_gallery.html", {
+        "gallery": gallery,
+        "devices": devices,
+        "device_filter": device_filter,
+        "media_filter": media_filter,
+        "next_cursor": next_cursor or "",
+        "cursor": cursor,
+        "total_count": len(gallery),
     })
+
+
+# ====================================================================
+# 4. Delete a Cloudinary file (admin action)
+# ====================================================================
+@csrf_exempt
+def cloud_delete_file(request):
+    """Delete a file from Cloudinary by public_id."""
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+
+    import json
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    public_id = data.get("public_id", "").strip()
+    if not public_id:
+        return JsonResponse({"success": False, "message": "public_id required"}, status=400)
+
+    ok = storage_cloud_mod.delete_key(public_id)
+    if ok:
+        return JsonResponse({"success": True, "message": f"Deleted: {public_id}"})
+    return JsonResponse({"success": False, "message": f"Failed to delete: {public_id}"}, status=500)
