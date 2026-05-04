@@ -9,7 +9,7 @@
       <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 class="fw-bold mb-0"><i class="fas fa-folder-open me-2"></i>Downloaded Files</h4>
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-outline-info btn-sm" onclick="refreshFilebaseUrls()"><i class="fas fa-sync me-1"></i>Refresh Filebase URLs</button>
+          <button type="button" class="btn btn-outline-info btn-sm" onclick="refreshCloudUrls()"><i class="fas fa-sync me-1"></i>Refresh Cloud URLs</button>
           <a href="{% url 'media_admin_page' %}" class="btn btn-outline-primary btn-sm"><i class="fas fa-photo-video me-1"></i>Catalog</a>
           <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i>Devices</a>
         </div>
@@ -37,7 +37,7 @@
           <select name="storage" class="form-select form-select-sm" onchange="this.form.submit()">
             <option value="" {% if not storage_filter %}selected{% endif %}>All storage</option>
             <option value="local" {% if storage_filter == 'local' %}selected{% endif %}>Local only</option>
-            <option value="filebase" {% if storage_filter == 'filebase' %}selected{% endif %}>Filebase only</option>
+            <option value="cloud" {% if storage_filter == 'cloud' %}selected{% endif %}>Cloud only</option>
           </select>
         </div>
       </form>
@@ -57,8 +57,8 @@
         <div class="d-flex align-items-center gap-2 px-3 py-2 rounded border" style="background:#e8f7fc;">
           <i class="fas fa-cloud fa-lg text-info"></i>
           <div class="small">
-            <span class="fw-bold">Filebase (IPFS)</span><br>
-            <span class="text-muted">{{ storage_stats.filebase_count }} file{{ storage_stats.filebase_count|pluralize }} · {{ storage_stats.filebase_size|filesizeformat }}</span>
+            <span class="fw-bold">Cloud (Cloudinary)</span><br>
+            <span class="text-muted">{{ storage_stats.cloud_count }} file{{ storage_stats.cloud_count|pluralize }} · {{ storage_stats.cloud_size|filesizeformat }}</span>
           </div>
         </div>
       </div>
@@ -80,8 +80,8 @@
               {% if it.progress.is_compressed %}
                 <span class="badge bg-success position-absolute top-0 end-0 m-2"><i class="fas fa-compress-arrows-alt me-1"></i>Compressed</span>
               {% endif %}
-              {% if it.progress.storage_backend == 'filebase' %}
-                <span class="badge bg-info text-dark position-absolute top-0 start-0 m-2" title="Filebase / IPFS{% if it.progress.ipfs_cid %} — {{ it.progress.ipfs_cid }}{% endif %}"><i class="fas fa-cloud me-1"></i>Filebase</span>
+              {% if it.progress.storage_backend == 'cloud' %}
+                <span class="badge bg-info text-dark position-absolute top-0 start-0 m-2" title="Cloud (Cloudinary)"><i class="fas fa-cloud me-1"></i>Cloud</span>
               {% else %}
                 <span class="badge bg-secondary position-absolute top-0 start-0 m-2"><i class="fas fa-server me-1"></i>Local</span>
               {% endif %}
@@ -104,7 +104,7 @@
                   </button>
                 {% endif %}
                 {% if it.progress.storage_backend == 'local' %}
-                  <button class="btn btn-sm btn-info flex-grow-1" onclick="moveToFilebase({{ it.progress.id }}, '{{ it.progress.filename|escapejs }}')" title="Move to Filebase">
+                  <button class="btn btn-sm btn-info flex-grow-1" onclick="moveToCloud({{ it.progress.id }}, '{{ it.progress.filename|escapejs }}')" title="Move to Cloud">
                     <i class="fas fa-cloud-upload-alt"></i>
                   </button>
                 {% endif %}
@@ -183,10 +183,10 @@ function formatBytes(b) {
     return b.toFixed(1) + ' ' + u[i];
 }
 
-function refreshFilebaseUrls() {
+function refreshCloudUrls() {
     Swal.fire({
-        title: 'Refresh Filebase URLs?',
-        text: 'Re-resolves the IPFS CID for any Filebase rows missing one. Safe to run anytime.',
+        title: 'Refresh Cloud URLs?',
+        text: 'Updates any stale URLs for Cloud-stored files. Safe to run anytime.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Run',
@@ -202,7 +202,7 @@ function refreshFilebaseUrls() {
                     Swal.fire({
                         icon: 'success',
                         title: 'Done',
-                        html: `Fixed: <b>${resp.fixed}</b><br>Skipped (already OK): ${resp.skipped}<br>Failed (no CID yet): ${resp.failed}`,
+                        html: `Fixed: <b>${resp.fixed}</b><br>Skipped (already OK): ${resp.skipped}`,
                         confirmButtonColor: '#667eea',
                     }).then(() => location.reload());
                 } else {
@@ -221,7 +221,7 @@ function refreshFilebaseUrls() {
 function deleteFile(id, filename) {
     Swal.fire({
         title: 'Delete permanently?',
-        html: `<b>${filename}</b><br><span class="text-danger">This will remove the file from storage (local/Filebase) and cannot be undone.</span>`,
+        html: `<b>${filename}</b><br><span class="text-danger">This will remove the file from storage (local/cloud) and cannot be undone.</span>`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Delete',
@@ -257,26 +257,26 @@ function deleteFile(id, filename) {
     });
 }
 
-function moveToFilebase(id, filename) {
+function moveToCloud(id, filename) {
     Swal.fire({
-        title: 'Move to Filebase?',
-        html: `<b>${filename}</b> will be uploaded to Filebase (IPFS) and the local copy removed.`,
+        title: 'Move to Cloud?',
+        html: `<b>${filename}</b> will be uploaded to Cloudinary and the local copy removed.`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'Move',
         confirmButtonColor: '#17a2b8',
     }).then((res) => {
         if (!res.isConfirmed) return;
-        Swal.fire({ title: 'Uploading to Filebase...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        Swal.fire({ title: 'Uploading to Cloud...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
         $.ajax({
-            url: '/device/media/move-to-filebase/' + id,
+            url: '/device/media/move-to-cloud/' + id,
             method: 'POST',
             success: function(resp) {
                 if (resp.success) {
                     Swal.fire({
                         icon: 'success',
                         title: 'Moved',
-                        html: `${resp.message}${resp.ipfs_cid ? '<br>CID: <code>' + resp.ipfs_cid + '</code>' : ''}`,
+                        html: resp.message,
                         confirmButtonColor: '#667eea',
                     }).then(() => location.reload());
                 } else {

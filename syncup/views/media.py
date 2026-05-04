@@ -37,7 +37,7 @@ from ..models import (
     Device, MediaFile, MediaDownloadRequest, MediaUploadProgress
 )
 from ..utils import get_fcm_token
-from .. import storage_filebase as storage_filebase_mod
+from .. import storage_cloud as storage_cloud_mod
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +271,7 @@ def media_upload(request):
                 }],
                 total_files=1,
                 status="pending",
-                storage_backend="filebase" if storage_filebase_mod.is_enabled() else "local",
+                storage_backend="cloud" if storage_cloud_mod.is_enabled() else "local",
             )
         else:
             return JsonResponse({"success": False, "message": "Unknown request_id"}, status=404)
@@ -375,15 +375,15 @@ def media_upload(request):
 
             dup_reused = False
             if existing_dup:
-                if existing_dup.storage_backend == "filebase" and existing_dup.s3_key:
+                if existing_dup.storage_backend == "cloud" and existing_dup.s3_key:
                     # Reuse the same S3 object — discard the local copy.
                     try:
                         os.remove(final_path)
                     except OSError:
                         pass
-                    progress.storage_backend = "filebase"
+                    progress.storage_backend = "cloud"
                     progress.s3_key = existing_dup.s3_key
-                    progress.ipfs_cid = existing_dup.ipfs_cid
+                    progress.cloud_public_id = existing_dup.cloud_public_id
                     progress.final_path = ""
                     progress.final_url = existing_dup.final_url
                     progress.file_size = existing_dup.file_size
@@ -407,43 +407,39 @@ def media_upload(request):
                 guessed_mime, _ = mimetypes.guess_type(final_path)
                 progress.mime_type = guessed_mime or "application/octet-stream"
 
-                # Upload to Filebase if this request asked for it AND it's configured.
-                storage_filebase = storage_filebase_mod
-                use_filebase = (
-                    download_req.storage_backend == "filebase"
-                    and storage_filebase.is_enabled()
+                # Upload to Cloud if this request asked for it AND it's configured.
+                storage_cloud = storage_cloud_mod
+                use_cloud = (
+                    download_req.storage_backend == "cloud"
+                    and storage_cloud.is_enabled()
                 )
-                if use_filebase:
+                if use_cloud:
                     s3_key = f"{download_req.device.device_id}/{unique_name}"
                     try:
-                        s3_url, cid = storage_filebase.upload_file(
+                        s3_url, cid = storage_cloud.upload_file(
                             final_path, s3_key, progress.mime_type
                         )
-                        progress.storage_backend = "filebase"
+                        progress.storage_backend = "cloud"
                         progress.s3_key = s3_key
-                        progress.ipfs_cid = cid
-                        # If we got the CID right away use IPFS; otherwise route
-                        # through our redirect view which will resolve it lazily.
-                        if cid:
-                            progress.final_url = storage_filebase.ipfs_url(cid)
-                        else:
-                            progress.final_url = f"/device/media/serve/{progress.id}"
+                        progress.cloud_public_id = cid
+                        # Cloudinary returns a direct public URL
+                        progress.final_url = s3_url or f"/device/media/serve/{progress.id}"
                         progress.final_path = ""  # no longer kept locally
-                        # Remove local copy now that it's in Filebase
+                        # Remove local copy now that it's in Cloud
                         try:
                             os.remove(final_path)
                         except OSError:
                             pass
                     except Exception as e:
                         # On upload failure, fall back to local serving so we don't lose the file
-                        logger.exception("Filebase upload failed for %s; falling back to local", s3_key)
+                        logger.exception("Cloud upload failed for %s; falling back to local", s3_key)
                         progress.storage_backend = "local"
                         progress.final_path = final_path
                         progress.final_url = (
                             f"{settings.PROJ01_URL}{settings.MEDIA_URL}"
                             f"media_uploads/{download_req.device.device_id}/{unique_name}"
                         )
-                        progress.error = f"Filebase upload failed: {e}"
+                        progress.error = f"Cloud upload failed: {e}"
                 else:
                     progress.storage_backend = "local"
                     progress.final_path = final_path
@@ -528,7 +524,7 @@ def media_request_download(request):
     device_pk = data.get("device_id_pk")  # internal Device.id
     file_ids = data.get("file_ids") or []
     storage_backend = (data.get("storage_backend") or "local").lower()
-    if storage_backend not in ("local", "filebase"):
+    if storage_backend not in ("local", "cloud"):
         storage_backend = "local"
     if not device_pk or not file_ids:
         return JsonResponse({"success": False, "message": "device_id_pk and file_ids required"}, status=400)
@@ -797,7 +793,7 @@ def downloaded_files_page(request):
     elif media_filter == "other":
         qs = qs.exclude(_image_filter_q())
 
-    if storage_filter in ("local", "filebase"):
+    if storage_filter in ("local", "cloud"):
         qs = qs.filter(storage_backend=storage_filter)
 
     paginator = Paginator(qs, GALLERY_PAGE_SIZE)
@@ -820,7 +816,7 @@ def downloaded_files_page(request):
     local_agg = all_complete.filter(storage_backend="local").aggregate(
         count=Count("id"), size=Sum("file_size")
     )
-    fb_agg = all_complete.filter(storage_backend="filebase").aggregate(
+    fb_agg = all_complete.filter(storage_backend="cloud").aggregate(
         count=Count("id"), size=Sum("file_size")
     )
 
@@ -847,8 +843,8 @@ def downloaded_files_page(request):
         "local_size": local_agg["size"] or 0,
         "local_disk_used": local_disk_used,
         "local_disk_free": local_disk_free,
-        "filebase_count": fb_agg["count"] or 0,
-        "filebase_size": fb_agg["size"] or 0,
+        "cloud_count": fb_agg["count"] or 0,
+        "cloud_size": fb_agg["size"] or 0,
     }
 
     return render(request, "device_access/downloaded_files.html", {
@@ -868,7 +864,7 @@ def downloaded_files_page(request):
 # ====================================================================
 @csrf_exempt
 def compress_downloaded_image(request, progress_id: int):
-    """Compress an image (replaces original). Works for local and Filebase storage."""
+    """Compress an image (replaces original). Works for local and Cloud storage."""
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
 
@@ -880,17 +876,17 @@ def compress_downloaded_image(request, progress_id: int):
     if not _is_image(progress):
         return JsonResponse({"success": False, "message": "Not an image"}, status=400)
 
-    storage_filebase = storage_filebase_mod
-    is_filebase = progress.storage_backend == "filebase" and progress.s3_key
+    storage_cloud = storage_cloud_mod
+    is_cloud = progress.storage_backend == "cloud" and progress.s3_key
 
     # Get the source bytes into a temp local path (works for both backends)
-    if is_filebase:
+    if is_cloud:
         tmp_src = os.path.join(MEDIA_TMP_ROOT, f"compress_{progress.id}_{uuid.uuid4().hex[:8]}")
         os.makedirs(MEDIA_TMP_ROOT, exist_ok=True)
         try:
-            storage_filebase.download_to_path(progress.s3_key, tmp_src)
+            storage_cloud.download_to_path(progress.final_url, tmp_src)
         except Exception as e:
-            logger.exception("Failed to download S3 object for compress: %s", progress.s3_key)
+            logger.exception("Failed to download cloud file for compress: %s", progress.s3_key)
             return JsonResponse({"success": False, "message": f"Failed to fetch source: {e}"}, status=500)
         src_path = tmp_src
     else:
@@ -925,7 +921,7 @@ def compress_downloaded_image(request, progress_id: int):
                 new_mime = "image/jpeg"
     except Exception as e:
         logger.exception("Compress failed for progress %s", progress_id)
-        if is_filebase:
+        if is_cloud:
             try: os.remove(src_path)
             except OSError: pass
         return JsonResponse({"success": False, "message": f"Compression failed: {e}"}, status=500)
@@ -934,7 +930,7 @@ def compress_downloaded_image(request, progress_id: int):
     new_size = len(new_data)
 
     if new_size >= original_size:
-        if is_filebase:
+        if is_cloud:
             try: os.remove(src_path)
             except OSError: pass
         return JsonResponse({
@@ -944,9 +940,10 @@ def compress_downloaded_image(request, progress_id: int):
             "attempted_size": new_size,
         }, status=400)
 
-    # ============= FILEBASE BACKEND =============
-    if is_filebase:
+    # ============= CLOUD BACKEND =============
+    if is_cloud:
         old_key = progress.s3_key
+        old_public_id = progress.cloud_public_id
         old_base = os.path.splitext(os.path.basename(old_key))[0]
 
         # Copy-on-write if shared with another row
@@ -961,16 +958,16 @@ def compress_downloaded_image(request, progress_id: int):
             new_key = f"{device_id}/{old_base}{new_ext}"
 
         try:
-            new_url, new_cid = storage_filebase.upload_bytes(new_data, new_key, new_mime)
+            new_url, new_cid = storage_cloud.upload_bytes(new_data, new_key, new_mime)
         except Exception as e:
-            logger.exception("Filebase upload failed during compress")
+            logger.exception("Cloud upload failed during compress")
             try: os.remove(src_path)
             except OSError: pass
             return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
 
-        # Delete the old S3 object only if no other rows reference it
+        # Delete the old cloud object only if no other rows reference it
         if not is_shared and new_key != old_key:
-            storage_filebase.delete_key(old_key)
+            storage_cloud.delete_key(old_public_id or old_key)
 
         # Cleanup local temp file
         try: os.remove(src_path)
@@ -981,11 +978,8 @@ def compress_downloaded_image(request, progress_id: int):
         progress.is_compressed = True
         progress.mime_type = new_mime
         progress.s3_key = new_key
-        progress.ipfs_cid = new_cid
-        if new_cid:
-            progress.final_url = storage_filebase.ipfs_url(new_cid)
-        else:
-            progress.final_url = f"/device/media/serve/{progress.id}"
+        progress.cloud_public_id = new_cid
+        progress.final_url = new_url or f"/device/media/serve/{progress.id}"
         progress.content_hash = None
         progress.filename = f"{old_base}{new_ext}"
         progress.save()
@@ -998,7 +992,7 @@ def compress_downloaded_image(request, progress_id: int):
             "savings_pct": round((1 - new_size / original_size) * 100, 1),
             "final_url": progress.final_url,
             "filename": progress.filename,
-            "storage": "filebase",
+            "storage": "cloud",
         })
 
     # ============= LOCAL BACKEND (existing logic) =============
@@ -1054,19 +1048,11 @@ def compress_downloaded_image(request, progress_id: int):
 
 
 # ====================================================================
-# 8. Serve / redirect a Filebase-stored file (lazily resolves CID)
+# 8. Serve / redirect a Cloud-stored file
 # ====================================================================
 @require_GET
 def media_serve_file(request, progress_id: int):
-    """Resolve a stored file and serve it (local) or proxy it (Filebase).
-
-    For Filebase rows:
-      - If CID is known → 302 redirect to the dedicated IPFS gateway.
-      - If CID is missing → try head_object once to resolve it.
-      - If still no CID → stream the file through our server using S3 creds
-        (never redirect to the raw S3 URL, which is always AccessDenied
-        on private buckets).
-    """
+    """Serve a stored file: redirect to Cloudinary URL (cloud) or stream (local)."""
     progress = (
         MediaUploadProgress.objects
         .filter(id=progress_id, is_complete=True)
@@ -1077,41 +1063,11 @@ def media_serve_file(request, progress_id: int):
     if not progress:
         return HttpResponse(status=404)
 
-    if progress.storage_backend == "filebase" and progress.s3_key:
-        storage_filebase = storage_filebase_mod
-        cid = progress.ipfs_cid
-        if not cid and storage_filebase.is_enabled():
-            try:
-                s3 = storage_filebase.get_client()
-                head = s3.head_object(
-                    Bucket=settings.FILEBASE_BUCKET, Key=progress.s3_key
-                )
-                cid = head.get("Metadata", {}).get("cid")
-                if cid:
-                    progress.ipfs_cid = cid
-                    progress.final_url = storage_filebase.ipfs_url(cid)
-                    progress.save(update_fields=["ipfs_cid", "final_url"])
-            except Exception:
-                logger.exception("CID lookup failed for progress %s", progress_id)
-        if cid:
-            return HttpResponseRedirect(storage_filebase.ipfs_url(cid))
-
-        # No CID available — proxy the file through our server from S3.
-        # This always works even on private buckets.
-        if storage_filebase.is_enabled():
-            try:
-                s3 = storage_filebase.get_client()
-                obj = s3.get_object(
-                    Bucket=settings.FILEBASE_BUCKET, Key=progress.s3_key
-                )
-                ctype = progress.mime_type or obj.get("ContentType", "application/octet-stream")
-                resp = HttpResponse(obj["Body"].read(), content_type=ctype)
-                resp["Cache-Control"] = "public, max-age=3600"
-                resp["Content-Disposition"] = f'inline; filename="{progress.filename or "file"}"'
-                return resp
-            except Exception:
-                logger.exception("S3 proxy failed for progress %s", progress_id)
-        return HttpResponse("File unavailable", status=502)
+    if progress.storage_backend == "cloud":
+        # Cloudinary URLs are public — just redirect
+        if progress.final_url and progress.final_url.startswith("http"):
+            return HttpResponseRedirect(progress.final_url)
+        return HttpResponse("Cloud URL unavailable", status=502)
 
     # Local backend — stream the file directly
     if progress.final_path and os.path.isfile(progress.final_path):
@@ -1123,94 +1079,76 @@ def media_serve_file(request, progress_id: int):
 
 
 # ====================================================================
-# 9. Backfill: re-resolve IPFS CIDs for any Filebase rows missing them
+# 9. Refresh Cloud URLs (update any stale final_url values)
 # ====================================================================
 @csrf_exempt
 def media_refresh_urls(request):
-    """Iterate Filebase rows whose ipfs_cid is missing or whose final_url
-    points at the (private) S3 endpoint, and re-fetch the CID."""
-    storage_filebase = storage_filebase_mod
-    if not storage_filebase.is_enabled():
-        return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
+    """Update final_url for Cloud rows that point at the serve proxy
+    instead of the direct Cloudinary URL."""
+    storage_cloud = storage_cloud_mod
+    if not storage_cloud.is_enabled():
+        return JsonResponse({"success": False, "message": "Cloud not configured"}, status=400)
 
     rows = MediaUploadProgress.objects.filter(
-        storage_backend="filebase", is_complete=True
+        storage_backend="cloud", is_complete=True
     ).only("id", "s3_key", "ipfs_cid", "final_url")
 
-    s3 = storage_filebase.get_client()
     fixed = 0
-    failed = 0
     skipped = 0
     for r in rows:
-        # Skip rows that already have a working IPFS URL on the configured gateway
-        gw = getattr(settings, "FILEBASE_IPFS_GATEWAY", "ipfs.filebase.io")
-        if r.ipfs_cid and r.final_url and gw and gw in (r.final_url or ""):
+        # Already has a direct Cloudinary URL
+        if r.final_url and "res.cloudinary.com" in r.final_url:
             skipped += 1
             continue
-        if not r.s3_key:
-            failed += 1
-            continue
-        try:
-            head = s3.head_object(Bucket=settings.FILEBASE_BUCKET, Key=r.s3_key)
-            cid = head.get("Metadata", {}).get("cid")
-            if cid:
-                r.ipfs_cid = cid
-                r.final_url = storage_filebase.ipfs_url(cid)
-                r.save(update_fields=["ipfs_cid", "final_url"])
-                fixed += 1
-            else:
-                failed += 1
-        except Exception:
-            logger.exception("Refresh failed for progress %s", r.id)
-            failed += 1
+        # Use the serve endpoint as fallback
+        r.final_url = f"/device/media/serve/{r.id}"
+        r.save(update_fields=["final_url"])
+        fixed += 1
 
     return JsonResponse({
         "success": True,
         "fixed": fixed,
-        "failed": failed,
         "skipped": skipped,
         "total": rows.count(),
     })
 
 
 # ====================================================================
-# 10. Filebase status / smoke test (diagnostics)
+# 10. Cloud status / smoke test (diagnostics)
 # ====================================================================
 @require_GET
-def filebase_status(request):
-    """Quick diagnostics: is Filebase enabled? Can we connect? Try a tiny upload."""
-    storage_filebase = storage_filebase_mod
+def cloud_status(request):
+    """Quick diagnostics: is Cloudinary enabled? Try a tiny upload."""
+    storage_cloud = storage_cloud_mod
     info = {
-        "USE_FILEBASE_STORAGE": getattr(settings, "USE_FILEBASE_STORAGE", False),
-        "FILEBASE_BUCKET": getattr(settings, "FILEBASE_BUCKET", None),
-        "FILEBASE_ENDPOINT": getattr(settings, "FILEBASE_ENDPOINT", None),
-        "FILEBASE_REGION": getattr(settings, "FILEBASE_REGION", None),
-        "has_access_key": bool(getattr(settings, "FILEBASE_ACCESS_KEY", None)),
-        "has_secret_key": bool(getattr(settings, "FILEBASE_SECRET_KEY", None)),
-        "is_enabled": storage_filebase.is_enabled(),
+        "CLOUDINARY_CLOUD_NAME": getattr(settings, "CLOUDINARY_CLOUD_NAME", None),
+        "CLOUDINARY_FOLDER": getattr(settings, "CLOUDINARY_FOLDER", None),
+        "has_api_key": bool(getattr(settings, "CLOUDINARY_API_KEY", None)),
+        "has_api_secret": bool(getattr(settings, "CLOUDINARY_API_SECRET", None)),
+        "is_enabled": storage_cloud.is_enabled(),
     }
     if not info["is_enabled"]:
-        info["error"] = "Filebase not enabled. Did you restart the server after editing .env?"
+        info["error"] = "Cloud not enabled. Did you restart the server after editing .env?"
         return JsonResponse(info, status=400)
 
     if request.GET.get("test") == "1":
         try:
             test_key = f"_diag/probe_{uuid.uuid4().hex[:8]}.txt"
-            url, cid = storage_filebase.upload_bytes(
-                b"filebase smoke test", test_key, "text/plain"
+            url, public_id = storage_cloud.upload_bytes(
+                b"cloudinary smoke test", test_key, "text/plain"
             )
-            info["test_upload"] = {"key": test_key, "url": url, "cid": cid}
-            storage_filebase.delete_key(test_key)
+            info["test_upload"] = {"key": test_key, "url": url, "public_id": public_id}
+            storage_cloud.delete_key(public_id)
             info["test_deleted"] = True
         except Exception as e:
-            logger.exception("Filebase smoke test failed")
+            logger.exception("Cloud smoke test failed")
             info["test_error"] = str(e)
             return JsonResponse(info, status=500)
     return JsonResponse(info)
 
 
 # ====================================================================
-# 11. Delete a downloaded file (local + Filebase)
+# 11. Delete a downloaded file (local + Cloud)
 # ====================================================================
 @csrf_exempt
 def media_delete_file(request, progress_id: int):
@@ -1223,15 +1161,15 @@ def media_delete_file(request, progress_id: int):
         return JsonResponse({"success": False, "message": "File not found"}, status=404)
 
     # Delete from storage
-    if progress.storage_backend == "filebase" and progress.s3_key:
-        # Only delete S3 object if no other row shares the same key
+    if progress.storage_backend == "cloud" and progress.s3_key:
+        # Only delete cloud object if no other row shares the same key
         shared = MediaUploadProgress.objects.filter(
             s3_key=progress.s3_key
         ).exclude(pk=progress.pk).exists()
         if not shared:
-            storage_filebase = storage_filebase_mod
-            if storage_filebase.is_enabled():
-                storage_filebase.delete_key(progress.s3_key)
+            storage_cloud = storage_cloud_mod
+            if storage_cloud.is_enabled():
+                storage_cloud.delete_key(progress.cloud_public_id or progress.s3_key)
     elif progress.final_path and os.path.isfile(progress.final_path):
         # Only delete local file if no other row shares the same path
         shared = MediaUploadProgress.objects.filter(
@@ -1253,23 +1191,23 @@ def media_delete_file(request, progress_id: int):
 
 
 # ====================================================================
-# 12. Move a local file to Filebase
+# 12. Move a local file to Cloud
 # ====================================================================
 @csrf_exempt
-def media_move_to_filebase(request, progress_id: int):
-    """Upload a locally-stored file to Filebase, then remove the local copy."""
+def media_move_to_cloud(request, progress_id: int):
+    """Upload a locally-stored file to Cloud, then remove the local copy."""
     if request.method != "POST":
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
 
-    storage_filebase = storage_filebase_mod
-    if not storage_filebase.is_enabled():
-        return JsonResponse({"success": False, "message": "Filebase not configured"}, status=400)
+    storage_cloud = storage_cloud_mod
+    if not storage_cloud.is_enabled():
+        return JsonResponse({"success": False, "message": "Cloud not configured"}, status=400)
 
     progress = MediaUploadProgress.objects.filter(id=progress_id, is_complete=True).first()
     if not progress:
         return JsonResponse({"success": False, "message": "File not found"}, status=404)
-    if progress.storage_backend == "filebase":
-        return JsonResponse({"success": False, "message": "Already on Filebase"}, status=400)
+    if progress.storage_backend == "cloud":
+        return JsonResponse({"success": False, "message": "Already on Cloud"}, status=400)
     if not progress.final_path or not os.path.isfile(progress.final_path):
         return JsonResponse({"success": False, "message": "Local file missing"}, status=404)
 
@@ -1279,11 +1217,11 @@ def media_move_to_filebase(request, progress_id: int):
     s3_key = f"{device_id}/{safe_name}"
 
     try:
-        url, cid = storage_filebase.upload_file(
+        url, cid = storage_cloud.upload_file(
             progress.final_path, s3_key, progress.mime_type
         )
     except Exception as e:
-        logger.exception("Move to Filebase failed for progress %s", progress_id)
+        logger.exception("Move to Cloud failed for progress %s", progress_id)
         return JsonResponse({"success": False, "message": f"Upload failed: {e}"}, status=500)
 
     # Remove local file only if no other row references it
@@ -1298,20 +1236,17 @@ def media_move_to_filebase(request, progress_id: int):
             pass
 
     # Update DB
-    progress.storage_backend = "filebase"
+    progress.storage_backend = "cloud"
     progress.s3_key = s3_key
-    progress.ipfs_cid = cid
+    progress.cloud_public_id = cid
     progress.final_path = ""
-    if cid:
-        progress.final_url = storage_filebase.ipfs_url(cid)
-    else:
-        progress.final_url = f"/device/media/serve/{progress.id}"
+    progress.final_url = url or f"/device/media/serve/{progress.id}"
     progress.save()
 
     return JsonResponse({
         "success": True,
-        "message": f"Moved to Filebase: {progress.filename}",
-        "storage": "filebase",
+        "message": f"Moved to Cloud: {progress.filename}",
+        "storage": "cloud",
         "final_url": progress.final_url,
-        "ipfs_cid": cid,
+        "cloud_public_id": cid,
     })

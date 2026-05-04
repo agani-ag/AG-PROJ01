@@ -118,9 +118,9 @@ urlpatterns = [
     path('device/media/compress/<int:progress_id>', media.compress_downloaded_image, name='compress_downloaded_image'),
     path('device/media/serve/<int:progress_id>', media.media_serve_file, name='media_serve_file'),
     path('device/media/delete/<int:progress_id>', media.media_delete_file, name='media_delete_file'),
-    path('device/media/move-to-filebase/<int:progress_id>', media.media_move_to_filebase, name='media_move_to_filebase'),
+    path('device/media/move-to-cloud/<int:progress_id>', media.media_move_to_cloud, name='media_move_to_cloud'),
     path('device/media/refresh-urls', media.media_refresh_urls, name='media_refresh_urls'),
-    path('device/media/filebase-status', media.filebase_status, name='filebase_status'),
+    path('device/media/cloud-status', media.cloud_status, name='cloud_status'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

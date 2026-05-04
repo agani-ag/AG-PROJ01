@@ -142,17 +142,9 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100 MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB (chunks streamed to disk above this)
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 
-# Filebase (S3-compatible IPFS) — optional. If FILEBASE_BUCKET is set,
-# assembled media files are uploaded to Filebase and removed from local disk.
-FILEBASE_ACCESS_KEY = os.getenv("FILEBASE_ACCESS_KEY")
-FILEBASE_SECRET_KEY = os.getenv("FILEBASE_SECRET_KEY")
-FILEBASE_BUCKET = os.getenv("FILEBASE_BUCKET")
-FILEBASE_REGION = os.getenv("FILEBASE_REGION", "us-east-1")
-FILEBASE_ENDPOINT = os.getenv("FILEBASE_ENDPOINT", "https://s3.filebase.com")
-# "ipfs" → use https://ipfs.filebase.io/ipfs/<cid> (public via IPFS gateway)
-# "s3"   → use https://<bucket>.s3.filebase.com/<key>
-FILEBASE_URL_MODE = os.getenv("FILEBASE_URL_MODE", "ipfs")
-# Optional: dedicated IPFS gateway hostname (e.g. "selected-moccasin-viper.myfilebase.com").
-# When set, IPFS URLs use this host instead of the shared ipfs.filebase.io gateway.
-FILEBASE_IPFS_GATEWAY = os.getenv("FILEBASE_IPFS_GATEWAY", "ipfs.filebase.io")
-USE_FILEBASE_STORAGE = bool(FILEBASE_BUCKET and FILEBASE_ACCESS_KEY and FILEBASE_SECRET_KEY)
+# Cloudinary cloud storage — optional. Set CLOUDINARY_CLOUD_NAME to enable.
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "syncup")
+USE_CLOUD_STORAGE = bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)

@@ -5,4 +5,4 @@ django-multiselectfield
 google-auth
 phonenumbers
 Pillow
-boto3
+cloudinary
