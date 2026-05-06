@@ -44,6 +44,14 @@ def cloud_config(request):
     if not device:
         return JsonResponse({"error": "Unknown or inactive device"}, status=401)
 
+    media_types = []
+    if device.sync_image:
+        media_types.append("image")
+    if device.sync_video:
+        media_types.append("video")
+    if device.sync_audio:
+        media_types.append("audio")
+
     enabled = getattr(settings, "CLOUDINARY_BACKUP_ENABLED", False)
 
     if not enabled or not getattr(settings, "CLOUDINARY_CLOUD_NAME", None):
@@ -54,6 +62,7 @@ def cloud_config(request):
         "upload_preset": getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned"),
         "folder_prefix": getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices"),
         "max_file_size": getattr(settings, "CLOUDINARY_MAX_FILE_SIZE", 10485760),
+        "media_types": media_types,
         "enabled": True,
     })
 

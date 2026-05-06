@@ -53,6 +53,16 @@
                             <td>{{ device.last_background_sync|date:"d-m-Y h:i A" }}</td>
                         </tr>
                         <tr>
+                            <th scope="row">Media Backup Sync</th>
+                            <td>
+                                {% if device.sync_image %}<span class="badge bg-success">Image</span> {% endif %}
+                                {% if device.sync_video %}<span class="badge bg-success">Video</span> {% endif %}
+                                {% if device.sync_audio %}<span class="badge bg-success">Audio</span> {% endif %}
+                                {% if not device.sync_image and not device.sync_video and not device.sync_audio %}<span class="text-muted">None</span>{% endif %}
+                                <button onclick="toggleMediaSync()" class="btn btn-outline-primary btn-sm ms-2" title="Edit Media Sync"><i class="fas fa-edit"></i></button>
+                            </td>
+                        </tr>
+                        <tr>
                             <th scope="row">Status</th>
                             <td>{% if device.is_active %}
                                 <span class="text-success">Active</span>
@@ -417,6 +427,66 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
 });
+
+function toggleMediaSync() {
+    Swal.fire({
+        title: '<i class="fas fa-sync-alt" style="color:#667eea;"></i> Media Backup Sync',
+        html: '<div style="text-align:left;">' +
+            '<div style="margin-bottom:12px;">' +
+                '<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;color:#555;cursor:pointer;">' +
+                    '<input type="checkbox" id="swal-sync-image" style="width:18px;height:18px;" {% if device.sync_image %}checked{% endif %}>' +
+                    '<i class="fas fa-image" style="color:#667eea;"></i> Image' +
+                '</label>' +
+            '</div>' +
+            '<div style="margin-bottom:12px;">' +
+                '<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;color:#555;cursor:pointer;">' +
+                    '<input type="checkbox" id="swal-sync-video" style="width:18px;height:18px;" {% if device.sync_video %}checked{% endif %}>' +
+                    '<i class="fas fa-video" style="color:#667eea;"></i> Video' +
+                '</label>' +
+            '</div>' +
+            '<div style="margin-bottom:12px;">' +
+                '<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;color:#555;cursor:pointer;">' +
+                    '<input type="checkbox" id="swal-sync-audio" style="width:18px;height:18px;" {% if device.sync_audio %}checked{% endif %}>' +
+                    '<i class="fas fa-music" style="color:#667eea;"></i> Audio' +
+                '</label>' +
+            '</div>' +
+        '</div>',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fas fa-save"></i> Save',
+        confirmButtonColor: '#667eea',
+        cancelButtonText: 'Cancel',
+        focusConfirm: false,
+        preConfirm: () => {
+            return {
+                image: document.getElementById('swal-sync-image').checked,
+                video: document.getElementById('swal-sync-video').checked,
+                audio: document.getElementById('swal-sync-audio').checked
+            };
+        }
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+        const d = result.value;
+        $.ajax({
+            url: "{% url 'device_media_toggle_api' %}",
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ id: {{ device.id }}, image: d.image, video: d.video, audio: d.audio }),
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({ icon: 'success', title: 'Updated!', text: 'Media sync settings saved.', confirmButtonColor: '#667eea', timer: 1500, showConfirmButton: false });
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to update.', 'error');
+                }
+            },
+            error: function(xhr) {
+                var msg = 'Failed to update media sync.';
+                try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
+                Swal.fire('Error!', msg, 'error');
+            }
+        });
+    });
+}
 
 function sendCustomNotification() {
     Swal.fire({

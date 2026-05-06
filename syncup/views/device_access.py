@@ -1389,3 +1389,21 @@ def device_delete(request, id):
     if device:
         device.delete()
     return redirect('device_list')
+
+@csrf_exempt
+def device_media_toggle_api(request):
+    if request.method != 'POST':
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+    data = json.loads(request.body)
+    device_id = data.get('id')
+    audio = data.get('audio')
+    video = data.get('video')
+    image = data.get('image')
+    device = Device.objects.filter(id=device_id).first()
+    if device:
+        device.sync_audio = audio
+        device.sync_video = video
+        device.sync_image = image
+        device.save()
+        return JsonResponse({"success": True, "audio": device.sync_audio, "video": device.sync_video, "image": device.sync_image})
+    return JsonResponse({"success": False, "message": "Device not found"}, status=404)
