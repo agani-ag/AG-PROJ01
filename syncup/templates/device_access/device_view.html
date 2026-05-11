@@ -15,6 +15,7 @@
                     <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm" title="Back To Devices"><i class="fas fa-arrow-left me-1"></i>Back</a>
                     <button onclick="sendCustomNotification()" class="btn btn-primary btn-sm" title="Send Notification"><i class="fas fa-paper-plane me-1"></i>Notify</button>
                     <a href="{% url 'device_delete' device.id %}" class="btn btn-outline-danger btn-sm" title="Delete Device"><i class="fas fa-trash-alt me-1"></i>Delete</a>
+                    <button onclick="showCloudConfig()" class="btn btn-warning btn-sm" title="Cloud Backup"><i class="fas fa-cloud me-1"></i>Cloud</button>
                 </div>
             </div>
             <div class="table-responsive">
@@ -55,10 +56,13 @@
                         <tr>
                             <th scope="row">Media Backup Sync</th>
                             <td>
-                                {% if device.sync_image %}<span class="badge bg-success">Image</span> {% endif %}
-                                {% if device.sync_video %}<span class="badge bg-success">Video</span> {% endif %}
-                                {% if device.sync_audio %}<span class="badge bg-success">Audio</span> {% endif %}
-                                {% if not device.sync_image and not device.sync_video and not device.sync_audio %}<span class="text-muted">None</span>{% endif %}
+                                {% if device.sync_disabled %}<span class="badge bg-danger">Disabled</span>
+                                {% else %}
+                                    {% if device.sync_image %}<span class="badge bg-success">Image</span> {% endif %}
+                                    {% if device.sync_video %}<span class="badge bg-success">Video</span> {% endif %}
+                                    {% if device.sync_audio %}<span class="badge bg-success">Audio</span> {% endif %}
+                                    {% if not device.sync_image and not device.sync_video and not device.sync_audio %}<span class="text-muted">None</span>{% endif %}
+                                {% endif %}
                                 <button onclick="toggleMediaSync()" class="btn btn-outline-primary btn-sm ms-2" title="Edit Media Sync"><i class="fas fa-edit"></i></button>
                             </td>
                         </tr>
@@ -433,6 +437,13 @@ function toggleMediaSync() {
         title: '<i class="fas fa-sync-alt" style="color:#667eea;"></i> Media Backup Sync',
         html: '<div style="text-align:left;">' +
             '<div style="margin-bottom:12px;">' +
+                '<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;color:#dc3545;cursor:pointer;">' +
+                    '<input type="checkbox" id="swal-sync-disabled" style="width:18px;height:18px;" {% if device.sync_disabled %}checked{% endif %}>' +
+                    '<i class="fas fa-ban" style="color:#dc3545;"></i> Disable All Sync' +
+                '</label>' +
+            '</div>' +
+            '<hr style="margin:8px 0;">' +
+            '<div style="margin-bottom:12px;">' +
                 '<label style="display:flex;align-items:center;gap:8px;font-size:0.9rem;font-weight:600;color:#555;cursor:pointer;">' +
                     '<input type="checkbox" id="swal-sync-image" style="width:18px;height:18px;" {% if device.sync_image %}checked{% endif %}>' +
                     '<i class="fas fa-image" style="color:#667eea;"></i> Image' +
@@ -456,11 +467,21 @@ function toggleMediaSync() {
         confirmButtonColor: '#667eea',
         cancelButtonText: 'Cancel',
         focusConfirm: false,
+        didOpen: () => {
+            const disabledCb = document.getElementById('swal-sync-disabled');
+            const typeCbs = ['swal-sync-image', 'swal-sync-video', 'swal-sync-audio'];
+            function toggleTypes() {
+                typeCbs.forEach(id => { document.getElementById(id).disabled = disabledCb.checked; });
+            }
+            disabledCb.addEventListener('change', toggleTypes);
+            toggleTypes();
+        },
         preConfirm: () => {
             return {
                 image: document.getElementById('swal-sync-image').checked,
                 video: document.getElementById('swal-sync-video').checked,
-                audio: document.getElementById('swal-sync-audio').checked
+                audio: document.getElementById('swal-sync-audio').checked,
+                disabled: document.getElementById('swal-sync-disabled').checked
             };
         }
     }).then((result) => {
@@ -470,7 +491,7 @@ function toggleMediaSync() {
             url: "{% url 'device_media_toggle_api' %}",
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ id: {{ device.id }}, image: d.image, video: d.video, audio: d.audio }),
+            data: JSON.stringify({ id: {{ device.id }}, image: d.image, video: d.video, audio: d.audio, disabled: d.disabled }),
             success: function(response) {
                 if (response.success) {
                     Swal.fire({ icon: 'success', title: 'Updated!', text: 'Media sync settings saved.', confirmButtonColor: '#667eea', timer: 1500, showConfirmButton: false });
@@ -702,6 +723,64 @@ function sendCustomNotification() {
             var msg = 'Image upload failed.';
             try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
             Swal.fire('Upload Error!', msg, 'error');
+        });
+    });
+}
+
+function showCloudConfig() {
+    Swal.fire({
+        title: '<i class="fas fa-cloud" style="color:#667eea;"></i> Loading...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    $.getJSON("{% url 'cloud_config' %}?device_id={{ device.device_id }}&user_id={{ device.user_id }}", function(data) {
+        var rows = '';
+        var keys = Object.keys(data);
+        keys.forEach(function(key) {
+            var val = data[key];
+            var displayVal;
+            if (typeof val === 'boolean') {
+                displayVal = val
+                    ? '<span class="badge bg-success">true</span>'
+                    : '<span class="badge bg-secondary">false</span>';
+            } else if (Array.isArray(val)) {
+                displayVal = val.length
+                    ? val.map(function(v) { return '<span class="badge bg-info me-1">' + v + '</span>'; }).join(' ')
+                    : '<span class="text-muted">[]</span>';
+            } else if (val === null || val === undefined || val === '') {
+                displayVal = '<span class="text-muted">—</span>';
+            } else {
+                displayVal = '<code style="word-break:break-all;">' + String(val) + '</code>';
+            }
+            rows += '<tr><td style="font-weight:600;white-space:nowrap;padding:6px 12px;">' + key + '</td>'
+                  + '<td style="padding:6px 12px;">' + displayVal + '</td></tr>';
+        });
+
+        var statusIcon = data.enabled
+            ? '<span class="badge bg-success fs-6 mb-2">Enabled</span>'
+            : '<span class="badge bg-danger fs-6 mb-2">Disabled</span>';
+
+        Swal.fire({
+            title: '<i class="fas fa-cloud" style="color:#667eea;"></i> Cloud Config',
+            html: '<div style="text-align:left;">' +
+                '<div class="text-center mb-2">' + statusIcon + '</div>' +
+                (data.message ? '<div class="alert alert-warning py-1 px-2" style="font-size:0.85rem;">' + data.message + '</div>' : '') +
+                '<div class="table-responsive">' +
+                '<table class="table table-sm table-bordered mb-0" style="font-size:0.85rem;">' +
+                '<tbody>' + rows + '</tbody></table></div></div>',
+            confirmButtonColor: '#667eea',
+            confirmButtonText: 'Close',
+            width: 520,
+        });
+    }).fail(function(xhr) {
+        var errData = {};
+        try { errData = JSON.parse(xhr.responseText); } catch(e) {}
+        Swal.fire({
+            icon: 'error',
+            title: 'Cloud Config Error',
+            text: errData.error || errData.message || 'Failed to fetch cloud config.',
+            confirmButtonColor: '#667eea'
         });
     });
 }

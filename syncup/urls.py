@@ -106,6 +106,14 @@ urlpatterns = [
     path('device/api/notifications/send', device_access.send_notification, name='send_notification'),
     path('device/api/media-toggle', device_access.device_media_toggle_api, name='device_media_toggle_api'),
     path('device/api/notifications/upload-image', device_access.upload_notification_image, name='upload_notification_image'),
+    path('device/api/reminders', device_access.reminders_api, name='reminders_api'),
+
+    # Reminder UI URLs
+    path('device/reminders', device_access.reminders, name='reminders'),
+    path('device/reminder/add', device_access.reminder_add, name='reminder_add'),
+    path('device/reminder/edit/<int:reminder_id>', device_access.reminder_edit, name='reminder_edit'),
+    path('device/reminder/delete/<int:reminder_id>', device_access.reminder_delete, name='reminder_delete'),
+    path('device/reminder/push', device_access.reminder_push, name='reminder_push'),
 
     # Media Cloud Config & Gallery
     path('device/api/cloud-config', media.cloud_config, name='cloud_config'),

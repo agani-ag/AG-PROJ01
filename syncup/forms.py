@@ -8,8 +8,8 @@ from django.contrib.auth.forms import (
 from .models import (
     ActivityLog, MaterialRequest, UserProfile,
     Worker, Leads, LinkRegistry, InstanceInfo,
-    Opportunity, WorkerCommissions, PublicUser
-
+    Opportunity, WorkerCommissions, PublicUser,
+    Reminder, Device
 )
 from urllib.parse import urlparse
 
@@ -235,6 +235,36 @@ class MaterialRequestForm(ModelForm):
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'description': forms.Textarea(attrs={'class': 'form-control'}),
             'lead': forms.Select(attrs={'class': 'form-control', 'required': 'true'}),
+        }
+
+WEEKDAY_CHOICES = [
+    (None, '---'),
+    (1, 'Sunday'),
+    (2, 'Monday'),
+    (3, 'Tuesday'),
+    (4, 'Wednesday'),
+    (5, 'Thursday'),
+    (6, 'Friday'),
+    (7, 'Saturday'),
+]
+
+class ReminderForm(ModelForm):
+    class Meta:
+        model = Reminder
+        fields = ['device', 'title', 'body', 'type', 'hour', 'minute',
+                  'weekday', 'seconds', 'date', 'enabled', 'sound']
+        widgets = {
+            'device': forms.Select(attrs={'class': 'form-control'}),
+            'title': forms.TextInput(attrs={'class': 'form-control'}),
+            'body': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'type': forms.Select(attrs={'class': 'form-control'}),
+            'hour': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 23}),
+            'minute': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'max': 59}),
+            'weekday': forms.Select(choices=WEEKDAY_CHOICES, attrs={'class': 'form-control'}),
+            'seconds': forms.NumberInput(attrs={'class': 'form-control', 'min': 60}),
+            'date': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'enabled': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'sound': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 class ActivityLogForm(ModelForm):

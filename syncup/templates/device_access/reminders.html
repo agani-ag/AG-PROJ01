@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Reminders{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+	<div class="col">
+		<h2>Reminders</h2>
+	</div>
+	<div class="col text-end">
+		<a href="{% url 'reminder_add' %}" class="btn btn-primary btn-sm btn-curve" title="Add Reminder">
+			<i class="fas fa-plus"></i></a>
+	</div>
+</div>
+
+<!-- Device Filter -->
+<div class="row mb-3">
+	<div class="col-12 col-md-4">
+		<select id="deviceFilter" class="form-select form-select-sm" onchange="filterByDevice()">
+			<option value="">All Devices</option>
+			{% for device in devices %}
+			<option value="{{ device.id }}" {% if selected_device_id == device.id %}selected{% endif %}>
+				{{ device.user_id }} — {{ device.device_id|truncatechars:20 }}
+			</option>
+			{% endfor %}
+		</select>
+	</div>
+</div>
+
+<table class="table table-striped table-bordered" id="reminder-table">
+	<thead class="table-dark">
+		<tr>
+			<th>Title</th>
+			<th>Type</th>
+			<th>Schedule</th>
+			<th>Enabled</th>
+			<th class="text-center" style="width: 100px;">Push</th>
+		</tr>
+	</thead>
+	<tbody>
+		{% for reminder in reminders %}
+		<tr>
+			<td>
+				<a href="{% url 'reminder_edit' reminder.id %}" class="text-decoration-none">
+					{{ reminder.title }}
+				</a>
+				<br><small class="text-muted">{{ reminder.device.user_id }} — {{ reminder.device.device_id|truncatechars:16 }}</small>
+			</td>
+			<td><span class="badge bg-info">{{ reminder.type }}</span></td>
+			<td>
+				{% if reminder.type == 'daily' %}
+					{{ reminder.hour|stringformat:"02d" }}:{{ reminder.minute|stringformat:"02d" }} daily
+				{% elif reminder.type == 'weekly' %}
+					{{ reminder.hour|stringformat:"02d" }}:{{ reminder.minute|stringformat:"02d" }} 
+					{% if reminder.weekday == 1 %}Sun{% elif reminder.weekday == 2 %}Mon{% elif reminder.weekday == 3 %}Tue{% elif reminder.weekday == 4 %}Wed{% elif reminder.weekday == 5 %}Thu{% elif reminder.weekday == 6 %}Fri{% elif reminder.weekday == 7 %}Sat{% endif %}
+				{% elif reminder.type == 'interval' %}
+					Every {{ reminder.seconds }}s
+				{% elif reminder.type == 'once' %}
+					{{ reminder.date|date:"d M Y, H:i" }}
+				{% endif %}
+			</td>
+			<td>
+				{% if reminder.enabled %}
+					<span class="badge bg-success">Yes</span>
+				{% else %}
+					<span class="badge bg-secondary">No</span>
+				{% endif %}
+			</td>
+			<td class="text-center">
+				<button class="btn btn-sm btn-outline-primary" title="Push to device"
+					onclick="pushReminder({{ reminder.id }}, 'set')">
+					<i class="fas fa-paper-plane"></i>
+				</button>
+				<button class="btn btn-sm btn-outline-danger" title="Cancel on device"
+					onclick="pushReminder({{ reminder.id }}, 'cancel')">
+					<i class="fas fa-ban"></i>
+				</button>
+			</td>
+		</tr>
+		{% empty %}
+		{% endfor %}
+	</tbody>
+</table>
+{% if not reminders %}
+<div class="text-center text-muted py-4">No reminders found.</div>
+{% endif %}
+
+<!-- Bulk Push Actions -->
+{% if reminders %}
+<div class="card shadow-sm p-3 mt-3">
+	<div class="d-flex gap-2 flex-wrap align-items-center">
+		<strong class="me-2">Bulk Actions:</strong>
+		<button class="btn btn-sm btn-primary" onclick="pushReminder(0, 'sync_all')" title="Push all enabled reminders to all devices">
+			<i class="fas fa-sync me-1"></i> Sync All
+		</button>
+		<button class="btn btn-sm btn-danger" onclick="pushReminder(0, 'cancel_all')" title="Cancel all reminders on all devices">
+			<i class="fas fa-times-circle me-1"></i> Cancel All
+		</button>
+	</div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+<script>
+$(document).ready(function() {
+	if ($('#reminder-table tbody tr').length > 0) {
+		var isMobile = window.innerWidth <= 768;
+		$('#reminder-table').DataTable({
+			"order": [],
+			"paging": true,
+			"lengthChange": !isMobile,
+			"searching": true,
+			"ordering": true,
+		});
+	}
+});
+
+function filterByDevice() {
+	var deviceId = document.getElementById('deviceFilter').value;
+	if (deviceId) {
+		window.location.href = "{% url 'reminders' %}?device_id=" + deviceId;
+	} else {
+		window.location.href = "{% url 'reminders' %}";
+	}
+}
+
+function pushReminder(reminderId, action) {
+	var confirmMsg = {
+		'set': 'Push this reminder to the device?',
+		'cancel': 'Cancel this reminder on the device?',
+		'sync_all': 'Sync ALL enabled reminders to their devices?',
+		'cancel_all': 'Cancel ALL reminders on ALL devices?'
+	};
+	if (!confirm(confirmMsg[action] || 'Proceed?')) return;
+
+	fetch("{% url 'reminder_push' %}", {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			'X-CSRFToken': '{{ csrf_token }}'
+		},
+		body: JSON.stringify({
+			reminder_id: reminderId,
+			action: action
+		})
+	})
+	.then(r => r.json())
+	.then(data => {
+		if (data.success) {
+			alert('Sent: ' + data.sent + ', Failed: ' + data.failed);
+		} else {
+			alert('Error: ' + data.message);
+		}
+	})
+	.catch(err => alert('Request failed: ' + err));
+}
+</script>
+{% endblock %}

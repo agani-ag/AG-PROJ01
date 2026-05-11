@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if is_edit %}Edit Reminder{% else %}Add Reminder{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+        <div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Reminder</h2>
+            {% else %}
+                <h2 class="fw-bold">Add Reminder</h2>
+            {% endif %}
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- Device -->
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <label class="form-label">Device</label>
+                    {{ form.device }}
+                </div>
+            </div>
+
+            <!-- Title & Type -->
+            <div class="row">
+                <div class="col-12 col-md-8 mb-3">
+                    <label class="form-label">Title</label>
+                    {{ form.title }}
+                </div>
+                <div class="col-12 col-md-4 mb-3">
+                    <label class="form-label">Type</label>
+                    {{ form.type }}
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <label class="form-label">Body</label>
+                    {{ form.body }}
+                </div>
+            </div>
+
+            <!-- Daily/Weekly: Hour & Minute -->
+            <div class="row schedule-fields" id="time-fields">
+                <div class="col-6 col-md-4 mb-3">
+                    <label class="form-label">Hour (0-23)</label>
+                    {{ form.hour }}
+                </div>
+                <div class="col-6 col-md-4 mb-3">
+                    <label class="form-label">Minute (0-59)</label>
+                    {{ form.minute }}
+                </div>
+                <div class="col-12 col-md-4 mb-3" id="weekday-field">
+                    <label class="form-label">Weekday</label>
+                    {{ form.weekday }}
+                </div>
+            </div>
+
+            <!-- Interval: Seconds -->
+            <div class="row schedule-fields" id="interval-fields">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Interval (seconds)</label>
+                    {{ form.seconds }}
+                </div>
+            </div>
+
+            <!-- Once: Date -->
+            <div class="row schedule-fields" id="once-fields">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Date & Time</label>
+                    {{ form.date }}
+                </div>
+            </div>
+
+            <!-- Enabled & Sound -->
+            <div class="row">
+                <div class="col-6 col-md-4 mb-3">
+                    <label class="form-label">Enabled</label><br>
+                    {{ form.enabled }}
+                </div>
+                <div class="col-6 col-md-4 mb-3">
+                    <label class="form-label">Sound</label><br>
+                    {{ form.sound }}
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                    <i class="fas fa-check me-2"></i>
+                </button>
+
+                {% if is_edit %}
+                <a href="#" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+                    <i class="fas fa-trash me-2"></i>
+                </a>
+                {% endif %}
+
+                <a href="{% url 'reminders' %}" class="btn btn-danger btn-lg flex-fill">
+                    <i class="fas fa-arrow-left me-2"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+function toggleScheduleFields() {
+    var type = document.getElementById('id_type').value;
+    // Hide all
+    document.querySelectorAll('.schedule-fields').forEach(el => el.style.display = 'none');
+    document.getElementById('weekday-field').style.display = 'none';
+
+    if (type === 'daily') {
+        document.getElementById('time-fields').style.display = 'flex';
+    } else if (type === 'weekly') {
+        document.getElementById('time-fields').style.display = 'flex';
+        document.getElementById('weekday-field').style.display = 'block';
+    } else if (type === 'interval') {
+        document.getElementById('interval-fields').style.display = 'flex';
+    } else if (type === 'once') {
+        document.getElementById('once-fields').style.display = 'flex';
+    }
+}
+
+document.getElementById('id_type').addEventListener('change', toggleScheduleFields);
+toggleScheduleFields();
+
+{% if is_edit %}
+function showDeleteAlert() {
+    if (confirm('Do you want to delete this reminder?')) {
+        window.location.href = "{% url 'reminder_delete' reminder.id %}";
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

@@ -51,6 +51,8 @@ def cloud_config(request):
         media_types.append("video")
     if device.sync_audio:
         media_types.append("audio")
+    if device.sync_disabled:
+        return JsonResponse({"enabled": False, "message": "Sync is disabled for this device"})
 
     enabled = getattr(settings, "CLOUDINARY_BACKUP_ENABLED", False)
 

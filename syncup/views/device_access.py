@@ -4,10 +4,12 @@ from django.utils import timezone
 from django.db.models import F, Q
 from django.http import JsonResponse
 from django.contrib.auth import authenticate
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.timezone import datetime, now
 from django.views.decorators.csrf import csrf_exempt
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 # Python standard libraries
 import os
 import re
@@ -28,8 +30,9 @@ from ..models import (
     CallLog, Contact, SystemInfo, User,
     LinkRegistry, InstanceInfo, PublicUser,
     Device, Location, SIMCard, DeviceInfo, NetworkInfo,
-    AuditError
+    AuditError, Reminder
 )
+from ..forms import ReminderForm
 
 # Variables
 PROJ01_URL = settings.PROJ01_URL
@@ -1399,11 +1402,238 @@ def device_media_toggle_api(request):
     audio = data.get('audio')
     video = data.get('video')
     image = data.get('image')
+    disabled = data.get('disabled', False)
     device = Device.objects.filter(id=device_id).first()
     if device:
         device.sync_audio = audio
         device.sync_video = video
         device.sync_image = image
+        device.sync_disabled = disabled
         device.save()
-        return JsonResponse({"success": True, "audio": device.sync_audio, "video": device.sync_video, "image": device.sync_image})
+        return JsonResponse({"success": True, "audio": device.sync_audio, "video": device.sync_video, "image": device.sync_image, "disabled": device.sync_disabled})
     return JsonResponse({"success": False, "message": "Device not found"}, status=404)
+
+
+# ==================== REMINDERS API ====================
+def reminders_api(request):
+    if request.method != 'GET':
+        return JsonResponse({"success": False, "message": "GET required"}, status=405)
+
+    user_id = request.GET.get('user_id')
+    device_id = request.GET.get('device_id')
+
+    if not user_id or not device_id:
+        return JsonResponse({"success": False, "message": "user_id and device_id required"}, status=400)
+
+    device = Device.objects.filter(user_id=user_id, device_id=device_id).first()
+    if not device:
+        return JsonResponse({"reminders": []})
+
+    reminders = Reminder.objects.filter(device=device, enabled=True)
+    data = []
+    for r in reminders:
+        item = {
+            "id": f"rem_{r.id:03d}",
+            "title": r.title,
+            "body": r.body,
+            "type": r.type,
+            "enabled": r.enabled,
+            "sound": r.sound,
+        }
+        if r.type in ('daily', 'weekly'):
+            item["hour"] = r.hour
+            item["minute"] = r.minute
+        if r.type == 'weekly':
+            item["weekday"] = r.weekday
+        if r.type == 'interval':
+            item["seconds"] = r.seconds
+        if r.type == 'once' and r.date:
+            item["date"] = r.date.isoformat()
+        data.append(item)
+
+    return JsonResponse({"reminders": data})
+
+
+# ==================== REMINDER CRUD VIEWS ====================
+@login_required
+def reminders(request):
+    device_id = request.GET.get('device_id')
+    qs = Reminder.objects.select_related('device').all()
+    selected_device_id = None
+    if device_id:
+        selected_device_id = int(device_id)
+        qs = qs.filter(device_id=selected_device_id)
+    return render(request, 'device_access/reminders.html', {
+        'reminders': qs,
+        'devices': Device.objects.filter(is_active=True),
+        'selected_device_id': selected_device_id,
+    })
+
+@login_required
+def reminder_add(request):
+    if request.method == 'POST':
+        form = ReminderForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Reminder added successfully.')
+            return redirect('reminders')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = ReminderForm()
+    return render(request, 'device_access/reminder_edit.html', {'form': form})
+
+@login_required
+def reminder_edit(request, reminder_id):
+    reminder = get_object_or_404(Reminder, id=reminder_id)
+    if request.method == 'POST':
+        form = ReminderForm(request.POST, instance=reminder)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Reminder updated successfully.')
+            return redirect('reminders')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = ReminderForm(instance=reminder)
+    return render(request, 'device_access/reminder_edit.html', {
+        'form': form, 'reminder': reminder, 'is_edit': True
+    })
+
+@login_required
+def reminder_delete(request, reminder_id):
+    reminder = get_object_or_404(Reminder, id=reminder_id)
+    device = reminder.device
+    reminder.delete()
+    # Push cancel to device
+    _push_reminder_to_device(device.push_token, {
+        'type': 'reminder_sync',
+        'action': 'cancel',
+        'reminder_id': f'rem_{reminder_id:03d}',
+    })
+    messages.success(request, 'Reminder deleted and cancel pushed to device.')
+    return redirect('reminders')
+
+
+# ==================== REMINDER FCM PUSH ====================
+def _build_reminder_payload(reminder):
+    """Build the reminder JSON object for FCM data payload."""
+    item = {
+        'id': f'rem_{reminder.id:03d}',
+        'title': reminder.title,
+        'body': reminder.body,
+        'type': reminder.type,
+        'enabled': reminder.enabled,
+        'sound': reminder.sound,
+    }
+    if reminder.type in ('daily', 'weekly'):
+        item['hour'] = reminder.hour
+        item['minute'] = reminder.minute
+    if reminder.type == 'weekly':
+        item['weekday'] = reminder.weekday
+    if reminder.type == 'interval':
+        item['seconds'] = reminder.seconds
+    if reminder.type == 'once' and reminder.date:
+        item['date'] = reminder.date.isoformat()
+    return item
+
+
+def _push_reminder_to_device(push_token, data_payload):
+    """Send a data-only FCM message to a single device."""
+    access_token = get_fcm_token()
+    if not access_token:
+        return False
+    url = f'https://fcm.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/messages:send'
+    # All values in data must be strings
+    str_data = {k: str(v) if not isinstance(v, str) else v for k, v in data_payload.items()}
+    payload = {
+        'message': {
+            'token': push_token,
+            'data': str_data,
+        }
+    }
+    try:
+        resp = requests.post(url, headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        }, json=payload)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+@csrf_exempt
+def reminder_push(request):
+    """Push reminder commands to devices via FCM data-only messages."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'POST required'}, status=405)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Invalid JSON'}, status=400)
+
+    action = data.get('action')
+    reminder_id = data.get('reminder_id', 0)
+    sent, failed = 0, 0
+
+    if action == 'set' and reminder_id:
+        # Push a single reminder to its device
+        reminder = Reminder.objects.select_related('device').filter(id=reminder_id).first()
+        if not reminder:
+            return JsonResponse({'success': False, 'message': 'Reminder not found'}, status=404)
+        payload = {
+            'type': 'reminder_sync',
+            'action': 'set',
+            'reminder': json.dumps(_build_reminder_payload(reminder)),
+        }
+        ok = _push_reminder_to_device(reminder.device.push_token, payload)
+        sent, failed = (1, 0) if ok else (0, 1)
+
+    elif action == 'cancel' and reminder_id:
+        # Cancel a single reminder on its device
+        reminder = Reminder.objects.select_related('device').filter(id=reminder_id).first()
+        if not reminder:
+            return JsonResponse({'success': False, 'message': 'Reminder not found'}, status=404)
+        payload = {
+            'type': 'reminder_sync',
+            'action': 'cancel',
+            'reminder_id': f'rem_{reminder.id:03d}',
+        }
+        ok = _push_reminder_to_device(reminder.device.push_token, payload)
+        sent, failed = (1, 0) if ok else (0, 1)
+
+    elif action == 'sync_all':
+        # Push all enabled reminders grouped by device
+        devices = Device.objects.filter(is_active=True, reminders__enabled=True).distinct()
+        for device in devices:
+            device_reminders = Reminder.objects.filter(device=device, enabled=True)
+            reminders_list = [_build_reminder_payload(r) for r in device_reminders]
+            payload = {
+                'type': 'reminder_sync',
+                'action': 'sync_all',
+                'reminders': json.dumps(reminders_list),
+            }
+            ok = _push_reminder_to_device(device.push_token, payload)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+
+    elif action == 'cancel_all':
+        # Cancel all reminders on all active devices
+        devices = Device.objects.filter(is_active=True)
+        for device in devices:
+            payload = {
+                'type': 'reminder_sync',
+                'action': 'cancel_all',
+            }
+            ok = _push_reminder_to_device(device.push_token, payload)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+
+    else:
+        return JsonResponse({'success': False, 'message': 'Invalid action'}, status=400)
+
+    return JsonResponse({'success': True, 'sent': sent, 'failed': failed})

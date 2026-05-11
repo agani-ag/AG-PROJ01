@@ -429,6 +429,7 @@ class Device(models.Model):
     sync_image = models.BooleanField(default=True)
     sync_video = models.BooleanField(default=False)
     sync_audio = models.BooleanField(default=False)
+    sync_disabled = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.user_id} - {self.device_id}"
@@ -543,6 +544,35 @@ class CallLog(models.Model):
     call_type = models.CharField(max_length=20)  # incoming, outgoing, missed
     timestamp = models.DateTimeField()
     duration_seconds = models.IntegerField()
+
+# =============== Reminder ===============
+class Reminder(models.Model):
+    REMINDER_TYPES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('interval', 'Interval'),
+        ('once', 'Once'),
+    ]
+
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="reminders", db_index=True)
+    title = models.CharField(max_length=255)
+    body = models.TextField(blank=True, default="")
+    type = models.CharField(max_length=10, choices=REMINDER_TYPES, default='daily')
+    hour = models.IntegerField(null=True, blank=True)        # for daily/weekly
+    minute = models.IntegerField(null=True, blank=True)      # for daily/weekly
+    weekday = models.IntegerField(null=True, blank=True)     # for weekly (1=Sun, 2=Mon, ...)
+    seconds = models.IntegerField(null=True, blank=True)     # for interval
+    date = models.DateTimeField(null=True, blank=True)       # for once
+    enabled = models.BooleanField(default=True)
+    sound = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} ({self.type}) - {self.device.user_id}"
+
+    class Meta:
+        ordering = ['-created_at']
     date_time = models.CharField(max_length=20)
     raw_type = models.CharField(max_length=50, null=True, blank=True)
 
