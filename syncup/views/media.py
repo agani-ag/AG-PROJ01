@@ -111,24 +111,7 @@ GALLERY_PAGE_SIZE = 48
 
 def _list_cloudinary_resources(resource_type, folder, next_cursor=None, max_results=GALLERY_PAGE_SIZE):
     """Fetch resources from Cloudinary Admin API for a given folder."""
-    storage_cloud_mod._ensure_configured()
-    import cloudinary.api
-
-    params = {
-        "type": "upload",
-        "prefix": folder,
-        "max_results": max_results,
-        "direction": -1,
-    }
-    if next_cursor:
-        params["next_cursor"] = next_cursor
-
-    try:
-        result = cloudinary.api.resources(resource_type=resource_type, **params)
-        return result.get("resources", []), result.get("next_cursor")
-    except Exception as e:
-        logger.exception("Cloudinary list failed for %s/%s", resource_type, folder)
-        return [], None
+    return storage_cloud_mod.list_resources(resource_type, folder, next_cursor, max_results)
 
 
 @require_GET

@@ -711,7 +711,7 @@ function sendCustomNotification() {
                             ${payload.data_only ? '<span class="badge bg-warning ms-1">Silent</span>' : ''}
                         </div>`,
                         confirmButtonColor: '#667eea'
-                    });
+                    }).then(() => location.reload());
                 },
                 error: function(xhr) {
                     var msg = 'Failed to send notification.';

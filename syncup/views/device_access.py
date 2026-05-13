@@ -1633,6 +1633,20 @@ def reminder_push(request):
             else:
                 failed += 1
 
+    elif action == 'refresh':
+        # Tell all active devices to re-fetch reminders from the API
+        devices = Device.objects.filter(is_active=True)
+        for device in devices:
+            payload = {
+                'type': 'reminder_sync',
+                'action': 'refresh',
+            }
+            ok = _push_reminder_to_device(device.push_token, payload)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+
     else:
         return JsonResponse({'success': False, 'message': 'Invalid action'}, status=400)
 

@@ -85,20 +85,22 @@
 <div class="text-center text-muted py-4">No reminders found.</div>
 {% endif %}
 
-<!-- Bulk Push Actions -->
-{% if reminders %}
 <div class="card shadow-sm p-3 mt-3">
 	<div class="d-flex gap-2 flex-wrap align-items-center">
 		<strong class="me-2">Bulk Actions:</strong>
+		<button class="btn btn-sm btn-success" onclick="pushReminder(0, 'refresh')" title="Tell all devices to re-fetch reminders from API">
+			<i class="fas fa-satellite-dish me-1"></i> Refresh Devices
+		</button>
+		{% if reminders %}
 		<button class="btn btn-sm btn-primary" onclick="pushReminder(0, 'sync_all')" title="Push all enabled reminders to all devices">
 			<i class="fas fa-sync me-1"></i> Sync All
 		</button>
 		<button class="btn btn-sm btn-danger" onclick="pushReminder(0, 'cancel_all')" title="Cancel all reminders on all devices">
 			<i class="fas fa-times-circle me-1"></i> Cancel All
 		</button>
+		{% endif %}
 	</div>
 </div>
-{% endif %}
 
 {% endblock %}
 
@@ -131,7 +133,8 @@ function pushReminder(reminderId, action) {
 		'set': 'Push this reminder to the device?',
 		'cancel': 'Cancel this reminder on the device?',
 		'sync_all': 'Sync ALL enabled reminders to their devices?',
-		'cancel_all': 'Cancel ALL reminders on ALL devices?'
+		'cancel_all': 'Cancel ALL reminders on ALL devices?',
+		'refresh': 'Tell all devices to re-fetch reminders from the API?'
 	};
 	if (!confirm(confirmMsg[action] || 'Proceed?')) return;
 
