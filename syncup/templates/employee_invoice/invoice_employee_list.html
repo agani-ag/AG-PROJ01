@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="row">
+	<div class="col">
+		<h2>Employee Invoices</h2>
+	</div>
+</div>
+
+<table class="table table-striped table-bordered" id="invoices-table">
+	<thead class="table-dark">
+		<tr>
+			<th>Name</th>
+			<th>Invoice Count</th>
+			<th>Invoice Amount</th>
+		</tr>
+	</thead>
+	<tbody class="two-col-form">
+		{% for emp in employees %}
+		<tr onclick="window.location='{% url 'employee_invoices' emp.id %}'" style="cursor: pointer;">
+			<td>{{ emp.userprofile.name }}</td>
+			<td>{{ emp.invoice_count }}</td>
+			<td>₹ {{ emp.invoice_amount|default:"0"|floatformat:2 }}</td>
+		</tr>
+		{% endfor %}
+	</tbody>
+</table>
+
+{% endblock %}
+
+{% block script %}
+<script>
+$(document).ready( function () {
+	var isMobile = window.innerWidth <= 768;
+	$('#invoices-table').DataTable({
+		"order": [],
+		"columnDefs": [],
+		"paging": true,
+        "lengthChange": !isMobile,
+        "searching": true,
+        "ordering": true,
+        });
+});
+</script>
+{% endblock %}

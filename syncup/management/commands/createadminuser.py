@@ -27,4 +27,4 @@ class Command(BaseCommand):
         # Create associated UserProfile
         user = User.objects.get(username=username)
         encoded_credentials = base64.b64encode(f"{user.username}:{password}".encode()).decode()
-        UserProfile.objects.create(user=user, name=username, encoded_credentials=encoded_credentials)
+        UserProfile.objects.create(user=user, name=username, encoded_credentials=encoded_credentials, special_menus_access=True)

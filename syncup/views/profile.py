@@ -1,11 +1,12 @@
 # Django imports
 import json
-
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import (
     render, redirect, get_object_or_404
 )
 from django.contrib.auth.models import User
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 
 # Imports
@@ -14,8 +15,7 @@ from ..forms import (
     UserProfileEditForm
 )
 from ..models import (
-    PublicUser,
-    UserProfile
+    PublicUser, UserProfile, InvoiceEmployeeMapping
 )
 
 # =============== AUTH VIEWS ===============

@@ -17,6 +17,7 @@
 		<tr>
 			<th>Name</th>
 			<th>Phone</th>
+			<th>Roles</th>
 		</tr>
 	</thead>
 	<tbody class="two-col-form">
@@ -27,6 +28,15 @@
 					<a href="tel:{{ user.phone }}" style="text-decoration: none;">{{ user.phone }}</a>
 				{% else %}
 					<span class="text-danger">N/A</span>
+				{% endif %}
+			</td>
+			<td>
+				{% if user.user.is_superuser %}
+					<span class="badge bg-success">Admin</span>
+				{% elif user.user.is_staff %}
+					<span class="badge bg-warning">Staff</span>
+				{% else %}
+					<span class="badge bg-secondary">User</span>
 				{% endif %}
 			</td>
 		</tr>

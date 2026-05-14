@@ -3,13 +3,13 @@ from datetime import date
 from django.forms import ModelForm
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import (
-    UserCreationForm, AuthenticationForm
+    AuthenticationForm
 )
 from .models import (
     ActivityLog, MaterialRequest, UserProfile,
     Worker, Leads, LinkRegistry, InstanceInfo,
     Opportunity, WorkerCommissions, PublicUser,
-    Reminder, Device
+    Reminder
 )
 from urllib.parse import urlparse
 
@@ -69,7 +69,7 @@ class UserProfileForm(ModelForm):
 class UserProfileEditForm(ModelForm):
     class Meta:
         model = UserProfile
-        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude', 'salary', 'working_days']
+        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude', 'salary', 'working_days', 'special_menus_access']
         widgets = {
             'working_days': forms.CheckboxSelectMultiple(),
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -81,6 +81,7 @@ class UserProfileEditForm(ModelForm):
             'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'salary': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
+            'special_menus_access': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
 class PublicUserForm(ModelForm):

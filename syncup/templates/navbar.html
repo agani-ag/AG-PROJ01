@@ -38,8 +38,31 @@
                 </li>
                 {% endif %}
 
+                <!-- Track Dropdown -->
+                {% if user.is_superuser or user.is_staff %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="trackDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Track
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="trackDropdown">
+                        {% if user.is_superuser %}
+                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
+                        <li><a class="dropdown-item" href="{% url 'invoice_employee_list' %}">Invoices</a></li>
+                        <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
+                        {% endif %}
+                        {% if user.is_staff and not user.is_superuser %}
+                        <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
+                        <li><a class="dropdown-item" href="{% url 'employee_invoices' user.id %}">My Invoices</a></li>
+                        <div class="dropdown-divider"></div>
+                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+
                 <!-- Devices Dropdown -->
-                {% if user.is_superuser %}
+                {% if user.is_superuser and user.userprofile.special_menus_access %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="devicesDropdown"
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -64,23 +87,16 @@
                 {% endif %}
                 
                 <!-- Settings Dropdown -->
-                {% if user.is_superuser or user.is_staff %}
+                {% if user.is_superuser %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="settingsDropdown"
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Settings
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
-                        {% if user.is_superuser %}
-                        <h6 class="dropdown-header">Members</h6>
-                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                        <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
+                        <h6 class="dropdown-header">Feature</h6>
                         <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
                         <div class="dropdown-divider"></div>
-                        {% endif %}
-                        {% if user.is_staff and not user.is_superuser %}
-                            <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
-                        {% endif %}
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
                     </ul>
                 </li>

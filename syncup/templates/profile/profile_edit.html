@@ -92,6 +92,9 @@
 
                     <label class="form-label">Active</label>
                     <input type="checkbox" {{ auth_user.is_active|yesno:"checked," }} name="is_active">
+
+                    <label class="form-label">Special Menus Access</label>
+                    {{ profile_form.special_menus_access }}
                 </div>
             </div>
 

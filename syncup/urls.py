@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     auth, views, link_registry,
     profile, attendance, crm,
-    device_access, test, media
+    device_access, test, media,
+    employee_invoice
 )
 
 urlpatterns = [
@@ -30,6 +31,11 @@ urlpatterns = [
     path('public-user/add', profile.public_user_add, name='public_user_add'),
     path('public-user/edit/<int:public_user_id>', profile.public_user_edit, name='public_user_edit'),
     path('public-user/delete/<int:public_user_id>', profile.public_user_delete, name='public_user_delete'),
+
+    # Employee-Invoice Mapping URLs
+    path('employee-invoice-list', employee_invoice.invoice_employee_list, name='invoice_employee_list'),
+    path('employee-invoices/<int:user_id>', employee_invoice.employee_invoices, name='employee_invoices'),
+    path('api/invoice-employee-mapping', employee_invoice.invoice_employee_mapping_api, name='invoice_employee_mapping_api'),
 
     # Link Registry URL
     path('link-registry', link_registry.link_registry, name='link_registry'),

@@ -46,6 +46,9 @@ class UserProfile(models.Model):
     encoded_credentials = models.CharField(max_length=255, blank=True, null=True)
     random_password = models.CharField(max_length=255, blank=True, null=True)
 
+    # Access Control
+    special_menus_access = models.BooleanField(default=False)
+
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.strip().title()
@@ -642,3 +645,17 @@ class AuditError(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+
+# =============== Employee Person ===============
+class InvoiceEmployeeMapping(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    invoice_id = models.IntegerField()
+    invoice_number = models.CharField(max_length=100)
+    invoice_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    invoice_date = models.DateField()
+    invoice_brand = models.CharField(max_length=100, blank=True, null=True)
+    invoice_brand_id = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.invoice_number}"
