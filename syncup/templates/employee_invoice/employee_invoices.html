@@ -18,9 +18,11 @@
 						<small class="text-muted">Employee Invoices</small>
 					</div>
 					<div class="d-flex gap-2">
+						{% if user.is_superuser %}
 						<a href="{% url 'invoice_employee_list' %}" class="btn btn-outline-secondary btn-sm">
 							<i class="fas fa-arrow-left me-1"></i>Back
 						</a>
+						{% endif %}
 						<button onclick="printInvoices()" class="btn btn-outline-primary btn-sm">
 							<i class="fas fa-print me-1"></i>Print
 						</button>
@@ -102,7 +104,7 @@
 						</thead>
 						<tbody>
 							{% for mapping in invoice_mappings %}
-							<tr>
+							<tr style="cursor:pointer;" onclick="showInvoiceInfo({{ mapping.id }}, '{{ mapping.invoice_number }}', '{{ mapping.invoice_amount|default:0 }}', '{{ mapping.invoice_date|date:"d-m-Y" }}', '{{ mapping.invoice_brand|default:"-" }}', '{{ mapping.invoice_id }}')">
 								<td>{{ forloop.counter }}</td>
 								<td>{{ mapping.invoice_number }}</td>
 								<td class="text-end">₹ {{ mapping.invoice_amount|default:"0"|floatformat:2 }}</td>
@@ -210,6 +212,57 @@ $(document).ready(function () {
 		}
 	});
 });
+
+function showInvoiceInfo(mappingId, invNo, amount, date, brand, invId) {
+	Swal.fire({
+		title: '<i class="fas fa-file-invoice text-primary"></i> Invoice Details',
+		html: `<div style="text-align:left;font-size:0.9rem;">
+			<table class="table table-sm table-bordered mb-0">
+				<tr><th style="width:40%;">Invoice No</th><td><strong>${invNo}</strong></td></tr>
+				<tr><th>Amount</th><td>₹ ${parseFloat(amount).toFixed(2)}</td></tr>
+				<tr><th>Date</th><td>${date}</td></tr>
+				<tr><th>Brand</th><td><span class="badge bg-primary">${brand}</span></td></tr>
+				<tr><th>Invoice ID</th><td><code>${invId}</code></td></tr>
+			</table>
+		</div>`,
+		showCancelButton: true,
+		showDenyButton: true,
+		confirmButtonText: 'Close',
+		denyButtonText: '<i class="fas fa-trash-alt"></i> Delete',
+		confirmButtonColor: '#667eea',
+		denyButtonColor: '#dc3545',
+		cancelButtonText: 'Cancel',
+		showCancelButton: false,
+	}).then((result) => {
+		if (result.isDenied) {
+			Swal.fire({
+				title: 'Delete this mapping?',
+				text: `Invoice ${invNo} (₹ ${parseFloat(amount).toFixed(2)})`,
+				icon: 'warning',
+				showCancelButton: true,
+				confirmButtonText: 'Yes, Delete',
+				confirmButtonColor: '#dc3545',
+				cancelButtonText: 'Cancel',
+			}).then((confirm) => {
+				if (confirm.isConfirmed) {
+					$.ajax({
+						url: `/api/invoice-mapping-delete/${mappingId}`,
+						method: 'DELETE',
+						success: function(resp) {
+							Swal.fire({icon:'success', title:'Deleted!', text: resp.message, timer:1500, showConfirmButton:false});
+							setTimeout(() => location.reload(), 1500);
+						},
+						error: function(xhr) {
+							var msg = 'Failed to delete.';
+							try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+							Swal.fire('Error!', msg, 'error');
+						}
+					});
+				}
+			});
+		}
+	});
+}
 
 function printInvoices() {
 	var printContent = document.getElementById('print-area').innerHTML;

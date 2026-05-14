@@ -36,6 +36,7 @@ urlpatterns = [
     path('employee-invoice-list', employee_invoice.invoice_employee_list, name='invoice_employee_list'),
     path('employee-invoices/<int:user_id>', employee_invoice.employee_invoices, name='employee_invoices'),
     path('api/invoice-employee-mapping', employee_invoice.invoice_employee_mapping_api, name='invoice_employee_mapping_api'),
+    path('api/invoice-mapping-delete/<int:mapping_id>', employee_invoice.invoice_mapping_delete, name='invoice_mapping_delete'),
 
     # Link Registry URL
     path('link-registry', link_registry.link_registry, name='link_registry'),

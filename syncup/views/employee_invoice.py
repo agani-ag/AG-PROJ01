@@ -138,3 +138,15 @@ def invoice_employee_mapping_api(request):
         employees = User.objects.filter(is_staff=True).exclude(is_superuser=True).select_related('userprofile')
         data = [{'id': e.id, 'username': e.userprofile.name or e.username} for e in employees]
         return JsonResponse({'employees': data})
+
+
+@csrf_exempt
+@login_required
+def invoice_mapping_delete(request, mapping_id):
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'DELETE method required.'}, status=405)
+    mapping = InvoiceEmployeeMapping.objects.filter(id=mapping_id).first()
+    if not mapping:
+        return JsonResponse({'error': 'Mapping not found.'}, status=404)
+    mapping.delete()
+    return JsonResponse({'message': 'Mapping deleted successfully.'})
