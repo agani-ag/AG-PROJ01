@@ -149,10 +149,6 @@ CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "syncup")
 USE_CLOUD_STORAGE = bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
 
-# Universal HTTP proxy — relay blocked outbound requests through VPS
-# Set CLOUD_PROXY_URL to enable (e.g. "https://your-vps.com")
-CLOUD_PROXY_URL = os.getenv("CLOUD_PROXY_URL", "")
-
 # Cloudinary device-backup config (served via /device/api/cloud-config)
 CLOUDINARY_UPLOAD_PRESET = os.getenv("CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned")
 CLOUDINARY_FOLDER_PREFIX = os.getenv("CLOUDINARY_FOLDER_PREFIX", "devices")

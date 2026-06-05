@@ -16,6 +16,7 @@ urlpatterns = [
     path('logout', auth.logout_view, name='logout'),
     # API URLs
     path('api/auth/login', auth.auth_login_api, name='api_login'),
+    path('api/passkey-auth', auth.passkey_auth, name='passkey_auth'),
     path('download/sqlite', auth.download_sqlite, name='download_sqlite'),
     path('api/auth/reset-password', auth.reset_password_api, name='api_reset_password'),
     path('api/telegram/send', views.send_telegram_message_api, name='send_telegram_message_api'),
@@ -126,7 +127,10 @@ urlpatterns = [
     path('device/api/cloud-config', media.cloud_config, name='cloud_config'),
     path('device/media/cloud-status', media.cloud_status, name='cloud_status'),
     path('device/media/gallery', media.cloud_gallery, name='cloud_gallery'),
+    path('device/media/gallery-api', media.cloud_gallery_api, name='cloud_gallery_api'),
+    path('device/media/file-info', media.cloud_file_info_api, name='cloud_file_info_api'),
     path('device/media/cloud-delete', media.cloud_delete_file, name='cloud_delete_file'),
+    path('device/media/cloud-remove-duplicates', media.cloud_remove_duplicates, name='cloud_remove_duplicates'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

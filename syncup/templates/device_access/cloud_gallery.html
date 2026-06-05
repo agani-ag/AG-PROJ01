@@ -15,6 +15,9 @@
   .gallery-meta { font-size: 0.72rem; color: #888; margin-top: 4px; }
   .gallery-actions { display: flex; gap: 6px; margin-top: 8px; }
   .gallery-actions .btn { font-size: 0.75rem; padding: 3px 10px; }
+  .stat-badge { font-size: 0.78rem; padding: 4px 10px; }
+  .gallery-loader { text-align: center; padding: 60px 0; }
+  .gallery-loader .spinner-border { width: 3rem; height: 3rem; }
 
   /* Lightbox */
   .lightbox-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 9999; align-items: center; justify-content: center; }
@@ -33,6 +36,9 @@
       <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <h4 class="fw-bold mb-0"><i class="fas fa-cloud me-2"></i>Cloud Gallery</h4>
         <div class="d-flex gap-2">
+          <button class="btn btn-outline-warning btn-sm" onclick="removeDuplicates()">
+            <i class="fas fa-clone me-1"></i>Remove Duplicates
+          </button>
           <button class="btn btn-outline-info btn-sm" onclick="checkCloudStatus()">
             <i class="fas fa-heartbeat me-1"></i>Cloud Status
           </button>
@@ -47,90 +53,55 @@
       {% else %}
 
       <!-- Filters -->
-      <form method="get" class="row g-2 mb-3 align-items-end">
-        <div class="col-md-4">
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-md-3">
           <label class="form-label small fw-semibold mb-1">Device</label>
-          <select name="device" class="form-select form-select-sm" onchange="this.form.submit()">
-            <option value="">— All devices —</option>
+          <select id="filterDevice" class="form-select form-select-sm" onchange="reloadGallery()">
+            <option value="">— All Devices —</option>
             {% for d in devices %}
               <option value="{{ d.device_id }}" {% if device_filter == d.device_id %}selected{% endif %}>
-                {{ d.user_id|capfirst }} | {{ d.platform }} | {{ d.device_id }}
+                {{ d.user_id|capfirst }} ({{ d.platform }})
               </option>
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label small fw-semibold mb-1">Type</label>
-          <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
-            <option value="all" {% if media_filter == "all" %}selected{% endif %}>All</option>
+          <select id="filterType" class="form-select form-select-sm" onchange="reloadGallery()">
             <option value="image" {% if media_filter == "image" %}selected{% endif %}>Images</option>
             <option value="video" {% if media_filter == "video" %}selected{% endif %}>Videos</option>
-            <option value="raw" {% if media_filter == "raw" %}selected{% endif %}>Other Files</option>
+            <option value="raw" {% if media_filter == "raw" %}selected{% endif %}>Other</option>
           </select>
         </div>
-        <div class="col-md-2">
-          <span class="badge bg-secondary">{{ total_count }} file{{ total_count|pluralize }}</span>
+        <div class="col-md-3">
+          <label class="form-label small fw-semibold mb-1">Search</label>
+          <input type="text" class="form-control form-control-sm" id="gallerySearch" placeholder="Filter by filename..." oninput="filterGallery()">
         </div>
-      </form>
-
-      <!-- Gallery Grid -->
-      {% if gallery %}
-      <div class="gallery-grid">
-        {% for item in gallery %}
-        <div class="gallery-card">
-          {% if item.is_image and item.thumbnail_url %}
-            <img src="{{ item.thumbnail_url }}" alt="{{ item.filename }}" class="gallery-thumb"
-                 onclick="openLightbox('{{ item.secure_url }}', '{{ item.download_url }}', '{{ item.filename }}')"
-                 loading="lazy">
-          {% elif item.resource_type == "video" %}
-            <div class="gallery-icon" onclick="window.open('{{ item.secure_url }}', '_blank')">
-              <i class="fas fa-file-video"></i>
-            </div>
-          {% else %}
-            <div class="gallery-icon" onclick="window.open('{{ item.secure_url }}', '_blank')">
-              <i class="fas fa-file-alt"></i>
-            </div>
-          {% endif %}
-
-          <div class="gallery-body">
-            <div class="gallery-filename" title="{{ item.public_id }}">{{ item.filename }}</div>
-            <div class="gallery-meta">
-              {{ item.bytes|filesizeformat }}
-              {% if item.width and item.height %} · {{ item.width }}×{{ item.height }}{% endif %}
-              {% if item.device_id %}<br><i class="fas fa-mobile-alt"></i> {{ item.device_id|truncatechars:20 }}{% endif %}
-              <br>{{ item.created_at|truncatechars:19 }}
-            </div>
-            <div class="gallery-actions">
-              <a href="{{ item.secure_url }}" target="_blank" class="btn btn-outline-primary btn-sm" title="View">
-                <i class="fas fa-eye"></i>
-              </a>
-              <a href="{{ item.download_url }}" class="btn btn-outline-success btn-sm" title="Download">
-                <i class="fas fa-download"></i>
-              </a>
-              <button class="btn btn-outline-danger btn-sm" title="Delete" onclick="deleteFile('{{ item.public_id }}', '{{ item.resource_type }}', '{{ item.filename }}')">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </div>
+        <div class="col-md-4 d-flex gap-2 align-items-end flex-wrap">
+          <span class="badge bg-primary stat-badge" id="fileCount">—</span>
+          <span class="badge bg-info stat-badge" id="totalSize">—</span>
+          <span class="badge bg-secondary stat-badge" id="showingCount" style="display:none;"></span>
         </div>
-        {% endfor %}
       </div>
 
-      <!-- Pagination -->
-      {% if next_cursor %}
-      <div class="text-center mt-4">
-        <a href="?device={{ device_filter }}&type={{ media_filter }}&cursor={{ next_cursor }}" class="btn btn-outline-primary">
-          <i class="fas fa-arrow-right me-1"></i>Load More
-        </a>
+      <!-- Gallery Grid (populated by JS) -->
+      <div id="galleryLoader" class="gallery-loader">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 text-muted">Loading from Cloudinary...</div>
       </div>
-      {% endif %}
 
-      {% else %}
-        <div class="text-center text-muted py-5">
-          <i class="fas fa-cloud fa-3x mb-3 d-block"></i>
-          No files found in Cloudinary.
-        </div>
-      {% endif %}
+      <div class="gallery-grid" id="galleryGrid" style="display:none;"></div>
+
+      <div id="emptyState" class="text-center text-muted py-5" style="display:none;">
+        <i class="fas fa-cloud fa-3x mb-3 d-block"></i>
+        No files found in Cloudinary.
+      </div>
+
+      <!-- Loading more indicator -->
+      <div class="text-center mt-3" id="loadMoreIndicator" style="display:none;">
+        <span class="spinner-border spinner-border-sm text-primary me-1"></span>
+        <span class="text-muted small" id="loadMoreText">Loading more...</span>
+      </div>
 
       {% endif %}
     </div>
@@ -149,6 +120,199 @@
 
 {% block script %}
 <script>
+const API_URL = "{% url 'cloud_gallery_api' %}";
+const FILE_INFO_API_URL = "{% url 'cloud_file_info_api' %}";
+let galleryItems = [];
+let nextCursor = "";
+let totalBytes = 0;
+let isLoading = false;
+let allLoaded = false;
+
+function formatSize(bytes) {
+    if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return bytes + ' B';
+}
+
+function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s || '';
+    return d.innerHTML;
+}
+
+function escJs(s) {
+    return String(s || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, ' ')
+        .replace(/\n/g, ' ');
+}
+
+function prettyJson(obj) {
+    if (!obj || (typeof obj === 'object' && Object.keys(obj).length === 0)) return '-';
+    return `<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:0.75rem;">${escHtml(JSON.stringify(obj, null, 2))}</pre>`;
+}
+
+function infoSection(title, contentHtml, isOpen) {
+    const openAttr = isOpen ? ' open' : '';
+    return `<details${openAttr} style="border:1px solid #e5e7eb;border-radius:6px;padding:6px 8px;margin-bottom:8px;background:#fafafa;">
+        <summary style="cursor:pointer;font-weight:600;font-size:0.82rem;">${escHtml(title)}</summary>
+        <div style="margin-top:8px;">${contentHtml}</div>
+    </details>`;
+}
+
+function renderCard(item) {
+    let media;
+    if (item.is_image && item.thumbnail_url) {
+        media = `<img src="${escHtml(item.thumbnail_url)}" alt="${escHtml(item.filename)}" class="gallery-thumb"
+                      onclick="openLightbox('${escHtml(item.secure_url)}','${escHtml(item.download_url)}','${escHtml(item.filename)}')"
+                      loading="lazy">`;
+    } else if (item.resource_type === 'video') {
+        media = `<div class="gallery-icon" onclick="window.open('${escHtml(item.secure_url)}','_blank')"><i class="fas fa-file-video"></i></div>`;
+    } else {
+        media = `<div class="gallery-icon" onclick="window.open('${escHtml(item.secure_url)}','_blank')"><i class="fas fa-file-alt"></i></div>`;
+    }
+
+    let dims = '';
+    if (item.width && item.height) dims = ` &middot; ${item.width}&times;${item.height}`;
+    let created = (item.created_at || '').substring(0, 19);
+
+    return `<div class="gallery-card" data-filename="${escHtml((item.filename||'').toLowerCase())}" data-public-id="${escHtml((item.public_id||'').toLowerCase())}">
+        ${media}
+        <div class="gallery-body">
+            <div class="gallery-filename" title="${escHtml(item.public_id)}">${escHtml(item.filename)}</div>
+            <div class="gallery-meta">
+                ${formatSize(item.bytes || 0)}${dims}<br>${escHtml(created)}
+            </div>
+            <div class="gallery-actions">
+                <a href="${escHtml(item.secure_url)}" target="_blank" class="btn btn-outline-primary btn-sm" title="View"><i class="fas fa-eye"></i></a>
+                <a href="${escHtml(item.download_url)}" class="btn btn-outline-success btn-sm" title="Download"><i class="fas fa-download"></i></a>
+                <button class="btn btn-outline-info btn-sm" title="Info" onclick="showFileInfo('${escJs(item.public_id)}','${escJs(item.resource_type)}','${escJs(item.download_url)}')"><i class="fas fa-circle-info"></i></button>
+                <button class="btn btn-outline-danger btn-sm" title="Delete" onclick="deleteFile('${escHtml(item.public_id)}','${escHtml(item.resource_type)}','${escHtml(item.filename)}')"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function updateStats() {
+    let label = galleryItems.length + ' file' + (galleryItems.length !== 1 ? 's' : '');
+    if (!allLoaded) label += '...';
+    document.getElementById('fileCount').textContent = label;
+    document.getElementById('totalSize').textContent = formatSize(totalBytes);
+}
+
+function fetchGallery(cursor) {
+    if (isLoading) return;
+    isLoading = true;
+
+    const device = document.getElementById('filterDevice').value;
+    const type = document.getElementById('filterType').value;
+    let url = API_URL + `?type=${encodeURIComponent(type)}`;
+    if (device) url += `&device=${encodeURIComponent(device)}`;
+    if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+
+    // Show loader only on first load
+    if (!cursor) {
+        document.getElementById('galleryLoader').style.display = '';
+        document.getElementById('galleryGrid').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('loadMoreIndicator').style.display = 'none';
+        allLoaded = false;
+    } else {
+        document.getElementById('loadMoreIndicator').style.display = '';
+        document.getElementById('loadMoreText').textContent = 'Loading more... (' + galleryItems.length + ' loaded)';
+    }
+
+    $.ajax({
+        url: url,
+        method: 'GET',
+        timeout: 120000,
+        success: function(resp) {
+            const grid = document.getElementById('galleryGrid');
+            const items = resp.items || [];
+            nextCursor = resp.next_cursor || '';
+            totalBytes += resp.total_bytes || 0;
+
+            let html = '';
+            items.forEach(function(item) {
+                galleryItems.push(item);
+                html += renderCard(item);
+            });
+            grid.insertAdjacentHTML('beforeend', html);
+
+            // UI states
+            document.getElementById('galleryLoader').style.display = 'none';
+            if (galleryItems.length > 0) {
+                grid.style.display = '';
+                document.getElementById('emptyState').style.display = 'none';
+            } else {
+                grid.style.display = 'none';
+                document.getElementById('emptyState').style.display = '';
+            }
+
+            updateStats();
+            isLoading = false;
+
+            // Auto-load next page if more data exists
+            if (nextCursor) {
+                fetchGallery(nextCursor);
+            } else {
+                allLoaded = true;
+                document.getElementById('loadMoreIndicator').style.display = 'none';
+                updateStats();
+            }
+        },
+        error: function(xhr) {
+            document.getElementById('galleryLoader').style.display = 'none';
+            document.getElementById('emptyState').innerHTML = '<i class="fas fa-exclamation-triangle fa-3x mb-3 d-block text-danger"></i>Failed to load gallery.';
+            document.getElementById('emptyState').style.display = '';
+            isLoading = false;
+        }
+    });
+}
+
+function reloadGallery() {
+    galleryItems = [];
+    totalBytes = 0;
+    nextCursor = '';
+    allLoaded = false;
+    document.getElementById('galleryGrid').innerHTML = '';
+    document.getElementById('gallerySearch').value = '';
+    document.getElementById('showingCount').style.display = 'none';
+    // Update URL params without reload
+    const device = document.getElementById('filterDevice').value;
+    const type = document.getElementById('filterType').value;
+    const params = new URLSearchParams();
+    if (device) params.set('device', device);
+    if (type && type !== 'image') params.set('type', type);
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    fetchGallery('');
+}
+
+// Client-side filename search
+function filterGallery() {
+    const q = document.getElementById('gallerySearch').value.toLowerCase().trim();
+    const cards = document.querySelectorAll('#galleryGrid .gallery-card');
+    let visible = 0;
+    cards.forEach(function(card) {
+        const fn = card.dataset.filename || '';
+        const pid = card.dataset.publicId || '';
+        const show = !q || fn.includes(q) || pid.includes(q);
+        card.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    const badge = document.getElementById('showingCount');
+    if (q) {
+        badge.textContent = 'Showing ' + visible;
+        badge.style.display = '';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Lightbox
 function openLightbox(url, dlUrl, filename) {
     document.getElementById('lightbox-img').src = url;
     document.getElementById('lightbox-dl-btn').href = dlUrl;
@@ -195,6 +359,69 @@ function checkCloudStatus() {
     });
 }
 
+function showFileInfo(publicId, resourceType, downloadUrl) {
+    Swal.fire({
+        title: 'Loading file info...',
+        didOpen: () => Swal.showLoading(),
+        allowOutsideClick: false,
+        confirmButtonColor: '#667eea'
+    });
+
+    $.ajax({
+        url: FILE_INFO_API_URL,
+        method: 'GET',
+        data: { public_id: publicId, resource_type: resourceType },
+        success: function(resp) {
+            const info = resp.info || {};
+            const filename = info.display_name || (info.public_id || '').split('/').pop() || '-';
+            const ftype = info.resource_type ? `${info.resource_type}${info.format ? '.' + info.format : ''}` : '-';
+            const dims = (info.width && info.height) ? `${info.width} x ${info.height}` : '-';
+            const tags = Array.isArray(info.tags) && info.tags.length ? info.tags.join(', ') : '-';
+
+            let html = `<div style="text-align:left;font-size:0.86rem;max-height:62vh;overflow:auto;">`;
+            html += `<table class="table table-sm table-bordered mb-2">`;
+            html += `<tr><th style="width:36%;">Filename</th><td>${escHtml(filename)}</td></tr>`;
+            html += `<tr><th>Public ID</th><td><code style="word-break:break-all;">${escHtml(info.public_id || '-')}</code></td></tr>`;
+            html += `<tr><th>Asset ID</th><td><code style="word-break:break-all;">${escHtml(info.asset_id || '-')}</code></td></tr>`;
+            html += `<tr><th>Asset Folder</th><td>${escHtml(info.asset_folder || '-')}</td></tr>`;
+            html += `<tr><th>Type</th><td>${escHtml(ftype)}</td></tr>`;
+            html += `<tr><th>Upload Type</th><td>${escHtml(info.type || '-')}</td></tr>`;
+            html += `<tr><th>Version</th><td>${escHtml(String(info.version || '-'))}</td></tr>`;
+            html += `<tr><th>Size</th><td>${formatSize(info.bytes || 0)}</td></tr>`;
+            html += `<tr><th>Dimensions</th><td>${escHtml(dims)}</td></tr>`;
+            html += `<tr><th>Created</th><td>${escHtml(info.created_at || '-')}</td></tr>`;
+            html += `<tr><th>Tags</th><td>${escHtml(tags)}</td></tr>`;
+            html += `</table>`;
+
+            html += infoSection('Context', prettyJson(info.context), true);
+            html += infoSection('Image Metadata', prettyJson(info.image_metadata), false);
+            html += infoSection('Quality Analysis', prettyJson(info.quality_analysis), false);
+            html += infoSection('Accessibility Analysis', prettyJson(info.accessibility_analysis), false);
+            html += infoSection('Colors', prettyJson(info.colors), false);
+            html += infoSection('Faces', prettyJson(info.faces), false);
+            html += infoSection('Predominant', prettyJson(info.predominant), false);
+
+            html += `<div class="d-flex gap-2 flex-wrap mt-2">`;
+            html += `<a href="${escHtml(info.secure_url || '#')}" target="_blank" class="btn btn-outline-primary btn-sm"><i class="fas fa-eye me-1"></i>Open</a>`;
+            html += `<a href="${escHtml(info.url || info.secure_url || '#')}" target="_blank" class="btn btn-outline-dark btn-sm"><i class="fas fa-link me-1"></i>Public URL</a>`;
+            html += `<a href="${escHtml(downloadUrl || '#')}" class="btn btn-outline-success btn-sm"><i class="fas fa-download me-1"></i>Download</a>`;
+            html += `</div></div>`;
+
+            Swal.fire({
+                title: '<i class="fas fa-circle-info text-info me-1"></i> File Info',
+                html: html,
+                width: window.innerWidth < 768 ? '95%' : 720,
+                confirmButtonColor: '#667eea'
+            });
+        },
+        error: function(xhr) {
+            let msg = 'Failed to load file metadata.';
+            try { msg = JSON.parse(xhr.responseText).error || msg; } catch(e) {}
+            Swal.fire({ icon: 'error', title: 'Info Error', text: msg, confirmButtonColor: '#dc3545' });
+        }
+    });
+}
+
 function deleteFile(publicId, resourceType, filename) {
     Swal.fire({
         title: 'Delete this file?',
@@ -214,7 +441,7 @@ function deleteFile(publicId, resourceType, filename) {
             success: function(resp) {
                 if (resp.success) {
                     Swal.fire({ icon: 'success', title: 'Deleted', text: filename, timer: 1500, showConfirmButton: false })
-                    .then(() => location.reload());
+                    .then(() => reloadGallery());
                 } else {
                     Swal.fire('Failed', resp.message || 'Delete failed', 'warning');
                 }
@@ -227,5 +454,105 @@ function deleteFile(publicId, resourceType, filename) {
         });
     });
 }
+
+function removeDuplicates() {
+    Swal.fire({
+        title: 'Remove Duplicates',
+        html: `<div class="text-start" style="font-size:0.85rem;">
+            <p>Select matching method:</p>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="dupeMode" id="modeStrict" value="strict">
+                <label class="form-check-label" for="modeStrict"><b>Strict</b> — same name + size + dimensions</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="dupeMode" id="modeMedium" value="medium">
+                <label class="form-check-label" for="modeMedium"><b>Medium</b> — same name + dimensions</label>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="dupeMode" id="modeName" value="name" checked>
+                <label class="form-check-label" for="modeName"><b>Broad</b> — same filename (keeps largest)</label>
+            </div>
+            <hr>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="dupeMode" id="modeCloud" value="cloudinary">
+                <label class="form-check-label" for="modeCloud"><b>Cloudinary AI</b> — visual similarity detection</label>
+            </div>
+            <div id="thresholdWrap" style="display:none;" class="ms-4 mt-1">
+                <label class="form-label small mb-1">Threshold: <b id="thresholdVal">0.8</b></label>
+                <input type="range" class="form-range" id="thresholdSlider" min="0.5" max="1.0" step="0.05" value="0.8"
+                       oninput="document.getElementById('thresholdVal').textContent=this.value">
+                <div class="d-flex justify-content-between" style="font-size:0.7rem;color:#999;">
+                    <span>Near-dupes (0.5)</span><span>Exact (1.0)</span>
+                </div>
+                <div class="alert alert-warning py-1 px-2 mt-1 mb-0" style="font-size:0.75rem;">
+                    <i class="fas fa-info-circle me-1"></i>Requires Duplicate Detection add-on. Scans each image individually — may take several minutes.
+                </div>
+            </div>
+        </div>`,
+        showCancelButton: true,
+        confirmButtonText: 'Scan & Remove',
+        confirmButtonColor: '#e67e22',
+        didOpen: () => {
+            document.querySelectorAll('input[name="dupeMode"]').forEach(r => {
+                r.addEventListener('change', () => {
+                    document.getElementById('thresholdWrap').style.display = r.value === 'cloudinary' ? '' : 'none';
+                });
+            });
+        },
+        preConfirm: () => {
+            const checked = document.querySelector('input[name="dupeMode"]:checked');
+            return {
+                mode: checked ? checked.value : 'name',
+                threshold: parseFloat(document.getElementById('thresholdSlider').value)
+            };
+        }
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+        const { mode, threshold } = result.value;
+        const isAI = mode === 'cloudinary';
+        Swal.fire({
+            title: isAI ? 'AI Scanning for duplicates...' : 'Scanning & removing duplicates...',
+            html: isAI ? 'Running Cloudinary visual duplicate detection on each image.<br>This may take several minutes.' : 'Checking all files. This may take a moment.',
+            didOpen: () => Swal.showLoading(),
+            allowOutsideClick: false
+        });
+        $.ajax({
+            url: "{% url 'cloud_remove_duplicates' %}",
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ mode: mode, threshold: threshold }),
+            timeout: 600000,
+            success: function(resp) {
+                if (resp.deleted_count > 0) {
+                    let html = `<div class="text-start" style="font-size:0.85rem;">`;
+                    html += `<p>Scanned <b>${resp.scanned}</b> files (mode: <b>${resp.mode}</b>`;
+                    if (resp.threshold) html += `, threshold: ${resp.threshold}`;
+                    html += `)</p>`;
+                    html += `<p>Found <b>${resp.duplicate_groups}</b> duplicate(s).</p>`;
+                    html += `<p class="text-success mb-1"><b>${resp.deleted_count}</b> deleted.</p>`;
+                    if (resp.failed_count > 0) html += `<p class="text-danger">${resp.failed_count} failed.</p>`;
+                    if (resp.errors && resp.errors.length > 0) html += `<p class="text-warning">${resp.errors.length} errors (add-on may not be enabled).</p>`;
+                    html += `</div>`;
+                    Swal.fire({ icon: 'success', title: 'Duplicates Removed', html: html, confirmButtonColor: '#667eea' })
+                    .then(() => reloadGallery());
+                } else {
+                    let extra = '';
+                    if (resp.errors && resp.errors.length > 0) {
+                        extra = '<br><small class="text-warning">Note: ' + resp.errors.length + ' error(s) — the Duplicate Detection add-on may need to be enabled in your Cloudinary Console.</small>';
+                    }
+                    Swal.fire({ icon: 'info', title: 'No Duplicates', html: `Scanned ${resp.scanned} files — all unique!${extra}`, confirmButtonColor: '#667eea' });
+                }
+            },
+            error: function(xhr) {
+                let msg = 'Failed to remove duplicates';
+                try { msg = JSON.parse(xhr.responseText).message || msg; } catch(e) {}
+                Swal.fire({ icon: 'error', title: 'Error', text: msg, confirmButtonColor: '#dc3545' });
+            }
+        });
+    });
+}
+
+// Auto-load on page ready
+$(function() { fetchGallery(''); });
 </script>
 {% endblock %}

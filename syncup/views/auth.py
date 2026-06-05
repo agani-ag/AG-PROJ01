@@ -1,11 +1,11 @@
 # Django imports
 from django.conf import settings
 from django.contrib import messages
-from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout, authenticate
+from django.shortcuts import render, redirect, get_object_or_404
 
 # Imports
 from ..forms import (
@@ -19,6 +19,7 @@ from django.contrib.auth.models import User
 from datetime import datetime
 import secrets
 import base64
+import json
 import os
 
 # =============== AUTH VIEWS ===============
@@ -130,3 +131,34 @@ def download_sqlite(request):
             return response
     else:
         return HttpResponse("Database file not found", status=404)
+    
+# ================= Auth API Views ===========================
+@csrf_exempt
+def passkey_auth(request):
+    # Only allow POST requests
+    if request.method == "POST":
+        try:
+            # Parse the incoming JSON body
+            data = json.loads(request.body)
+            passkey = data.get("passkey")
+
+            if not passkey:
+                return JsonResponse({"error": "Passkey is required"}, status=400)
+
+            passkey = passkey.upper()  # Ensure the passkey is uppercase for consistency
+
+            # Look up the user profile using the user_id
+            user_profile = get_object_or_404(UserProfile, random_pin=passkey)
+
+            # Log the user in
+            login(request, user_profile.user, backend='django.contrib.auth.backends.ModelBackend')
+
+            # Return a successful response
+            return JsonResponse({"message": "Passkey authentication successful"}, status=200)
+
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload"}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": "Invalid User Request", "exception": repr(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)

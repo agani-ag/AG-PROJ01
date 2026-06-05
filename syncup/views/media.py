@@ -104,133 +104,254 @@ def cloud_status(request):
 
 
 # ====================================================================
-# 3. Cloud Gallery (admin HTML page)
+# 3. Cloud Gallery (admin HTML page + AJAX API)
 # ====================================================================
-GALLERY_PAGE_SIZE = 48
-
-
-def _list_cloudinary_resources(resource_type, folder, next_cursor=None, max_results=GALLERY_PAGE_SIZE):
-    """Fetch resources from Cloudinary Admin API for a given folder."""
-    return storage_cloud_mod.list_resources(resource_type, folder, next_cursor, max_results)
+GALLERY_API_PAGE = 500  # Cloudinary max per call
 
 
 @require_GET
 def cloud_gallery(request):
-    """Browse files stored in Cloudinary. Supports folder filter & pagination."""
+    """Render gallery page shell — data loaded via AJAX (cloud_gallery_api)."""
     if not storage_cloud_mod.is_enabled():
         return render(request, "device_access/cloud_gallery.html", {
             "error": "Cloudinary is not configured.",
         })
 
-    # Folder prefix — default lists the devices folder
+    devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
+    return render(request, "device_access/cloud_gallery.html", {
+        "devices": devices,
+        "device_filter": request.GET.get("device", ""),
+        "media_filter": request.GET.get("type", "image"),
+    })
+
+
+@require_GET
+def cloud_gallery_api(request):
+    """Return one page of Cloudinary resources as JSON."""
+    if not storage_cloud_mod.is_enabled():
+        return JsonResponse({"error": "Cloud not configured"}, status=400)
+
     folder_prefix = getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices")
     device_filter = request.GET.get("device", "")
-    media_filter = request.GET.get("type", "all")  # all, image, video, raw
+    media_filter = request.GET.get("type", "image")
     cursor = request.GET.get("cursor", "")
 
-    # Build the search prefix
-    if device_filter:
-        search_folder = f"{folder_prefix}/{device_filter}"
-    else:
-        search_folder = folder_prefix
+    search_folder = f"{folder_prefix}/{device_filter}" if device_filter else ""
 
-    # Fetch resources based on type filter
-    items = []
-    next_cursor = None
+    resource_type = media_filter if media_filter in ("image", "video", "raw") else "image"
+    batch, next_cursor = storage_cloud_mod.list_resources(
+        resource_type, search_folder,
+        next_cursor=cursor or None,
+        max_results=GALLERY_API_PAGE,
+    )
 
-    if media_filter in ("all", "image"):
-        imgs, nc = _list_cloudinary_resources("image", search_folder, cursor or None)
-        for r in imgs:
-            r["_type"] = "image"
-            r["_is_image"] = True
-        items.extend(imgs)
-        if nc:
-            next_cursor = nc
-
-    if media_filter in ("all", "video"):
-        vids, nc = _list_cloudinary_resources("video", search_folder, cursor or None)
-        for r in vids:
-            r["_type"] = "video"
-            r["_is_image"] = False
-        items.extend(vids)
-        if nc:
-            next_cursor = nc
-
-    if media_filter in ("all", "raw"):
-        raws, nc = _list_cloudinary_resources("raw", search_folder, cursor or None)
-        for r in raws:
-            r["_type"] = "raw"
-            r["_is_image"] = False
-        items.extend(raws)
-        if nc:
-            next_cursor = nc
-
-    # Sort by created_at descending
-    items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-
-    # Build display-friendly list
     cloud_name = settings.CLOUDINARY_CLOUD_NAME
-    gallery = []
-    for r in items:
+    items = []
+    total_bytes = 0
+
+    for r in batch:
         public_id = r.get("public_id", "")
-        secure_url = r.get("secure_url", "")
         fmt = r.get("format", "")
-        rtype = r.get("_type", "raw")
-        filename = public_id.rsplit("/", 1)[-1]
-        if fmt:
+        display_name = r.get("display_name", "")
+        filename = display_name or public_id.rsplit("/", 1)[-1]
+        if fmt and not filename.endswith(f".{fmt}"):
             filename = f"{filename}.{fmt}"
 
-        # Build download URL with fl_attachment flag
-        if rtype == "image":
+        size = r.get("bytes", 0)
+        total_bytes += size
+
+        is_image = resource_type == "image"
+        if is_image:
             dl_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/fl_attachment/{public_id}.{fmt}"
-        elif rtype == "video":
+            thumb = f"https://res.cloudinary.com/{cloud_name}/image/upload/c_fill,w_300,h_300,q_auto,f_auto/{public_id}.{fmt}"
+        elif resource_type == "video":
             dl_url = f"https://res.cloudinary.com/{cloud_name}/video/upload/fl_attachment/{public_id}.{fmt}"
+            thumb = ""
         else:
             dl_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/fl_attachment/{public_id}"
             if fmt:
                 dl_url += f".{fmt}"
+            thumb = ""
 
-        # Thumbnail for images
-        thumb_url = ""
-        if r.get("_is_image"):
-            thumb_url = f"https://res.cloudinary.com/{cloud_name}/image/upload/c_fill,w_300,h_300,q_auto,f_auto/{public_id}.{fmt}"
+        path_parts = public_id.split("/")
+        item_device_id = path_parts[1] if len(path_parts) >= 3 and path_parts[0] == folder_prefix else ""
 
-        # Extract device from folder path
-        parts = public_id.split("/")
-        device_id = parts[1] if len(parts) >= 3 and parts[0] == folder_prefix else ""
-
-        gallery.append({
+        items.append({
             "public_id": public_id,
+            "asset_id": r.get("asset_id", ""),
             "filename": filename,
-            "secure_url": secure_url,
+            "display_name": display_name,
+            "secure_url": r.get("secure_url", ""),
+            "url": r.get("url", ""),
             "download_url": dl_url,
-            "thumbnail_url": thumb_url,
-            "is_image": r.get("_is_image", False),
-            "resource_type": rtype,
+            "thumbnail_url": thumb,
+            "is_image": is_image,
+            "resource_type": resource_type,
+            "upload_type": r.get("type", ""),
             "format": fmt,
-            "bytes": r.get("bytes", 0),
+            "version": r.get("version"),
+            "asset_folder": r.get("asset_folder", ""),
+            "bytes": size,
             "width": r.get("width"),
             "height": r.get("height"),
             "created_at": r.get("created_at", ""),
-            "device_id": device_id,
+            "device_id": item_device_id,
         })
 
-    # Get list of known devices for the filter dropdown
-    devices = Device.objects.all().only("id", "user_id", "platform", "device_id")
-
-    return render(request, "device_access/cloud_gallery.html", {
-        "gallery": gallery,
-        "devices": devices,
-        "device_filter": device_filter,
-        "media_filter": media_filter,
+    return JsonResponse({
+        "items": items,
         "next_cursor": next_cursor or "",
-        "cursor": cursor,
-        "total_count": len(gallery),
+        "count": len(items),
+        "total_bytes": total_bytes,
+    })
+
+
+@require_GET
+def cloud_file_info_api(request):
+    """Return full Cloudinary metadata for one file."""
+    if not storage_cloud_mod.is_enabled():
+        return JsonResponse({"error": "Cloud not configured"}, status=400)
+
+    public_id = (request.GET.get("public_id") or "").strip()
+    resource_type = (request.GET.get("resource_type") or "image").strip()
+    if not public_id:
+        return JsonResponse({"error": "public_id required"}, status=400)
+    if resource_type not in ("image", "video", "raw"):
+        resource_type = "image"
+
+    info = storage_cloud_mod.get_resource_info(public_id, resource_type=resource_type)
+    if not info:
+        return JsonResponse({"error": "Failed to fetch file info"}, status=502)
+
+    return JsonResponse({"success": True, "info": info})
+
+
+# ====================================================================
+# 4. Remove duplicate Cloudinary files
+# ====================================================================
+@csrf_exempt
+def cloud_remove_duplicates(request):
+    """Scan all images, find duplicates, delete newer copies.
+
+    Matching modes (via JSON body):
+      strict     — same display_name + bytes + dimensions
+      medium     — same display_name + dimensions
+      name       — same display_name only (keeps largest)
+      cloudinary — Cloudinary AI Duplicate Detection add-on (threshold 0-1)
+    """
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "POST required"}, status=405)
+
+    import json
+    from collections import defaultdict
+
+    mode = "name"
+    threshold = 0.8
+    try:
+        body = json.loads(request.body) if request.body else {}
+        mode = body.get("mode", mode)
+        threshold = float(body.get("threshold", threshold))
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fetch all images
+    all_res = []
+    cursor = None
+    while True:
+        batch, cur = storage_cloud_mod.list_resources(
+            "image", "", next_cursor=cursor, max_results=GALLERY_API_PAGE,
+        )
+        all_res.extend(batch)
+        if not cur or not batch:
+            break
+        cursor = cur
+
+    # ── Cloudinary AI mode ──────────────────────────────────────
+    if mode == "cloudinary":
+        duplicates = []
+        errors = []
+        for r in all_res:
+            pid = r.get("public_id", "")
+            try:
+                resp = storage_cloud_mod.check_duplicate(pid, threshold)
+            except Exception as e:
+                errors.append({"public_id": pid, "error": str(e)})
+                continue
+
+            if resp.get("error"):
+                errors.append({"public_id": pid, "error": str(resp)})
+                continue
+
+            moderation = resp.get("moderation", [])
+            for m in moderation:
+                if m.get("kind") == "duplicate" and m.get("status") == "rejected":
+                    dup_of = ""
+                    m_resp = m.get("response", {})
+                    if isinstance(m_resp, dict):
+                        dup_of = m_resp.get("duplicate_of", "")
+                    duplicates.append({"public_id": pid, "duplicate_of": dup_of})
+                    break
+
+        deleted = []
+        failed = []
+        for d in duplicates:
+            pid = d["public_id"]
+            if storage_cloud_mod.delete_key(pid):
+                deleted.append(pid)
+            else:
+                failed.append(pid)
+
+        return JsonResponse({
+            "success": True,
+            "mode": "cloudinary",
+            "threshold": threshold,
+            "scanned": len(all_res),
+            "duplicate_groups": len(duplicates),
+            "deleted": deleted,
+            "deleted_count": len(deleted),
+            "failed": failed,
+            "failed_count": len(failed),
+            "errors": errors[:10],
+        })
+
+    # ── Name / size / dims modes ────────────────────────────────
+    by_fp = defaultdict(list)
+    for r in all_res:
+        name = r.get("display_name", "") or r.get("public_id", "").rsplit("/", 1)[-1]
+        if mode == "strict":
+            fp = f"{name}|{r.get('bytes', 0)}|{r.get('width', 0)}x{r.get('height', 0)}"
+        elif mode == "medium":
+            fp = f"{name}|{r.get('width', 0)}x{r.get('height', 0)}"
+        else:  # name
+            fp = name
+        by_fp[fp].append(r)
+
+    dupes = {k: v for k, v in by_fp.items() if len(v) > 1}
+    deleted = []
+    failed = []
+    for fp, items in dupes.items():
+        items.sort(key=lambda r: r.get("bytes", 0), reverse=True)
+        for r in items[1:]:
+            pid = r.get("public_id", "")
+            if storage_cloud_mod.delete_key(pid):
+                deleted.append(pid)
+            else:
+                failed.append(pid)
+
+    return JsonResponse({
+        "success": True,
+        "mode": mode,
+        "scanned": len(all_res),
+        "duplicate_groups": len(dupes),
+        "deleted": deleted,
+        "deleted_count": len(deleted),
+        "failed": failed,
+        "failed_count": len(failed),
     })
 
 
 # ====================================================================
-# 4. Delete a Cloudinary file (admin action)
+# 5. Delete a Cloudinary file (admin action)
 # ====================================================================
 @csrf_exempt
 def cloud_delete_file(request):

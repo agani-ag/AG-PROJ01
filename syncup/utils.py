@@ -27,68 +27,6 @@ pincode_validator = RegexValidator(
     message="Pincode must be between 4 and 10 digits."
 )
 
-# =============== Proxy HTTP ===============
-PROXY_URL = f"{settings.CLOUD_PROXY_URL}/proxy"
-
-def proxy_request(method, url, headers=None, json=None, params=None, data=None, auth=None, timeout=120):
-    """
-    Send an HTTP request through the FastAPI proxy.
-    Falls back to a direct request if the proxy is unavailable.
-    Returns a requests.Response object.
-    """
-    payload = {
-        "method": method.upper(),
-        "url": url,
-        "timeout": timeout,
-    }
-    if headers:
-        payload["headers"] = headers
-    if json is not None:
-        payload["json_body"] = json
-    if params:
-        payload["params"] = params
-    if data:
-        payload["data"] = data
-    if auth:
-        payload["auth"] = list(auth)
-
-    try:
-        resp = requests.post(PROXY_URL, json=payload, timeout=timeout + 10)
-        # If proxy itself returned a server error (502/503/504), fall back to direct
-        if resp.status_code in (502, 503, 504):
-            logger.warning(f"Proxy returned {resp.status_code}, falling back to direct request: {method} {url}")
-            return _direct_request(method, url, headers=headers, json=json, params=params, data=data, auth=auth, timeout=timeout)
-        return resp
-    except requests.exceptions.RequestException as e:
-        logger.warning(f"Proxy unreachable ({e}), falling back to direct request: {method} {url}")
-        return _direct_request(method, url, headers=headers, json=json, params=params, data=data, auth=auth, timeout=timeout)
-
-
-def _direct_request(method, url, headers=None, json=None, params=None, data=None, auth=None, timeout=120):
-    """Direct HTTP request (fallback when proxy is down)."""
-    kwargs = {"timeout": timeout}
-    if headers:
-        kwargs["headers"] = headers
-    if json is not None:
-        kwargs["json"] = json
-    if params:
-        kwargs["params"] = params
-    if data:
-        kwargs["data"] = data
-    if auth:
-        kwargs["auth"] = tuple(auth)
-    return requests.request(method.upper(), url, **kwargs)
-
-
-def proxy_post(url, headers=None, json=None, data=None, timeout=120):
-    """Shortcut for proxy_request('POST', ...)."""
-    return proxy_request("POST", url, headers=headers, json=json, data=data, timeout=timeout)
-
-
-def proxy_get(url, headers=None, params=None, timeout=120):
-    """Shortcut for proxy_request('GET', ...)."""
-    return proxy_request("GET", url, headers=headers, params=params, timeout=timeout)
-
 # =============== Telegram Bot ===============
 GROUPS = settings.TELEGRAM_GROUPS
 BOT = settings.TELEGRAM_BOT_TOKEN

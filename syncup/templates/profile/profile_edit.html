@@ -104,7 +104,8 @@
                     <a class="form-label" href="{% url 'api_login' %}?data={{ encoded_credentials }}"
                         style="text-decoration: none;color: black;">Encoded Credentials</a>
                         <button type="button" class="btn btn-sm btn-outline-secondary" title="{{ auth_user.userprofile.random_password|default:'Reset Password' }}"
-                            onclick="user_reset_password('{{ auth_user.id }}', '{{ auth_user.userprofile.random_password}}')"><i class="fas fa-unlock"></i></button>
+                            onclick="user_reset_password('{{ auth_user.id }}', '{{ auth_user.userprofile.random_password}}')"><i class="fas fa-unlock"></i>
+                        <span>{{ auth_user.userprofile.random_pin|default:'' }}</span></button>
                     <input type="text" class="form-control" value="{{ encoded_credentials }}" readonly>
                 </div>
             </div>

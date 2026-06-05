@@ -7,6 +7,7 @@ from multiselectfield import MultiSelectField
 from .utils import (
     phone_validator, pincode_validator
 )
+import uuid
 
 DAYS_OF_WEEK = (
     ('MON', 'Monday'),
@@ -45,9 +46,16 @@ class UserProfile(models.Model):
     # API Authentication
     encoded_credentials = models.CharField(max_length=255, blank=True, null=True)
     random_password = models.CharField(max_length=255, blank=True, null=True)
+    random_pin = models.CharField(max_length=10, blank=True, null=True, unique=True)
 
     # Access Control
     special_menus_access = models.BooleanField(default=False)
+
+    def generate_unique_pin(self):
+        while True:
+            pin = str(uuid.uuid4())[:5].upper()
+            if not UserProfile.objects.filter(random_pin=pin).exists():
+                return pin
 
     def save(self, *args, **kwargs):
         if self.name:
@@ -56,6 +64,8 @@ class UserProfile(models.Model):
             self.address = self.address.strip().upper()
         if self.email:
             self.email = self.email.strip().lower()
+        if not self.random_pin:
+            self.random_pin = self.generate_unique_pin()
         super().save(*args, **kwargs)
 
     def __str__(self):
