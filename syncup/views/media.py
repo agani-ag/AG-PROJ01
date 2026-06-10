@@ -8,6 +8,8 @@ Endpoints:
 from __future__ import annotations
 
 import uuid
+import json
+import base64
 import logging
 
 from django.conf import settings
@@ -15,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
+from django.core.serializers.json import DjangoJSONEncoder
 
 from ..models import Device
 from .. import storage_cloud as storage_cloud_mod
@@ -124,6 +127,19 @@ def cloud_gallery(request):
         "media_filter": request.GET.get("type", "image"),
     })
 
+@require_GET
+def cloud_gallery_v1(request):
+    config = {
+        "devices": list(Device.objects.all().values("user_id", "device_id")),
+        "upload_preset": getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned"),
+        "api_secret": getattr(settings, "CLOUDINARY_API_SECRET", ""),
+        "api_key": getattr(settings, "CLOUDINARY_API_KEY", ""),
+        "tags": getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices"),
+        "cloud_name": getattr(settings, "CLOUDINARY_CLOUD_NAME", ""),
+    }
+
+    encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
+    return render(request,"device_access/cloud_gallery_v1.html",{"app_config": encoded})
 
 @require_GET
 def cloud_gallery_api(request):

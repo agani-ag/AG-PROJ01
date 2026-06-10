@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Cloud Gallery{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+<style>
+  body { background: #f4f6fb; }
+  .brand-icon { color: #2c3e50; }
+  .card-img-top-wrap {
+    aspect-ratio: 4 / 3; overflow: hidden; background: #f0f2f7;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .card-img-top-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .file-name { font-weight: 600; font-size: 14px; word-break: break-all; }
+  .file-sub { font-size: 12px; }
+  .dropzone {
+    border: 2px dashed #c7cddb; border-radius: 12px; padding: 28px; text-align: center;
+    color: #6c757d; cursor: pointer; transition: all .12s ease; background: #fff;
+  }
+  .dropzone.drag { border-color: #0d6efd; background: #eef4ff; }
+  .ctx-pre { white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 12px; }
+  .lb-img { max-width: 100%; max-height: 78vh; object-fit: contain; }
+  .badge-stat { font-size: 13px; }
+  .top-btn {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1040;
+    width: 46px; height: 46px; border-radius: 50%; padding: 0;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25); font-size: 20px;
+  }
+  .top-btn.show { display: inline-flex; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header (page toolbar — base.html already provides the site navbar) -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-4 pt-4 pb-2">
+  <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-cloud-fill brand-icon"></i> Cloud Gallery
+  </h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-primary btn-sm" id="refreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    <button class="btn btn-outline-info btn-sm" id="statusBtn"><i class="bi bi-heart-pulse"></i> Cloud Status</button>
+    <button class="btn btn-outline-secondary btn-sm" id="settingsBtn"><i class="bi bi-cloud-arrow-up"></i> Upload</button>
+  </div>
+</div>
+
+<div class="container-fluid px-4 py-4">
+
+  <!-- Upload (toggled by the Upload button, collapsed by default) -->
+  <div class="collapse" id="settingsPanel">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div id="dropzone" class="dropzone">
+          <div class="fs-2"><i class="bi bi-cloud-arrow-up"></i></div>
+          <div><b>Drag &amp; drop</b> images here, or
+            <label for="fileInput" class="text-primary" style="cursor:pointer;">browse</label></div>
+          <input type="file" id="fileInput" accept="image/*" multiple class="d-none" />
+        </div>
+        <div id="upStatus" class="small mt-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="row g-3 align-items-end mb-3">
+    <div class="col-md-3">
+      <label class="form-label fw-semibold mb-1">Device</label>
+      <select id="deviceFilter" class="form-select"><option value="">— All Devices —</option></select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold mb-1">Type</label>
+      <select id="rtype" class="form-select">
+        <option value="image">Images</option>
+        <option value="video">Videos</option>
+        <option value="raw">Raw</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold mb-1">Search</label>
+      <input id="filter" type="search" class="form-control" placeholder="Filter by filename…" />
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <span class="badge text-bg-primary badge-stat" id="countBadge">0 files</span>
+    </div>
+  </div>
+
+  <div id="status" class="small mb-2"></div>
+
+  <!-- Gallery -->
+  <div class="row g-3" id="gallery"></div>
+
+  <!-- Lazy-load sentinel / loader -->
+  <div id="sentinel" class="text-center py-4 text-muted small"></div>
+</div>
+
+<!-- File Info modal -->
+<div class="modal fade" id="infoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-info-circle-fill text-info"></i> File Info</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm table-bordered align-middle mb-3"><tbody id="infoBody"></tbody></table>
+        <div class="fw-semibold mb-1">▾ Context</div>
+        <pre id="infoContext" class="ctx-pre bg-light border rounded p-2 mb-0"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox modal -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title text-truncate" id="viewTitle"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center bg-dark">
+        <img id="viewImg" class="lb-img" alt="" />
+      </div>
+      <div class="modal-footer">
+        <a id="viewOpen" class="btn btn-outline-primary" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Open original</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Go to top -->
+<button class="btn btn-primary top-btn" id="topBtn" title="Go to top"><i class="bi bi-arrow-up"></i></button>
+{% endblock %}
+
+{% block script %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+(function () {
+  "use strict";
+
+const config = JSON.parse(
+    atob('{{ app_config|escapejs }}')
+);
+
+  const deviceMappings = config.devices || [];
+  const CLOUD_NAME = config.cloud_name || "";
+  const TAG = config.tags || "";
+  const UPLOAD_PRESET = config.upload_preset || "";
+  const API_KEY = config.api_key || "";
+  const API_SECRET = config.api_secret || "";
+  console.log("{{ app_config|escapejs }}");
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    rtype: $("rtype"),
+    deviceFilter: $("deviceFilter"), filter: $("filter"),
+    gallery: $("gallery"), status: $("status"), upStatus: $("upStatus"),
+    countBadge: $("countBadge"), sentinel: $("sentinel"),
+    dropzone: $("dropzone"), fileInput: $("fileInput"),
+    settingsBtn: $("settingsBtn"), settingsPanel: $("settingsPanel"),
+    statusBtn: $("statusBtn"), refreshBtn: $("refreshBtn"), topBtn: $("topBtn"),
+    infoBody: $("infoBody"), infoContext: $("infoContext"),
+    viewImg: $("viewImg"), viewTitle: $("viewTitle"), viewOpen: $("viewOpen"),
+  };
+
+  const infoModal = new bootstrap.Modal($("infoModal"));
+  const viewModal = new bootstrap.Modal($("viewModal"));
+  let resources = [];
+
+  // ---- lazy rendering (infinite scroll) ----
+  const PAGE_SIZE = 48;
+  let viewList = [];   // current filtered list
+  let rendered = 0;    // how many cards are currently in the DOM
+  let io = null;       // IntersectionObserver
+
+  function setStatus(msg, kind) {
+    els.status.className = "small mb-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    els.status.innerHTML = msg;
+  }
+  function setUpStatus(msg, kind) {
+    els.upStatus.className = "small mt-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    els.upStatus.innerHTML = msg;
+  }
+
+  function deliveryUrl(cloud, rtype, publicId, version, format, transform) {
+    const t = transform ? (transform + "/") : "";
+    const v = version ? ("v" + version + "/") : "";
+    const ext = format ? ("." + format) : "";
+    return "https://res.cloudinary.com/" + cloud + "/" + rtype + "/upload/" + t + v + publicId + ext;
+  }
+  function formatBytes(b) {
+    if (!b) return "";
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+  function deviceOf(publicId) {
+    const parts = (publicId || "").split("/");
+    return parts.length >= 3 ? parts[1] : (parts.length === 2 ? parts[0] : "");
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  async function sha1Hex(str) {
+    const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function loadImages() {
+    const rtype = els.rtype.value;
+    const url = "https://res.cloudinary.com/" + encodeURIComponent(CLOUD_NAME) + "/" +
+                encodeURIComponent(rtype) + "/list/" + encodeURIComponent(TAG) + ".json";
+    setStatus('<span class="spinner-border spinner-border-sm"></span> Loading…');
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        if (res.status === 404)
+          throw new Error('Nothing found. Make sure images are tagged "' + TAG +
+            '" and "Resource list" is enabled (Settings → Security).');
+        throw new Error(res.status + " " + res.statusText);
+      }
+      const data = await res.json();
+      resources = (data.resources || []).map(r => Object.assign({ resource_type: rtype }, r));
+      buildDeviceFilter();
+      render();
+      setStatus(resources.length ? ("Loaded " + resources.length + " image(s).")
+        : ('Loaded, but no images carry the tag "' + TAG + '".'), resources.length ? "ok" : "err");
+    } catch (err) {
+      let msg = err.message || String(err);
+      if (msg === "Failed to fetch" || /NetworkError/i.test(msg))
+        msg = '"Resource list" is likely OFF (Settings → Security), or the cloud name/tag is wrong.';
+      setStatus("Error: " + msg, "err");
+    }
+  }
+
+  function buildDeviceFilter() {
+      const devices = Array.from(new Set(resources.map(r => deviceOf(r.public_id)).filter(Boolean))).sort();
+      // device_id -> user_id map
+      const deviceMap = {};
+      deviceMappings.forEach(d => {deviceMap[d.device_id] = d.user_id;});
+      const cur = els.deviceFilter.value;
+
+      els.deviceFilter.innerHTML ='<option value="">— All Devices —</option>' +
+          devices.map(deviceId => {
+              const label = deviceMap[deviceId] ? `${deviceId}-${deviceMap[deviceId]}` : deviceId;
+              return `<option value="${escapeHtml(deviceId)}">${escapeHtml(label)}</option>`;
+          }).join("");
+      if (devices.includes(cur)) {els.deviceFilter.value = cur;}
+  }
+
+  function currentList() {
+    const q = els.filter.value.trim().toLowerCase();
+    const dev = els.deviceFilter.value;
+    return resources.filter(r => {
+      if (dev && deviceOf(r.public_id) !== dev) return false;
+      if (q && !(r.public_id || "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
+  function makeCard(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const full = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "");
+    const thumb = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "c_fill,w_400,h_300,q_auto,f_auto");
+    const fname = (r.public_id || "").split("/").pop() + (r.format ? ("." + r.format) : "");
+    const sub = (r.width && r.height) ? (r.width + "×" + r.height) : "";
+
+    const col = document.createElement("div");
+    col.className = "col-6 col-md-4 col-lg-3";
+    const card = document.createElement("div");
+    card.className = "card h-100 shadow-sm";
+
+    const imgWrap = document.createElement("div");
+    imgWrap.className = "card-img-top-wrap";
+    const img = document.createElement("img");
+    img.loading = "lazy"; img.alt = fname; img.src = thumb;
+    img.onerror = function () { img.onerror = null; img.src = full; };
+    imgWrap.appendChild(img);
+    imgWrap.addEventListener("click", () => openView(full, r.public_id));
+
+    const body = document.createElement("div");
+    body.className = "card-body p-2";
+    body.innerHTML =
+      '<div class="file-name text-truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + "</div>" +
+      '<div class="file-sub text-muted">' + escapeHtml(sub) + "</div>" +
+      (r.created_at ? '<div class="file-sub text-muted">' + escapeHtml(r.created_at) + "</div>" : "");
+
+    const btns = document.createElement("div");
+    btns.className = "btn-group btn-group-sm w-100 px-2 pb-2";
+    btns.appendChild(iconBtn("btn-outline-primary", "bi-eye", "View", () => openView(full, r.public_id)));
+    btns.appendChild(iconBtn("btn-outline-success", "bi-download", "Download", () => downloadImage(r)));
+    btns.appendChild(iconBtn("btn-outline-info", "bi-info-circle", "Info", () => showInfo(r)));
+    btns.appendChild(iconBtn("btn-outline-danger", "bi-trash", "Delete", () => deleteImage(r)));
+
+    card.appendChild(imgWrap); card.appendChild(body); card.appendChild(btns);
+    col.appendChild(card);
+    return col;
+  }
+
+  function appendPage() {
+    const slice = viewList.slice(rendered, rendered + PAGE_SIZE);
+    const frag = document.createDocumentFragment();
+    slice.forEach(r => frag.appendChild(makeCard(r)));
+    els.gallery.appendChild(frag);
+    rendered += slice.length;
+
+    if (rendered >= viewList.length) {
+      els.sentinel.textContent = viewList.length ? ("All " + viewList.length + " loaded.") : "";
+    } else {
+      els.sentinel.textContent = "Showing " + rendered + " of " + viewList.length + " — scroll for more…";
+      // Re-arm the observer so it re-checks if the sentinel is still on screen.
+      if (io) { io.unobserve(els.sentinel); io.observe(els.sentinel); }
+    }
+  }
+
+  function render() {
+    viewList = currentList();
+    els.gallery.innerHTML = "";
+    rendered = 0;
+    els.countBadge.textContent = viewList.length + " files";
+    appendPage();
+  }
+
+  function iconBtn(cls, icon, title, handler) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn " + cls; b.title = title;
+    b.innerHTML = '<i class="bi ' + icon + '"></i>';
+    b.addEventListener("click", e => { e.stopPropagation(); handler(); });
+    return b;
+  }
+
+  function openView(url, name) {
+    els.viewImg.src = url; els.viewTitle.textContent = name || "";
+    els.viewOpen.href = url; viewModal.show();
+  }
+
+  function downloadImage(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const url = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "fl_attachment");
+    const a = document.createElement("a");
+    a.href = url; a.download = (r.public_id || "image").split("/").pop();
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  function showInfo(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const rows = [
+      ["Filename", (r.public_id || "").split("/").pop()],
+      ["Public ID", r.public_id],
+      ["Device", deviceOf(r.public_id)],
+      ["Type", rtype + (r.format ? (" · " + r.format) : "")],
+      ["Version", r.version],
+      ["Dimensions", (r.width && r.height) ? (r.width + " × " + r.height) : ""],
+      ["Size", r.bytes ? formatBytes(r.bytes) : ""],
+      ["Created", r.created_at],
+      ["Tags", Array.isArray(r.tags) ? r.tags.join(", ") : TAG],
+      ["URL", deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "")],
+    ].filter(row => row[1]);
+    els.infoBody.innerHTML = rows.map(row =>
+      '<tr><th class="text-muted" style="width:35%">' + row[0] + "</th><td>" + escapeHtml(String(row[1])) + "</td></tr>"
+    ).join("");
+
+    const ctx = r.context;
+    const hasCtx = ctx && (typeof ctx === "object") && Object.keys(ctx).length > 0;
+    if (hasCtx) {
+      els.infoContext.classList.remove("text-muted");
+      els.infoContext.textContent = JSON.stringify(ctx, null, 2);
+    } else {
+      els.infoContext.classList.add("text-muted");
+      els.infoContext.textContent =
+        "No context available.\nThe browser-safe list endpoint does not return context metadata. " +
+        "It's shown only for images uploaded through this page (or read via the Admin API on a backend).";
+    }
+    infoModal.show();
+  }
+
+  async function deleteImage(r) {
+    const cloud = CLOUD_NAME;
+    const confirmRes = await Swal.fire({
+      icon: "warning",
+      title: "Delete this image?",
+      html: '<code>' + escapeHtml(r.public_id || "") + "</code>",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc3545",
+      cancelButtonColor: "#6c757d",
+    });
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+      const rtype = r.resource_type || "image";
+      // Signed destroy via the (CORS-enabled) Upload API. Signature = SHA-1 of
+      // alphabetically-sorted params + API secret.
+      const ts = Math.round(Date.now() / 1000);
+      const signature = await sha1Hex(
+        "public_id=" + r.public_id + "&timestamp=" + ts + API_SECRET);
+
+      const form = new FormData();
+      form.append("public_id", r.public_id);
+      form.append("timestamp", ts);
+      form.append("api_key", API_KEY);
+      form.append("signature", signature);
+
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/" + rtype + "/destroy",
+        { method: "POST", body: form });
+      const data = await res.json();
+      if (data.result !== "ok" && data.result !== "not found")
+        throw new Error((data.error && data.error.message) || data.result || ("HTTP " + res.status));
+
+      const i = resources.indexOf(r);
+      if (i >= 0) resources.splice(i, 1);
+      buildDeviceFilter(); render();
+      Swal.fire({ icon: "success", title: "Deleted", timer: 1400, showConfirmButton: false });
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Delete failed", text: e.message || String(e), confirmButtonColor: "#0d6efd" });
+    }
+  }
+
+  async function uploadFiles(fileList) {
+    const cloud = CLOUD_NAME, preset = UPLOAD_PRESET, tag = TAG;
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    const url = "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/image/upload";
+    let done = 0, failed = 0;
+    setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading 0/' + files.length + '…');
+
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("upload_preset", preset);
+      form.append("return_delete_token", "true");
+      if (tag) { form.append("tags", tag); form.append("folder", tag); }
+      try {
+        const res = await fetch(url, { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error((data.error && data.error.message) || ("HTTP " + res.status));
+        resources.unshift({
+          public_id: data.public_id, format: data.format, version: data.version,
+          width: data.width, height: data.height, bytes: data.bytes,
+          created_at: data.created_at, tags: data.tags, context: data.context,
+          delete_token: data.delete_token, resource_type: "image",
+        });
+        done++;
+      } catch (e) {
+        failed++;
+        setUpStatus("Upload error: " + (e.message || e) +
+          ' (check the preset is set to "Unsigned" and the name is correct).', "err");
+      }
+      setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading ' + (done + failed) + '/' + files.length + '…');
+      buildDeviceFilter(); render();
+    }
+    if (!failed) setUpStatus("Uploaded " + done + " file(s).", "ok");
+    else if (done) setUpStatus("Uploaded " + done + ", failed " + failed + ". See error above.", "err");
+  }
+
+  // Header actions
+  function cloudStatus() {
+    const total = resources.length;
+    const devices = new Set(resources.map(r => deviceOf(r.public_id)).filter(Boolean)).size;
+    Swal.fire({
+      icon: "info",
+      title: "Cloud Status",
+      html:
+        '<div class="text-start mx-auto" style="max-width:260px">' +
+        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Cloud</span><b>' + escapeHtml(CLOUD_NAME) + "</b></div>" +
+        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Loaded files</span><b>' + total + "</b></div>" +
+        '<div class="d-flex justify-content-between py-1"><span class="text-muted">Devices</span><b>' + devices + "</b></div>" +
+        "</div>",
+      confirmButtonColor: "#0d6efd",
+    });
+  }
+
+  // Events
+  els.rtype.addEventListener("change", loadImages);
+  els.filter.addEventListener("input", render);
+  els.deviceFilter.addEventListener("change", render);
+  els.statusBtn.addEventListener("click", cloudStatus);
+  els.refreshBtn.addEventListener("click", loadImages);
+  els.settingsBtn.addEventListener("click", () => bootstrap.Collapse.getOrCreateInstance(els.settingsPanel).toggle());
+
+  // Go-to-top button
+  els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  window.addEventListener("scroll", () => {
+    els.topBtn.classList.toggle("show", window.scrollY > 300);
+  });
+  els.fileInput.addEventListener("change", e => { uploadFiles(e.target.files); e.target.value = ""; });
+  els.dropzone.addEventListener("click", e => {
+    if (e.target.tagName === "LABEL" || e.target.tagName === "INPUT") return;
+    els.fileInput.click();
+  });
+  ["dragenter", "dragover"].forEach(ev =>
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(ev =>
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.remove("drag"); }));
+  els.dropzone.addEventListener("drop", e => { if (e.dataTransfer) uploadFiles(e.dataTransfer.files); });
+
+  // Lazy-load: append the next page when the sentinel scrolls into view.
+  io = new IntersectionObserver(function (entries) {
+    if (entries[0].isIntersecting && rendered < viewList.length) appendPage();
+  }, { rootMargin: "400px" });
+  io.observe(els.sentinel);
+
+  // Auto-load on page open (cloud name / tag / preset are hardcoded above).
+  loadImages();
+})();
+</script>
+{% endblock %}
