@@ -1,13 +1,16 @@
 # Django imports
 from django.db.models import Sum
-from django.shortcuts import render
+from django.contrib import messages
 from django.http import JsonResponse
 from django.contrib.auth.models import User
+from django.shortcuts import render, redirect
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from ..models import (
-    UserProfile, InvoiceEmployeeMapping
+    UserProfile, InvoiceEmployeeMapping,
+    EmployeeIncentive
 )
+from ..forms import EmployeeIncentiveForm
 import json
 
 # =============== Invoice VIEWS ===============
@@ -150,3 +153,64 @@ def invoice_mapping_delete(request, mapping_id):
         return JsonResponse({'error': 'Mapping not found.'}, status=404)
     mapping.delete()
     return JsonResponse({'message': 'Mapping deleted successfully.'})
+
+# =============== Employee Incentive VIEWS ===============
+@login_required
+def employee_incentive(request):
+    context = {}
+    user_filter = request.GET.get('filter')
+    queryset = EmployeeIncentive.objects.all().order_by('-date')
+    if user_filter:
+        queryset = queryset.filter(user__user_id=user_filter)
+    context["employee_incentives"] = queryset
+    context["users"] = UserProfile.objects.values_list('name','user_id')
+    context["selected_user"] = user_filter
+    return render(request, 'employee_invoice/employee_incentive.html', context)
+
+@login_required
+def employee_incentive_add(request):
+    context = {}
+    if request.method == 'POST':
+        form = EmployeeIncentiveForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Employee Incentive added successfully.')
+            return redirect('employee_incentive')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = EmployeeIncentiveForm()
+    context['form'] = form
+    return render(request, 'employee_invoice/employee_incentive_edit.html', context)
+
+@login_required
+def employee_incentive_edit(request, employee_incentive_id):
+    context = {}
+    employee_incentive = EmployeeIncentive.objects.filter(id=employee_incentive_id).first()
+    if not employee_incentive:
+        messages.error(request, 'Employee Incentive not found.')
+        return redirect('employee_incentive')
+    if request.method == 'POST':
+        form = EmployeeIncentiveForm(request.POST, instance=employee_incentive)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Employee Incentive updated successfully.')
+            return redirect('employee_incentive')
+        else:
+            messages.error(request, form.errors.as_text())
+    else:
+        form = EmployeeIncentiveForm(instance=employee_incentive)
+    context['form'] = form
+    context['employee_incentive'] = employee_incentive
+    context['is_edit'] = True
+    return render(request, 'employee_invoice/employee_incentive_edit.html', context)
+
+@login_required
+def employee_incentive_delete(request, employee_incentive_id):
+    employee_incentive = EmployeeIncentive.objects.filter(id=employee_incentive_id).first()
+    if employee_incentive:
+        employee_incentive.delete()
+        messages.success(request, 'Employee Incentive deleted successfully.')
+    else:
+        messages.error(request, 'Employee Incentive not found.')
+    return redirect('employee_incentive')

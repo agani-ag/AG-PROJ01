@@ -49,6 +49,7 @@
                         {% if user.is_superuser %}
                         <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
                         <li><a class="dropdown-item" href="{% url 'invoice_employee_list' %}">Invoices</a></li>
+                        <li><a class="dropdown-item" href="{% url 'employee_incentive' %}">Incentives</a></li>
                         <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
                         {% endif %}
                         {% if user.is_staff and not user.is_superuser %}

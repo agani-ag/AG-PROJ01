@@ -669,3 +669,14 @@ class InvoiceEmployeeMapping(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.invoice_number}"
+
+# =============== Employee Incentive ===============
+class EmployeeIncentive(models.Model):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    date = models.DateField(default=now)
+    description = models.TextField(blank=True, null=True)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    is_paid = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.amount}"

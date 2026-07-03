@@ -9,7 +9,7 @@ from .models import (
     ActivityLog, MaterialRequest, UserProfile,
     Worker, Leads, LinkRegistry, InstanceInfo,
     Opportunity, WorkerCommissions, PublicUser,
-    Reminder
+    Reminder, EmployeeIncentive
 )
 from urllib.parse import urlparse
 
@@ -290,4 +290,16 @@ class WorkerCommissionsForm(ModelForm):
             'opportunity': forms.Select(attrs={'class': 'form-control'}),
             'paid': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
             'commission_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        }
+
+class EmployeeIncentiveForm(ModelForm):
+    class Meta:
+        model = EmployeeIncentive
+        fields = ['amount', 'is_paid', 'date', 'user', 'description']
+        widgets = {
+            'user': forms.Select(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control'}),
+            'is_paid': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'date': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }

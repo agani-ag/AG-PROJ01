@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Add Incentive{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <!-- Header -->
+		<div class="text-center mb-4">
+            {% if is_edit %}
+                <h2 class="fw-bold">Edit Incentive</h2>
+            {% else %}
+			    <h2 class="fw-bold">Add Incentive</h2>
+            {% endif %}
+		</div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <!-- User & Name -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">User</label>
+                    {{ form.user }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Date</label>
+                    {{ form.date }}
+                </div>
+            </div>
+
+            <!-- Link & Active -->
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Amount</label>
+                    {{ form.amount }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Paid</label>
+                    {{ form.is_paid }}
+                </div>
+            </div>
+
+            <!-- Description -->
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                {{ form.description }}
+            </div>
+
+            <!-- Submit -->
+			<div class="d-flex gap-2 mt-4">
+				<button type="submit" class="btn btn-primary btn-lg flex-fill">
+					<i class="fas fa-check me-2"></i>
+				</button>
+
+                {% if is_edit %}
+                <a href="{% url 'employee_incentive_delete' employee_incentive.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
+					<i class="fas fa-trash me-2"></i>
+				</a>
+                {% endif %}
+
+                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
+					<i class="fas fa-arrow-left me-2"></i>
+				</a>
+			</div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+    function showDeleteAlert() {
+        swal.fire({
+            title: 'Incentive Deleted',
+            text: 'Do You want to delete this incentive?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, delete it!',
+            cancelButtonText: 'No, cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = "{% url 'employee_incentive_delete' employee_incentive.id %}";
+            }
+        });
+    }
+</script>
+{% endif %}
+{% endblock %}

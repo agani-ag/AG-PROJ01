@@ -39,6 +39,12 @@ urlpatterns = [
     path('api/invoice-employee-mapping', employee_invoice.invoice_employee_mapping_api, name='invoice_employee_mapping_api'),
     path('api/invoice-mapping-delete/<int:mapping_id>', employee_invoice.invoice_mapping_delete, name='invoice_mapping_delete'),
 
+    # Employee Incentive URLs
+    path('employee-incentives', employee_invoice.employee_incentive, name='employee_incentive'),
+    path('employee-incentive/add', employee_invoice.employee_incentive_add, name='employee_incentive_add'),
+    path('employee-incentive/edit/<int:employee_incentive_id>', employee_invoice.employee_incentive_edit, name='employee_incentive_edit'),
+    path('employee-incentive/delete/<int:employee_incentive_id>', employee_invoice.employee_incentive_delete, name='employee_incentive_delete'),
+
     # Link Registry URL
     path('link-registry', link_registry.link_registry, name='link_registry'),
     path('link-registry/add', link_registry.link_registry_add, name='link_registry_add'),
