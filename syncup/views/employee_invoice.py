@@ -156,6 +156,15 @@ def invoice_mapping_delete(request, mapping_id):
 
 # =============== Employee Incentive VIEWS ===============
 @login_required
+def my_employee_incentive(request):
+    context = {}
+    queryset = EmployeeIncentive.objects.filter(user__user=request.user).order_by('-date')
+    context["employee_incentives"] = queryset
+    context["paid_amount"] = queryset.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+    context["unpaid_amount"] = queryset.filter(is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
+    return render(request, 'employee_invoice/my_employee_incentive.html', context)
+
+@login_required
 def employee_incentive(request):
     context = {}
     user_filter = request.GET.get('filter')
@@ -163,6 +172,8 @@ def employee_incentive(request):
     if user_filter:
         queryset = queryset.filter(user__user_id=user_filter)
     context["employee_incentives"] = queryset
+    context["paid_amount"] = queryset.filter(is_paid=True).aggregate(total=Sum('amount'))['total'] or 0
+    context["unpaid_amount"] = queryset.filter(is_paid=False).aggregate(total=Sum('amount'))['total'] or 0
     context["users"] = UserProfile.objects.values_list('name','user_id')
     context["selected_user"] = user_filter
     return render(request, 'employee_invoice/employee_incentive.html', context)

@@ -5,25 +5,7 @@
 {% block content %}
 <!-- Header -->
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2 class="mb-0">Incentives</h2>
-
-    <div class="d-flex gap-2">
-        <form method="GET">
-            <select name="filter" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">All Users</option>
-                {% for name, user_id in users %}
-                    <option value="{{ user_id }}" {% if user_id == selected_user %}selected{% endif %}>
-                        {{ name }}
-                    </option>
-                {% endfor %}
-            </select>
-        </form>
-
-        <a href="{% url 'employee_incentive_add' %}"
-           class="btn btn-primary btn-sm">
-            <i class="fas fa-plus"></i>
-        </a>
-    </div>
+    <h2 class="mb-0">My Incentives</h2>
 </div>
 
 <!-- Summary Cards -->
@@ -60,16 +42,13 @@
 <table class="table table-striped table-bordered" id="employee-incentive-table">
 	<thead class="table-dark">
 		<tr>
-			<th>Name</th>
 			<th>Date</th>
 			<th>Amount</th>
 		</tr>
 	</thead>
 	<tbody class="two-col-form">
 		{% for employee_incentive in employee_incentives %}
-		<tr onclick="window.location='{% url 'employee_incentive_edit' employee_incentive.id %}'" 
-            style="cursor: pointer;" class="{% if employee_incentive.is_paid %}table-success{% else %}table-danger{% endif %}">
-			<td>{{ employee_incentive.user }}</td>
+		<tr onclick="information('{{ employee_incentive.description }}')" style="cursor: pointer;" class="{% if employee_incentive.is_paid %}table-success{% else %}table-danger{% endif %}">
 			<td>{{ employee_incentive.date }}</td>
 			<td>{{ employee_incentive.amount }}</td>
 		</tr>
@@ -101,5 +80,17 @@ $(document).ready(function () {
         initDataTable();
     });
 });
+
+function information(desc) {
+    if (!desc) {
+        desc = "No notes available";
+    }
+    Swal.fire({
+        title: "Information",
+        text: desc,
+        icon: 'info',
+    });
+}
+
 </script>
 {% endblock %}

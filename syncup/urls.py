@@ -41,6 +41,7 @@ urlpatterns = [
 
     # Employee Incentive URLs
     path('employee-incentives', employee_invoice.employee_incentive, name='employee_incentive'),
+    path('employee-incentives-my', employee_invoice.my_employee_incentive, name='my_employee_incentive'),
     path('employee-incentive/add', employee_invoice.employee_incentive_add, name='employee_incentive_add'),
     path('employee-incentive/edit/<int:employee_incentive_id>', employee_invoice.employee_incentive_edit, name='employee_incentive_edit'),
     path('employee-incentive/delete/<int:employee_incentive_id>', employee_invoice.employee_incentive_delete, name='employee_incentive_delete'),

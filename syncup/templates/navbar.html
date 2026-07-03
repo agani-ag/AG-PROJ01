@@ -53,6 +53,7 @@
                         <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
                         {% endif %}
                         {% if user.is_staff and not user.is_superuser %}
+                        <li><a class="dropdown-item" href="{% url 'my_employee_incentive' %}">My Incentives</a></li>
                         <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
                         <li><a class="dropdown-item" href="{% url 'employee_invoices' user.id %}">My Invoices</a></li>
                         <div class="dropdown-divider"></div>
