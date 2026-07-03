@@ -171,7 +171,7 @@ class Worker(models.Model):
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
     mobile = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
-    location = models.CharField(max_length=100, blank=True, null=True)
+    location = models.CharField(blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     job_role = models.ForeignKey(JobRole, on_delete=models.SET_NULL, null=True, blank=True)
     experience_years = models.IntegerField(default=0)
@@ -205,7 +205,7 @@ class Leads(models.Model):
     phone = models.CharField(max_length=20, blank=True, null=True, validators=[phone_validator])
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    location = models.TextField(max_length=100, blank=True, null=True)
+    location = models.TextField(blank=True, null=True)
     pincode = models.CharField(max_length=10, blank=True, null=True, validators=[pincode_validator])
     TYPE = [
         (0, 'New Construction'),
