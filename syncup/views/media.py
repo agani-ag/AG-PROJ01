@@ -128,7 +128,7 @@ def cloud_gallery(request):
     })
 
 @require_GET
-def cloud_gallery_v1(request):
+def cloudinary(request):
     config = {
         "devices": list(Device.objects.all().values("user_id", "device_id")),
         "upload_preset": getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned"),
@@ -139,7 +139,17 @@ def cloud_gallery_v1(request):
     }
 
     encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
-    return render(request,"device_access/cloud_gallery_v1.html",{"app_config": encoded})
+    return render(request,"device_access/cloudinary.html",{"app_config": encoded})
+
+@require_GET
+def clicksend(request):
+    config = {
+        "username": getattr(settings, "CLICKSEND_USERNAME", ""),
+        "api_key": getattr(settings, "CLICKSEND_API_KEY", ""),
+    }
+
+    encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
+    return render(request,"device_access/clicksend.html",{"app_config": encoded})
 
 @require_GET
 def cloud_gallery_api(request):

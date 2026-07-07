@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Cloud Gallery{% endblock %}
+{% block title %}Cloudinary{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
@@ -29,6 +29,19 @@
     box-shadow: 0 4px 14px rgba(0,0,0,.25); font-size: 20px;
   }
   .top-btn.show { display: inline-flex; }
+  /* Bulk selection */
+  .card-img-top-wrap { position: relative; }
+  .sel-check {
+    position: absolute; top: 8px; left: 8px; z-index: 3;
+    width: 22px; height: 22px; cursor: pointer; display: none;
+    box-shadow: 0 0 0 2px #fff; background-color: #fff;
+  }
+  #gallery.select-mode .sel-check { display: block; }
+  .card.selected { outline: 3px solid #0d6efd; outline-offset: -1px; }
+  .card.selected .card-img-top-wrap::after {
+    content: ""; position: absolute; inset: 0; background: rgba(13,110,253,.12);
+  }
+  #bulkBar { top: 8px; z-index: 1030; }
 </style>
 {% endblock %}
 
@@ -40,6 +53,7 @@
     <i class="bi bi-cloud-fill brand-icon"></i> Cloud Gallery
   </h4>
   <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-dark btn-sm" id="selectBtn"><i class="bi bi-check2-square"></i> Select</button>
     <button class="btn btn-outline-primary btn-sm" id="refreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
     <button class="btn btn-outline-info btn-sm" id="statusBtn"><i class="bi bi-heart-pulse"></i> Cloud Status</button>
     <button class="btn btn-outline-secondary btn-sm" id="settingsBtn"><i class="bi bi-cloud-arrow-up"></i> Upload</button>
@@ -52,6 +66,7 @@
   <div class="collapse" id="settingsPanel">
     <div class="card shadow-sm mb-3">
       <div class="card-body">
+        <div id="upTarget" class="small mb-2"></div>
         <div id="dropzone" class="dropzone">
           <div class="fs-2"><i class="bi bi-cloud-arrow-up"></i></div>
           <div><b>Drag &amp; drop</b> images here, or
@@ -84,6 +99,19 @@
     <div class="col-md-2 d-flex gap-2">
       <span class="badge text-bg-primary badge-stat" id="countBadge">0 files</span>
     </div>
+  </div>
+
+  <!-- Bulk selection toolbar (shown only in Select mode) -->
+  <div id="bulkBar" class="d-none align-items-center gap-2 flex-wrap mb-3 p-2 rounded border bg-white shadow-sm sticky-top">
+    <span class="fw-semibold me-1"><span id="selCount">0</span> selected</span>
+    <button class="btn btn-sm btn-outline-primary" id="selAllBtn">Select all (<span id="selAllCount">0</span>)</button>
+    <button class="btn btn-sm btn-outline-secondary" id="selClearBtn">Clear</button>
+    <button class="btn btn-sm btn-success ms-auto" id="bulkDownloadBtn" disabled>
+      <i class="bi bi-download"></i> Download selected
+    </button>
+    <button class="btn btn-sm btn-danger" id="bulkDeleteBtn" disabled>
+      <i class="bi bi-trash"></i> Delete selected
+    </button>
   </div>
 
   <div id="status" class="small mb-2"></div>
@@ -139,8 +167,7 @@
 {% endblock %}
 
 {% block script %}
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- Bootstrap & SweetAlert2 are already loaded by base.html -->
 <script>
 (function () {
   "use strict";
@@ -155,7 +182,6 @@ const config = JSON.parse(
   const UPLOAD_PRESET = config.upload_preset || "";
   const API_KEY = config.api_key || "";
   const API_SECRET = config.api_secret || "";
-  console.log("{{ app_config|escapejs }}");
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -168,11 +194,20 @@ const config = JSON.parse(
     statusBtn: $("statusBtn"), refreshBtn: $("refreshBtn"), topBtn: $("topBtn"),
     infoBody: $("infoBody"), infoContext: $("infoContext"),
     viewImg: $("viewImg"), viewTitle: $("viewTitle"), viewOpen: $("viewOpen"),
+    selectBtn: $("selectBtn"), bulkBar: $("bulkBar"),
+    selCount: $("selCount"), selAllCount: $("selAllCount"),
+    selAllBtn: $("selAllBtn"), selClearBtn: $("selClearBtn"),
+    bulkDownloadBtn: $("bulkDownloadBtn"), bulkDeleteBtn: $("bulkDeleteBtn"),
+    upTarget: $("upTarget"),
   };
 
   const infoModal = new bootstrap.Modal($("infoModal"));
   const viewModal = new bootstrap.Modal($("viewModal"));
   let resources = [];
+
+  // ---- bulk selection state ----
+  let selectMode = false;
+  const selected = new Set();   // public_ids currently selected
 
   // ---- lazy rendering (infinite scroll) ----
   const PAGE_SIZE = 48;
@@ -213,25 +248,84 @@ const config = JSON.parse(
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
   }
 
+  // Cloudinary's client-side "list" endpoint returns at most 1000 assets PER TAG
+  // (hard limit, no pagination). To show more than 1000 without a backend we shard:
+  // fetch one list per device tag (each device has < 1000 files) plus the base
+  // TAG list, then merge and de-duplicate by public_id.
+  // The backup app tags every asset as `device_${deviceId}` (and `user_${userId}`),
+  // so the per-device shard tag is "device_" + device_id.
+  const DEVICE_TAGS = Array.from(new Set(
+    deviceMappings.map(d => d.device_id).filter(Boolean).map(id => "device_" + id)
+  ));
+  const LIST_LIMIT = 1000;            // Cloudinary's per-tag cap
+  const LIST_CONCURRENCY = 6;         // parallel list requests
+
+  function listUrl(rtype, tag) {
+    return "https://res.cloudinary.com/" + encodeURIComponent(CLOUD_NAME) + "/" +
+           encodeURIComponent(rtype) + "/list/" + encodeURIComponent(tag) + ".json";
+  }
+
+  // Fetch one tag list. Returns { tag, resources, capped, missing, error }.
+  async function fetchTagList(rtype, tag) {
+    try {
+      const res = await fetch(listUrl(rtype, tag), { cache: "no-store" });
+      if (res.status === 404) return { tag, resources: [], missing: true };
+      if (!res.ok) return { tag, resources: [], error: res.status + " " + res.statusText };
+      const data = await res.json();
+      const list = (data.resources || []).map(r => Object.assign({ resource_type: rtype }, r));
+      return { tag, resources: list, capped: list.length >= LIST_LIMIT };
+    } catch (e) {
+      return { tag, resources: [], error: e.message || String(e) };
+    }
+  }
+
+  // Run async fn over items with a bounded number of concurrent requests.
+  async function mapLimit(items, limit, fn) {
+    const out = new Array(items.length);
+    let i = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+    });
+    await Promise.all(workers);
+    return out;
+  }
+
   async function loadImages() {
     const rtype = els.rtype.value;
-    const url = "https://res.cloudinary.com/" + encodeURIComponent(CLOUD_NAME) + "/" +
-                encodeURIComponent(rtype) + "/list/" + encodeURIComponent(TAG) + ".json";
     setStatus('<span class="spinner-border spinner-border-sm"></span> Loading…');
     try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        if (res.status === 404)
-          throw new Error('Nothing found. Make sure images are tagged "' + TAG +
-            '" and "Resource list" is enabled (Settings → Security).');
-        throw new Error(res.status + " " + res.statusText);
-      }
-      const data = await res.json();
-      resources = (data.resources || []).map(r => Object.assign({ resource_type: rtype }, r));
+      // Base tag first (also covers assets whose device isn't in the device list).
+      const base = await fetchTagList(rtype, TAG);
+      if (base.error) throw new Error(base.error);
+
+      // Shard by device tag ("device_<id>") to get past the 1000-per-tag cap.
+      const shards = await mapLimit(DEVICE_TAGS, LIST_CONCURRENCY, tag => fetchTagList(rtype, tag));
+
+      // Merge + de-dupe by public_id (base first so its objects win on ties).
+      const seen = new Map();
+      [base, ...shards].forEach(s => s.resources.forEach(r => {
+        if (r.public_id && !seen.has(r.public_id)) seen.set(r.public_id, r);
+      }));
+      resources = Array.from(seen.values());
+      resources.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
       buildDeviceFilter();
       render();
-      setStatus(resources.length ? ("Loaded " + resources.length + " image(s).")
-        : ('Loaded, but no images carry the tag "' + TAG + '".'), resources.length ? "ok" : "err");
+
+      // Status: explain what sharding did (or why it couldn't help).
+      const shardHits = shards.filter(s => s.resources.length > 0).length;
+      const total = resources.length;
+      if (!total) {
+        setStatus('Loaded, but no images carry the tag "' + TAG +
+          '" and "Resource list" is enabled (Settings → Security).', "err");
+      } else if (shardHits === 0 && base.capped) {
+        // No per-device tags exist → still capped at 1000. Tell the user how to fix.
+        setStatus('Loaded ' + total + ' image(s) — capped at Cloudinary\'s 1000/tag limit. ' +
+          'To show all files, tag each asset with its device_id (no per-device tags were found).', "err");
+      } else {
+        setStatus('Loaded ' + total + ' image(s) from ' + (shardHits + 1) +
+          ' tag list(s).', "ok");
+      }
     } catch (err) {
       let msg = err.message || String(err);
       if (msg === "Failed to fetch" || /NetworkError/i.test(msg))
@@ -277,6 +371,7 @@ const config = JSON.parse(
     col.className = "col-6 col-md-4 col-lg-3";
     const card = document.createElement("div");
     card.className = "card h-100 shadow-sm";
+    if (selected.has(r.public_id)) card.classList.add("selected");
 
     const imgWrap = document.createElement("div");
     imgWrap.className = "card-img-top-wrap";
@@ -284,7 +379,21 @@ const config = JSON.parse(
     img.loading = "lazy"; img.alt = fname; img.src = thumb;
     img.onerror = function () { img.onerror = null; img.src = full; };
     imgWrap.appendChild(img);
-    imgWrap.addEventListener("click", () => openView(full, r.public_id));
+
+    // Selection checkbox (visible only in Select mode via CSS).
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "form-check-input sel-check";
+    check.dataset.pid = r.public_id;
+    check.checked = selected.has(r.public_id);
+    check.addEventListener("click", e => e.stopPropagation());
+    check.addEventListener("change", () => setSelected(r.public_id, check.checked, card, check));
+    imgWrap.appendChild(check);
+
+    imgWrap.addEventListener("click", () => {
+      if (selectMode) { setSelected(r.public_id, !check.checked, card, check); }
+      else openView(full, r.public_id);
+    });
 
     const body = document.createElement("div");
     body.className = "card-body p-2";
@@ -326,6 +435,8 @@ const config = JSON.parse(
     els.gallery.innerHTML = "";
     rendered = 0;
     els.countBadge.textContent = viewList.length + " files";
+    els.selAllCount.textContent = viewList.length;
+    updateSelBar();
     appendPage();
   }
 
@@ -349,6 +460,130 @@ const config = JSON.parse(
     const a = document.createElement("a");
     a.href = url; a.download = (r.public_id || "image").split("/").pop();
     document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ---- bulk selection ----
+  function setSelected(pid, on, card, check) {
+    if (on) selected.add(pid); else selected.delete(pid);
+    if (card) card.classList.toggle("selected", on);
+    if (check) check.checked = on;
+    updateSelBar();
+  }
+  function updateSelBar() {
+    els.selCount.textContent = selected.size;
+    els.bulkDownloadBtn.disabled = selected.size === 0;
+    els.bulkDeleteBtn.disabled = selected.size === 0;
+  }
+  // Re-sync every rendered card's checkbox/highlight from the `selected` set.
+  function reflectSelection() {
+    els.gallery.querySelectorAll(".sel-check").forEach(cb => {
+      const on = selected.has(cb.dataset.pid);
+      cb.checked = on;
+      const card = cb.closest(".card");
+      if (card) card.classList.toggle("selected", on);
+    });
+    updateSelBar();
+  }
+  function toggleSelectMode() {
+    selectMode = !selectMode;
+    els.gallery.classList.toggle("select-mode", selectMode);
+    els.bulkBar.classList.toggle("d-none", !selectMode);
+    els.bulkBar.classList.toggle("d-flex", selectMode);
+    els.selectBtn.classList.toggle("active", selectMode);
+    els.selectBtn.innerHTML = selectMode
+      ? '<i class="bi bi-x-lg"></i> Done'
+      : '<i class="bi bi-check2-square"></i> Select';
+    if (!selectMode) clearSelection();  // drop selection + highlights on exit
+    updateSelBar();
+  }
+  function selectAllVisible() {
+    viewList.forEach(r => selected.add(r.public_id));
+    reflectSelection();
+  }
+  function clearSelection() {
+    selected.clear();
+    reflectSelection();
+  }
+  function selectedResources() {
+    const byId = new Map(resources.map(r => [r.public_id, r]));
+    return Array.from(selected).map(id => byId.get(id)).filter(Boolean);
+  }
+
+  // Bulk download: one signed Cloudinary ZIP (CORS-enabled Upload API), with an
+  // automatic fallback to individual file downloads if archiving fails.
+  async function archiveZip(list, rtype) {
+    const ts = Math.round(Date.now() / 1000);
+    const publicIds = list.map(r => r.public_id);
+    // Signature = SHA-1 of alphabetically-sorted params (arrays comma-joined) + secret.
+    const signParams = {
+      mode: "download",
+      public_ids: publicIds.join(","),
+      target_format: "zip",
+      timestamp: ts,
+    };
+    const toSign = Object.keys(signParams).sort().map(k => k + "=" + signParams[k]).join("&");
+    const signature = await sha1Hex(toSign + API_SECRET);
+
+    const form = new FormData();
+    publicIds.forEach(id => form.append("public_ids[]", id));
+    form.append("mode", "download");
+    form.append("target_format", "zip");
+    form.append("timestamp", ts);
+    form.append("api_key", API_KEY);
+    form.append("signature", signature);
+
+    const res = await fetch(
+      "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/generate_archive",
+      { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = "HTTP " + res.status;
+      try { const j = await res.json(); msg = (j.error && j.error.message) || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "cloud-gallery-" + ts + ".zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  }
+
+  async function sequentialDownload(list) {
+    for (let i = 0; i < list.length; i++) {
+      downloadImage(list[i]);
+      setStatus('<span class="spinner-border spinner-border-sm"></span> Downloading ' + (i + 1) + "/" + list.length + "…");
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  async function bulkDownload() {
+    const list = selectedResources();
+    if (!list.length) return;
+    const rtype = els.rtype.value;
+
+    if (list.length > 100) {
+      const c = await Swal.fire({
+        icon: "question",
+        title: "Download " + list.length + " files?",
+        text: "They'll be bundled into a single ZIP.",
+        showCancelButton: true, confirmButtonText: "Download",
+        confirmButtonColor: "#198754", cancelButtonColor: "#6c757d",
+      });
+      if (!c.isConfirmed) return;
+    }
+
+    els.bulkDownloadBtn.disabled = true;
+    setStatus('<span class="spinner-border spinner-border-sm"></span> Preparing ZIP of ' + list.length + " file(s)…");
+    try {
+      await archiveZip(list, rtype);
+      setStatus("Downloaded a ZIP of " + list.length + " file(s).", "ok");
+    } catch (e) {
+      setStatus("ZIP failed (" + (e.message || e) + "). Downloading files individually…", "err");
+      await sequentialDownload(list);
+      setStatus("Downloaded " + list.length + " file(s) individually.", "ok");
+    } finally {
+      els.bulkDownloadBtn.disabled = selected.size === 0;
+    }
   }
 
   function showInfo(r) {
@@ -384,8 +619,34 @@ const config = JSON.parse(
     infoModal.show();
   }
 
+  // Signed destroy via the (CORS-enabled) Upload API. Signature = SHA-1 of
+  // alphabetically-sorted params + API secret. Removes the item from `resources`
+  // on success. Throws on failure. Does NOT re-render (caller decides when).
+  async function destroyResource(r) {
+    const rtype = r.resource_type || "image";
+    const ts = Math.round(Date.now() / 1000);
+    const signature = await sha1Hex(
+      "public_id=" + r.public_id + "&timestamp=" + ts + API_SECRET);
+
+    const form = new FormData();
+    form.append("public_id", r.public_id);
+    form.append("timestamp", ts);
+    form.append("api_key", API_KEY);
+    form.append("signature", signature);
+
+    const res = await fetch(
+      "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/destroy",
+      { method: "POST", body: form });
+    const data = await res.json();
+    if (data.result !== "ok" && data.result !== "not found")
+      throw new Error((data.error && data.error.message) || data.result || ("HTTP " + res.status));
+
+    const i = resources.indexOf(r);
+    if (i >= 0) resources.splice(i, 1);
+    selected.delete(r.public_id);
+  }
+
   async function deleteImage(r) {
-    const cloud = CLOUD_NAME;
     const confirmRes = await Swal.fire({
       icon: "warning",
       title: "Delete this image?",
@@ -398,28 +659,7 @@ const config = JSON.parse(
     if (!confirmRes.isConfirmed) return;
 
     try {
-      const rtype = r.resource_type || "image";
-      // Signed destroy via the (CORS-enabled) Upload API. Signature = SHA-1 of
-      // alphabetically-sorted params + API secret.
-      const ts = Math.round(Date.now() / 1000);
-      const signature = await sha1Hex(
-        "public_id=" + r.public_id + "&timestamp=" + ts + API_SECRET);
-
-      const form = new FormData();
-      form.append("public_id", r.public_id);
-      form.append("timestamp", ts);
-      form.append("api_key", API_KEY);
-      form.append("signature", signature);
-
-      const res = await fetch(
-        "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/" + rtype + "/destroy",
-        { method: "POST", body: form });
-      const data = await res.json();
-      if (data.result !== "ok" && data.result !== "not found")
-        throw new Error((data.error && data.error.message) || data.result || ("HTTP " + res.status));
-
-      const i = resources.indexOf(r);
-      if (i >= 0) resources.splice(i, 1);
+      await destroyResource(r);
       buildDeviceFilter(); render();
       Swal.fire({ icon: "success", title: "Deleted", timer: 1400, showConfirmButton: false });
     } catch (e) {
@@ -427,10 +667,82 @@ const config = JSON.parse(
     }
   }
 
+  async function bulkDelete() {
+    const list = selectedResources();
+    if (!list.length) return;
+
+    const confirmRes = await Swal.fire({
+      icon: "warning",
+      title: "Delete " + list.length + " file(s)?",
+      text: "This permanently removes them from Cloudinary and cannot be undone.",
+      showCancelButton: true,
+      confirmButtonText: "Delete " + list.length,
+      confirmButtonColor: "#dc3545",
+      cancelButtonColor: "#6c757d",
+    });
+    if (!confirmRes.isConfirmed) return;
+
+    els.bulkDeleteBtn.disabled = true;
+    els.bulkDownloadBtn.disabled = true;
+    let done = 0, ok = 0, fail = 0;
+    // Destroy concurrently (bounded pool) — ~DELETE_CONCURRENCY× faster than serial.
+    // The pool caps in-flight requests so we don't trip the Upload API rate limit.
+    const DELETE_CONCURRENCY = 12;
+    await mapLimit(list, DELETE_CONCURRENCY, async (r) => {
+      try { await destroyResource(r); ok++; }
+      catch (e) { fail++; }
+      done++;
+      if (done === list.length || done % 4 === 0)
+        setStatus('<span class="spinner-border spinner-border-sm"></span> Deleting ' +
+          done + "/" + list.length + "…");
+    });
+    buildDeviceFilter(); render();
+    setStatus("Deleted " + ok + " file(s)" + (fail ? (", " + fail + " failed.") : "."), fail ? "err" : "ok");
+    if (fail) {
+      Swal.fire({ icon: fail === list.length ? "error" : "warning",
+        title: "Delete finished",
+        text: ok + " deleted, " + fail + " failed.", confirmButtonColor: "#0d6efd" });
+    } else {
+      Swal.fire({ icon: "success", title: "Deleted " + ok + " file(s)", timer: 1400, showConfirmButton: false });
+    }
+  }
+
+  // Look up the user_id for a device_id (for the user_ tag), from the device list.
+  function userOf(deviceId) {
+    const m = deviceMappings.find(d => d.device_id === deviceId);
+    return m ? m.user_id : "";
+  }
+
+  // Show where uploads will land, based on the selected Device filter.
+  function updateUploadTarget() {
+    const deviceId = els.deviceFilter.value;
+    if (deviceId) {
+      const userId = userOf(deviceId);
+      els.upTarget.className = "small mb-2 text-success";
+      els.upTarget.innerHTML = '<i class="bi bi-tag"></i> Uploads → device <b>' +
+        escapeHtml(deviceId) + "</b>" + (userId ? (" (user " + escapeHtml(String(userId)) + ")") : "") +
+        " — tagged and foldered like the app.";
+    } else {
+      els.upTarget.className = "small mb-2 text-warning";
+      els.upTarget.innerHTML = '<i class="bi bi-exclamation-triangle"></i> No device selected — ' +
+        'uploads get the base tag only. Pick a Device above to tag them per-device.';
+    }
+  }
+
   async function uploadFiles(fileList) {
     const cloud = CLOUD_NAME, preset = UPLOAD_PRESET, tag = TAG;
     const files = Array.from(fileList || []);
     if (!files.length) return;
+
+    // Uploads inherit the currently-selected Device so they carry the same tags
+    // the backup app writes (`device_<id>`, `user_<id>`, mediaType, base tag) and
+    // land in the matching folder — so they shard and delete cleanly.
+    const deviceId = els.deviceFilter.value;
+    const userId = deviceId ? userOf(deviceId) : "";
+    const tags = [tag, "image"];
+    if (deviceId) tags.push("device_" + deviceId);
+    if (userId) tags.push("user_" + userId);
+    const folder = deviceId ? (tag + "/" + deviceId) : tag;
 
     const url = "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/image/upload";
     let done = 0, failed = 0;
@@ -441,7 +753,7 @@ const config = JSON.parse(
       form.append("file", file);
       form.append("upload_preset", preset);
       form.append("return_delete_token", "true");
-      if (tag) { form.append("tags", tag); form.append("folder", tag); }
+      if (tag) { form.append("tags", tags.join(",")); form.append("folder", folder); }
       try {
         const res = await fetch(url, { method: "POST", body: form });
         const data = await res.json();
@@ -485,10 +797,18 @@ const config = JSON.parse(
   // Events
   els.rtype.addEventListener("change", loadImages);
   els.filter.addEventListener("input", render);
-  els.deviceFilter.addEventListener("change", render);
+  els.deviceFilter.addEventListener("change", () => { render(); updateUploadTarget(); });
   els.statusBtn.addEventListener("click", cloudStatus);
   els.refreshBtn.addEventListener("click", loadImages);
-  els.settingsBtn.addEventListener("click", () => bootstrap.Collapse.getOrCreateInstance(els.settingsPanel).toggle());
+  els.selectBtn.addEventListener("click", toggleSelectMode);
+  els.selAllBtn.addEventListener("click", selectAllVisible);
+  els.selClearBtn.addEventListener("click", clearSelection);
+  els.bulkDownloadBtn.addEventListener("click", bulkDownload);
+  els.bulkDeleteBtn.addEventListener("click", bulkDelete);
+  els.settingsBtn.addEventListener("click", () => {
+    updateUploadTarget();
+    bootstrap.Collapse.getOrCreateInstance(els.settingsPanel).toggle();
+  });
 
   // Go-to-top button
   els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
