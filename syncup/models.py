@@ -604,14 +604,16 @@ class PublicUser(models.Model):
     urls = models.JSONField(blank=True, null=True, default=dict)
     is_active = models.BooleanField(default=True)
     # Unguessable token that authorises a public (non-logged-in) user to edit
-    # only their own record via the link handed to them at login.
-    edit_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    # only their own record via the link handed to them at login. Nullable +
+    # generated lazily so adding it never needs a data-backfill migration
+    # (SQLite allows many NULLs under a UNIQUE constraint).
+    edit_token = models.UUIDField(null=True, blank=True, editable=False, unique=True)
     last_login = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} ({self.username})"
-    
+
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.strip().title()
@@ -623,6 +625,8 @@ class PublicUser(models.Model):
             self.business_name = self.business_name.strip()
         if self.password:
             self.password = self.password.strip().lower()
+        if not self.edit_token:
+            self.edit_token = uuid.uuid4()
         super().save(*args, **kwargs)
 
 

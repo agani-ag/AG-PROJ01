@@ -122,7 +122,7 @@ def public_user_edit(request, public_user_id):
 
     is_admin = request.user.is_authenticated and request.user.is_superuser
     token = request.GET.get('token') or request.POST.get('token') or ''
-    token_ok = bool(token) and str(public_user.edit_token) == str(token)
+    token_ok = bool(token) and public_user.edit_token is not None and str(public_user.edit_token) == str(token)
     if not (is_admin or token_ok):
         return HttpResponseForbidden("You are not authorized to edit this record.")
 

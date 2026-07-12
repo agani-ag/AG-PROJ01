@@ -178,6 +178,10 @@ def syncup_public_user(email_or_username, password, device_id):
             "message": "User is inactive, please contact support"
         }, status=403)
 
+    # Ensure the user has an edit token (older rows may be NULL after migration).
+    if not user.edit_token:
+        user.save(update_fields=['edit_token'])  # save() generates it
+
     urls = user.urls if user.urls else {}
     # Always (re)issue the self-edit link with the current token so the public
     # user can manage their page; also repairs old tokenless links.
