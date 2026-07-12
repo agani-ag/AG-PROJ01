@@ -33,6 +33,8 @@
     </div>
 </div>
 
+{{ errors_data|json_script:"errors-data" }}
+
 <!-- Detail Modal -->
 <div class="modal fade" id="errorDetailModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
@@ -50,7 +52,7 @@
 
 {% block script %}
 <script>
-const errorsData = {{ errors_json|safe }};
+const errorsData = JSON.parse(document.getElementById('errors-data').textContent);
 let gridApi = null;
 
 const columnDefs = [

@@ -7,9 +7,11 @@ from django.contrib.auth import authenticate
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils.timezone import datetime, now
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from django.core.exceptions import ObjectDoesNotExist
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from functools import wraps
 # Python standard libraries
 import os
 import re
@@ -39,6 +41,34 @@ PROJ01_URL = settings.PROJ01_URL
 PROJ02_URL = settings.PROJ02_URL
 FIREBASE_PROJECT_ID = settings.FIREBASE_PROJECT_ID
 INSTANCE = ['S1']
+
+
+# Device management is a superuser area (matches the navbar gate). These pages
+# expose sensitive device PII, so lock down every WEB view/endpoint below.
+# Device-facing mobile APIs (login/register/metadata/health/audit-ingest/
+# reminders_api) intentionally stay open.
+def _superuser_page(view):
+    """Guard for device management PAGES — redirects non-superusers."""
+    @wraps(view)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            messages.error(request, "You are not authorized to access device management.")
+            return redirect('profile_edit')
+        return view(request, *args, **kwargs)
+    return _wrapped
+
+
+def _superuser_api(view):
+    """Guard for device management JSON APIs — returns 403 JSON."""
+    @wraps(view)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return JsonResponse({'success': False, 'error': 'Not authorized'}, status=403)
+        return view(request, *args, **kwargs)
+    return _wrapped
+
 
 # ==================== DEVICE ACCESS ENDPOINTS ====================
 def health_check(request):
@@ -296,6 +326,7 @@ def unregister_device(request):
     else:
         return JsonResponse({"success": False, "message": "Not found"}, status=404)
 
+@_superuser_page
 def list_devices(request):
     context = {}
     user_filter = request.GET.get('filter')
@@ -310,6 +341,7 @@ def list_devices(request):
 ALLOWED_IMAGE_TYPES = {'image/jpeg', 'image/png', 'image/webp', 'image/gif'}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 
+@_superuser_api
 @csrf_exempt
 def upload_notification_image(request):
     """Upload an image, compress it losslessly, save to media/notifications/, return URL."""
@@ -379,6 +411,7 @@ def upload_notification_image(request):
         "size": len(buffer.getvalue()),
     })
 
+@_superuser_api
 @csrf_exempt
 def send_notification(request):
     try:
@@ -407,11 +440,9 @@ def send_notification(request):
         return JsonResponse({"success": False, "message": "No devices"}, status=400)
     if data.get("data_only"):
         sent, failed = send_fcm_notifications_data_only(tokens, title, body)
-        print(f"Data-only notification sent to {len(sent)} devices, failed for {len(failed)} devices")
     else:
         image = None if data.get("no_image") else (data.get("image") or "https://picsum.photos/400/300")
         sent, failed = send_fcm_notifications(tokens, title, body, {}, image)
-        print(f"Notification sent to {len(sent)} devices, failed for {len(failed)} devices")
     if failed:
         Device.objects.filter(push_token__in=failed, retry_count__gte=2).update(is_active=False)
         Device.objects.filter(push_token__in=failed).update(retry_count=F('retry_count') + 1)
@@ -571,27 +602,33 @@ def metadata(request):
     with transaction.atomic():
 
         # ================= LOCATION =================
+        # Keep ONE row per (device, latitude, longitude) — the same place is not
+        # stored again on later dates. update_or_create refreshes the timestamp
+        # and details to the most recent sighting. Device payload/response is
+        # unchanged.
         loc = metadata.get("location", {})
-        if loc:
-            Location.objects.create(
+        if loc and loc.get("latitude") is not None and loc.get("longitude") is not None:
+            Location.objects.update_or_create(
                 device=device,
                 latitude=loc.get("latitude"),
                 longitude=loc.get("longitude"),
-                altitude=loc.get("altitude"),  # None is okay
-                accuracy=loc.get("accuracy"),
-                heading=loc.get("heading"),
-                speed=loc.get("speed"),
-                method = loc.get("method"),
-                city = loc.get("city"),
-                region = loc.get("region"),
-                country = loc.get("country"),
-                isp = loc.get("isp"),
-                ip = loc.get("ip"),
-                timezone = loc.get("timezone"),
-                postal_code = loc.get("postal_code"),
-                timestamp=loc.get("timestamp"),
-                is_gps=loc.get("is_gps", True),
-                is_approximate=loc.get("is_approximate", False)
+                defaults={
+                    "altitude": loc.get("altitude"),  # None is okay
+                    "accuracy": loc.get("accuracy"),
+                    "heading": loc.get("heading"),
+                    "speed": loc.get("speed"),
+                    "method": loc.get("method"),
+                    "city": loc.get("city"),
+                    "region": loc.get("region"),
+                    "country": loc.get("country"),
+                    "isp": loc.get("isp"),
+                    "ip": loc.get("ip"),
+                    "timezone": loc.get("timezone"),
+                    "postal_code": loc.get("postal_code"),
+                    "timestamp": loc.get("timestamp"),
+                    "is_gps": loc.get("is_gps", True),
+                    "is_approximate": loc.get("is_approximate", False),
+                },
             )
 
         # ================= DEVICE INFO =================
@@ -724,6 +761,7 @@ def metadata(request):
     return JsonResponse({"success": True})
 
 # ==================== DEVICE VIEW VIEWS ====================
+@_superuser_page
 def device_dashboard(request):
     """All-devices dashboard with multi-select device filter. Optimized: only stats + device details; tables & map loaded via AJAX."""
     all_devices = Device.objects.all()
@@ -755,7 +793,8 @@ def device_dashboard(request):
 
     # Batch device details (replaces N+1 queries with ~8 total)
     from django.db.models import Count
-    dev_ids = list(devices_qs.values_list('id', flat=True))
+    devices_list = list(devices_qs)
+    dev_ids = [d.id for d in devices_list]
 
     device_infos = {di.device_id: di for di in DeviceInfo.objects.filter(device_id__in=dev_ids)}
     network_infos = {}
@@ -772,7 +811,7 @@ def device_dashboard(request):
     call_counts = dict(CallLog.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
 
     device_details = []
-    for dev in devices_qs:
+    for dev in devices_list:
         device_details.append({
             'device': dev,
             'device_info': device_infos.get(dev.id),
@@ -784,15 +823,23 @@ def device_dashboard(request):
             'call_count': call_counts.get(dev.id, 0),
         })
 
+    # Distinct instances with their device counts (one row per instance).
+    # Built in the DB so it's correct regardless of Device ordering — the old
+    # template `regroup` only grouped *consecutive* rows, duplicating instances.
+    instance_groups = list(
+        all_devices.values('instance').annotate(c=Count('id')).order_by('instance')
+    )
+
     context = {
         'all_devices': all_devices,
+        'instance_groups': instance_groups,
         'selected_ids': selected_ids,
         'selected_devices': devices_qs,
         'device_details': device_details,
         'date_from': date_from or '',
         'date_to': date_to or '',
         # Stats (count-only queries)
-        'total_devices': devices_qs.count(),
+        'total_devices': len(devices_list),
         'total_locations': loc_qs.count(),
         'total_contacts': con_qs.count(),
         'total_calls': call_qs.count(),
@@ -801,6 +848,7 @@ def device_dashboard(request):
     return render(request, 'device_access/device_dashboard.html', context)
 
 
+@_superuser_api
 def device_table_api(request):
     """AJAX endpoint for dashboard tables and map data. Lazy-loaded per tab."""
     data_type = request.GET.get('type', '')
@@ -876,7 +924,7 @@ def device_table_api(request):
 
     return JsonResponse({'data': []})
 
-@csrf_exempt
+@_superuser_api
 def device_network_api(request):
     """Cross-device relationship graph. mode=contacts|calllogs|all (default all)."""
     import re
@@ -917,14 +965,24 @@ def device_network_api(request):
         '#764ba2', '#38ef7d', '#ff6b6b', '#feca57', '#00cec9',
     ]
     device_labels = {}  # device_key -> friendly label
+
+    # Batch lookups (replaces the per-device N+1 count/info queries).
+    from collections import defaultdict
+    from django.db.models import Count
+    devices = list(devices)
+    dev_ids = [d.id for d in devices]
+    dev_infos = {di.device_id: di for di in DeviceInfo.objects.filter(device_id__in=dev_ids)}
+    contact_counts = dict(Contact.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
+    call_counts = dict(CallLog.objects.filter(device_id__in=dev_ids).values('device_id').annotate(c=Count('id')).values_list('device_id', 'c'))
+
     for i, dev in enumerate(devices):
         key = f"device_{dev.id}"
         friendly = f"{dev.user_id} ({dev.platform})"
         device_labels[key] = friendly
         node_map[key] = len(nodes)
-        dev_info = DeviceInfo.objects.filter(device=dev).first()
-        contact_count = Contact.objects.filter(device=dev).count()
-        call_count = CallLog.objects.filter(device=dev).count()
+        dev_info = dev_infos.get(dev.id)
+        contact_count = contact_counts.get(dev.id, 0)
+        call_count = call_counts.get(dev.id, 0)
         nodes.append({
             "id": key,
             "label": friendly,
@@ -945,13 +1003,28 @@ def device_network_api(request):
             "app_version": dev_info.app_version if dev_info else "",
         })
 
+    # Prefetch contacts + (date-filtered) call logs grouped by device — one query
+    # each — so the mode loops below never hit the DB per device.
+    contacts_by_dev = defaultdict(list)
+    for c in Contact.objects.filter(device_id__in=dev_ids).values('device_id', 'name', 'phone_number', 'email'):
+        contacts_by_dev[c['device_id']].append(c)
+
+    _calls_qs = CallLog.objects.filter(device_id__in=dev_ids)
+    if date_from:
+        _calls_qs = _calls_qs.filter(timestamp__date__gte=date_from)
+    if date_to:
+        _calls_qs = _calls_qs.filter(timestamp__date__lte=date_to)
+    calls_by_dev = defaultdict(list)
+    for log in _calls_qs.values('device_id', 'name', 'phone_number', 'call_type', 'duration_seconds', 'timestamp'):
+        calls_by_dev[log['device_id']].append(log)
+
     # ==================== CONTACTS MODE ====================
     if mode in ('contacts', 'all'):
         for dev in devices:
             dev_key = f"device_{dev.id}"
             dev_label = device_labels.get(dev_key, dev_key)
-            for c in Contact.objects.filter(device=dev):
-                raw_phone = c.phone_number
+            for c in contacts_by_dev.get(dev.id, []):
+                raw_phone = c['phone_number']
                 phone = normalize_phone(raw_phone)
                 if not phone:
                     continue
@@ -959,20 +1032,20 @@ def device_network_api(request):
                     node_map[phone] = len(nodes)
                     nodes.append({
                         "id": phone,
-                        "label": c.name or phone,
+                        "label": c['name'] or phone,
                         "group": "contact",
                         "color": "#4facfe",
                         "calls": 0,
                         "duration": 0,
                         "devices": [dev_label],
-                        "email": c.email or "",
+                        "email": c['email'] or "",
                         "original_phones": [raw_phone],
                         "device_details": [{
                             "device": dev_label,
                             "device_key": dev_key,
-                            "name": c.name or "",
+                            "name": c['name'] or "",
                             "phone_stored": raw_phone,
-                            "email": c.email or "",
+                            "email": c['email'] or "",
                             "calls": 0,
                             "duration": 0,
                             "call_types": {},
@@ -997,9 +1070,9 @@ def device_network_api(request):
                         dd_list.append({
                             "device": dev_label,
                             "device_key": dev_key,
-                            "name": c.name or "",
+                            "name": c['name'] or "",
                             "phone_stored": raw_phone,
-                            "email": c.email or "",
+                            "email": c['email'] or "",
                             "calls": 0,
                             "duration": 0,
                             "call_types": {},
@@ -1017,23 +1090,18 @@ def device_network_api(request):
             contact_call_agg = {}  # (dev_key, phone) -> {count, duration, types, first_call, last_call}
             for dev in devices:
                 dev_key = f"device_{dev.id}"
-                call_qs = CallLog.objects.filter(device=dev)
-                if date_from:
-                    call_qs = call_qs.filter(timestamp__date__gte=date_from)
-                if date_to:
-                    call_qs = call_qs.filter(timestamp__date__lte=date_to)
-                for log in call_qs:
-                    phone = normalize_phone(log.phone_number)
+                for log in calls_by_dev.get(dev.id, []):
+                    phone = normalize_phone(log['phone_number'])
                     if not phone or phone not in node_map:
                         continue
                     pair = (dev_key, phone)
                     if pair not in contact_call_agg:
                         contact_call_agg[pair] = {"count": 0, "duration": 0, "types": {}, "first_call": None, "last_call": None}
                     contact_call_agg[pair]["count"] += 1
-                    contact_call_agg[pair]["duration"] += log.duration_seconds or 0
-                    ct = log.call_type or "unknown"
+                    contact_call_agg[pair]["duration"] += log['duration_seconds'] or 0
+                    ct = log['call_type'] or "unknown"
                     contact_call_agg[pair]["types"][ct] = contact_call_agg[pair]["types"].get(ct, 0) + 1
-                    ts = log.timestamp
+                    ts = log['timestamp']
                     if ts:
                         if contact_call_agg[pair]["first_call"] is None or ts < contact_call_agg[pair]["first_call"]:
                             contact_call_agg[pair]["first_call"] = ts
@@ -1075,13 +1143,8 @@ def device_network_api(request):
         for dev in devices:
             dev_key = f"device_{dev.id}"
             dev_label = device_labels.get(dev_key, dev_key)
-            call_qs = CallLog.objects.filter(device=dev)
-            if date_from:
-                call_qs = call_qs.filter(timestamp__date__gte=date_from)
-            if date_to:
-                call_qs = call_qs.filter(timestamp__date__lte=date_to)
-            for log in call_qs:
-                raw_phone = log.phone_number
+            for log in calls_by_dev.get(dev.id, []):
+                raw_phone = log['phone_number']
                 phone = normalize_phone(raw_phone)
                 if not phone:
                     continue
@@ -1089,10 +1152,10 @@ def device_network_api(request):
                 if pair not in call_agg:
                     call_agg[pair] = {"count": 0, "duration": 0, "types": {}, "first_call": None, "last_call": None}
                 call_agg[pair]["count"] += 1
-                call_agg[pair]["duration"] += log.duration_seconds or 0
-                ct = log.call_type or "unknown"
+                call_agg[pair]["duration"] += log['duration_seconds'] or 0
+                ct = log['call_type'] or "unknown"
                 call_agg[pair]["types"][ct] = call_agg[pair]["types"].get(ct, 0) + 1
-                ts = log.timestamp
+                ts = log['timestamp']
                 if ts:
                     if call_agg[pair]["first_call"] is None or ts < call_agg[pair]["first_call"]:
                         call_agg[pair]["first_call"] = ts
@@ -1103,7 +1166,7 @@ def device_network_api(request):
                     node_map[phone] = len(nodes)
                     nodes.append({
                         "id": phone,
-                        "label": log.name or phone,
+                        "label": log['name'] or phone,
                         "group": "call_only",
                         "color": "#f5576c",
                         "calls": 0,
@@ -1114,7 +1177,7 @@ def device_network_api(request):
                         "device_details": [{
                             "device": dev_label,
                             "device_key": dev_key,
-                            "name": log.name or "",
+                            "name": log['name'] or "",
                             "phone_stored": raw_phone,
                             "email": "",
                             "calls": 0,
@@ -1140,7 +1203,7 @@ def device_network_api(request):
                         dd_list.append({
                             "device": dev_label,
                             "device_key": dev_key,
-                            "name": log.name or "",
+                            "name": log['name'] or "",
                             "phone_stored": raw_phone,
                             "email": "",
                             "calls": 0,
@@ -1284,9 +1347,12 @@ def audit_errors(request):
         "action": "CREATED" if created else "UPDATED"
     })
 
+@_superuser_page
 def audit_errors_list(request):
-    errors = AuditError.objects.all()
-    errors_json = json.dumps([
+    # Build plain Python dicts and hand them to the template via json_script
+    # (safe escaping) — avoids the stored-XSS from `|safe` on device-supplied data.
+    errors = list(AuditError.objects.all()[:2000])
+    errors_data = [
         {
             'error_id': e.error_id,
             'timestamp': e.timestamp.isoformat() if e.timestamp else None,
@@ -1309,33 +1375,42 @@ def audit_errors_list(request):
             'payload_preview': e.payload_preview,
             'created_at': e.created_at.isoformat() if e.created_at else None,
         } for e in errors
-    ])
+    ]
     return render(request, 'device_access/audit_errors.html', {
         'errors': errors,
-        'errors_json': errors_json,
+        'errors_data': errors_data,
     })
 
+@_superuser_api
+@require_POST
 def audit_errors_clear(request):
-    if request.method != 'POST':
-        return JsonResponse({"success": False, "message": "POST required"}, status=405)
     count, _ = AuditError.objects.all().delete()
     return JsonResponse({"success": True, "deleted": count})
 
-def device_view(request, id):       
-    context = {}
+@_superuser_page
+def device_view(request, id):
     device = Device.objects.filter(id=id).first()
-    if device:
-        context['device'] = device
-        context['device_infos'] = DeviceInfo.objects.filter(device=device)
-        context['network_infos'] = NetworkInfo.objects.filter(device=device)
-        context['sim_cards'] = SIMCard.objects.filter(device=device)
-        context['system_infos'] = SystemInfo.objects.filter(device=device)
-        context['contact_count'] = Contact.objects.filter(device=device).count()
-        context['location_count'] = Location.objects.filter(device=device).count()
-        context['call_log_count'] = CallLog.objects.filter(device=device).count()
+    if not device:
+        messages.error(request, 'Device not found.')
+        return redirect('device_list')
+    context = {
+        'device': device,
+        'device_infos': DeviceInfo.objects.filter(device=device),
+        'network_infos': NetworkInfo.objects.filter(device=device),
+        'sim_cards': SIMCard.objects.filter(device=device),
+        'system_infos': SystemInfo.objects.filter(device=device),
+        'contact_count': Contact.objects.filter(device=device).count(),
+        'location_count': Location.objects.filter(device=device).count(),
+        'call_log_count': CallLog.objects.filter(device=device).count(),
+    }
     return render(request, 'device_access/device_view.html', context)
 
 
+# Per-device data API row cap (matches the dashboard API) to bound payload size.
+DEVICE_DATA_ROW_CAP = 5000
+
+
+@_superuser_api
 def device_view_data_api(request, id):
     device = Device.objects.filter(id=id).first()
     if not device:
@@ -1344,7 +1419,7 @@ def device_view_data_api(request, id):
     data_type = request.GET.get('type', '')
 
     if data_type == 'contacts':
-        qs = Contact.objects.filter(device=device)
+        qs = Contact.objects.filter(device=device)[:DEVICE_DATA_ROW_CAP]
         rows = []
         for c in qs:
             rows.append([
@@ -1356,7 +1431,7 @@ def device_view_data_api(request, id):
         return JsonResponse({'data': rows})
 
     elif data_type == 'calllogs':
-        qs = CallLog.objects.filter(device=device).order_by('-timestamp')
+        qs = CallLog.objects.filter(device=device).order_by('-timestamp')[:DEVICE_DATA_ROW_CAP]
         rows = []
         for log in qs:
             rows.append([
@@ -1369,7 +1444,7 @@ def device_view_data_api(request, id):
         return JsonResponse({'data': rows})
 
     elif data_type == 'locations':
-        qs = Location.objects.filter(device=device).order_by('-timestamp')
+        qs = Location.objects.filter(device=device).order_by('-timestamp')[:DEVICE_DATA_ROW_CAP]
         rows = []
         for loc in qs:
             rows.append([
@@ -1385,24 +1460,33 @@ def device_view_data_api(request, id):
         return JsonResponse({'data': rows})
 
     elif data_type == 'map':
-        qs = Location.objects.filter(device=device).order_by('-timestamp').values('latitude', 'longitude')
+        qs = Location.objects.filter(device=device).order_by('-timestamp').values('latitude', 'longitude')[:DEVICE_DATA_ROW_CAP]
         rows = [{'latitude': float(r['latitude']), 'longitude': float(r['longitude'])} for r in qs]
         return JsonResponse({'data': rows})
 
     return JsonResponse({'data': []})
 
 
+@_superuser_page
+@require_POST
 def device_delete(request, id):
     device = Device.objects.filter(id=id).first()
     if device:
         device.delete()
+        messages.success(request, 'Device deleted successfully.')
+    else:
+        messages.error(request, 'Device not found.')
     return redirect('device_list')
 
+@_superuser_api
 @csrf_exempt
 def device_media_toggle_api(request):
     if request.method != 'POST':
         return JsonResponse({"success": False, "message": "POST required"}, status=405)
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
     device_id = data.get('id')
     audio = data.get('audio')
     video = data.get('video')
@@ -1465,7 +1549,7 @@ def reminders(request):
     device_id = request.GET.get('device_id')
     qs = Reminder.objects.select_related('device').all()
     selected_device_id = None
-    if device_id:
+    if device_id and device_id.isdigit():
         selected_device_id = int(device_id)
         qs = qs.filter(device_id=selected_device_id)
     return render(request, 'device_access/reminders.html', {
@@ -1506,16 +1590,18 @@ def reminder_edit(request, reminder_id):
     })
 
 @login_required
+@require_POST
 def reminder_delete(request, reminder_id):
     reminder = get_object_or_404(Reminder, id=reminder_id)
     device = reminder.device
     reminder.delete()
-    # Push cancel to device
-    _push_reminder_to_device(device.push_token, {
-        'type': 'reminder_sync',
-        'action': 'cancel',
-        'reminder_id': f'rem_{reminder_id:03d}',
-    })
+    # Push cancel to device (guard against a reminder with no device).
+    if device and device.push_token:
+        _push_reminder_to_device(device.push_token, {
+            'type': 'reminder_sync',
+            'action': 'cancel',
+            'reminder_id': f'rem_{reminder_id:03d}',
+        })
     messages.success(request, 'Reminder deleted and cancel pushed to device.')
     return redirect('reminders')
 
@@ -1567,6 +1653,7 @@ def _push_reminder_to_device(push_token, data_payload):
         return False
 
 
+@_superuser_api
 @csrf_exempt
 def reminder_push(request):
     """Push reminder commands to devices via FCM data-only messages."""

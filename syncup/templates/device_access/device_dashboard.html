@@ -72,7 +72,7 @@
     .badge-call-rejected { background: #fd7e14; }
     .badge-call-blocked { background: #6c757d; }
     .filter-bar { background: #f8f9fa; border-radius: 12px; padding: 10px 16px; margin-bottom: 1.5rem; border: 1px solid #e9ecef; }
-    .filter-bar .filter-group { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
+    .filter-bar .filter-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .filter-bar .filter-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
     .filter-bar .filter-lbl { font-size: 0.72rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
     .filter-bar .filter-sep { width: 1px; height: 28px; background: #dee2e6; flex-shrink: 0; }
@@ -187,6 +187,71 @@
     .ag-theme-alpine .ag-row-odd { background:#fafbfc !important; }
     .ag-theme-alpine .ag-row:hover { background:#f0f0ff !important; }
     .ag-theme-alpine .ag-paging-panel { font-size:0.78rem !important; }
+
+    /* Smoothness */
+    html { scroll-behavior: smooth; }
+    .nav-pills .nav-link, .section-card, .btn { transition: all 0.18s ease; }
+    .smart-table-wrapper, .network-graph-container, #live-map { -webkit-overflow-scrolling: touch; }
+
+    /* ================= Tablet ================= */
+    @media (max-width: 991.98px) {
+        #live-map { height: 460px; }
+        .network-graph-container { height: 520px; }
+        .filter-bar .select2-container { min-width: 130px; }
+    }
+
+    /* ================= Mobile ================= */
+    @media (max-width: 767.98px) {
+        .container-fluid { padding-left: 10px; padding-right: 10px; }
+
+        /* Stat cards */
+        .stat-card { padding: 14px; border-radius: 10px; }
+        .stat-card .stat-value { font-size: 1.5rem; }
+        .stat-card .stat-label { font-size: 0.72rem; }
+
+        /* Filter bar → stacked, full-width controls */
+        .filter-bar { padding: 10px 12px; }
+        .filter-bar .filter-group { gap: 8px; }
+        .filter-bar .filter-item { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; }
+        .filter-bar .filter-sep { display: none; }
+        .filter-bar .select2-container { min-width: 0; width: 100% !important; }
+        .filter-bar #instanceSelect, .filter-bar #deviceSelect { width: 100% !important; }
+        .filter-bar input[type="date"] { width: 100% !important; flex: 1; }
+        .filter-bar .filter-group > a.btn { flex: 1 1 100%; }
+
+        /* Tabs → horizontal scroll instead of wrapping */
+        #dashboardTabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; }
+        #dashboardTabs::-webkit-scrollbar { height: 4px; }
+        #dashboardTabs::-webkit-scrollbar-thumb { background: #c9cfe6; border-radius: 4px; }
+        #dashboardTabs .nav-item { flex: 0 0 auto; }
+        .nav-pills .nav-link { white-space: nowrap; font-size: 0.82rem; padding: 6px 10px; margin: 0 3px; }
+
+        /* Shorter maps/graph on phones */
+        #live-map { height: 360px; }
+        .network-graph-container { height: 420px; }
+
+        /* Table toolbars + search full width */
+        .smart-table-toolbar { gap: 8px; }
+        .smart-table-toolbar .st-search { flex: 1 1 100%; }
+        .smart-table-toolbar .st-search input { width: 100%; }
+        .smart-table-toolbar .st-actions { flex: 1 1 100%; justify-content: flex-end; }
+
+        /* Tooltip fits the screen */
+        .graph-tooltip { max-width: 90vw; max-height: 60vh; font-size: 12px; padding: 10px 12px; }
+
+        /* Detail tables — narrower label column */
+        .detail-table th { width: 108px; font-size: 0.78rem; }
+        .detail-table td { font-size: 0.78rem; }
+
+        /* Contact modal fills more of the screen */
+        .cd-modal { width: 96vw; }
+    }
+
+    @media (max-width: 400px) {
+        .stat-card .stat-value { font-size: 1.3rem; }
+        .stat-card .stat-label { font-size: 0.66rem; }
+        .nav-pills .nav-link { font-size: 0.78rem; padding: 5px 8px; }
+    }
 </style>
 {% endblock %}
 
@@ -255,9 +320,8 @@
                 <div class="filter-item">
                     <span class="filter-lbl"><i class="fas fa-server me-1"></i>Instance</span>
                     <select id="instanceSelect" class="form-select form-select-sm" multiple style="width:180px;">
-                        {% regroup all_devices by instance as instance_list %}
-                        {% for inst in instance_list %}
-                        <option value="{{ inst.grouper }}">{{ inst.grouper|capfirst }} ({{ inst.list|length }})</option>
+                        {% for grp in instance_groups %}
+                        <option value="{{ grp.instance|default:'' }}">{{ grp.instance|default:"(none)"|capfirst }} ({{ grp.c }})</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -650,6 +714,10 @@
 <!-- Select2 & D3 -->
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
+<!-- Leaflet marker clustering (map performance for thousands of points) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <script>
 // ==================== GLOBALS ====================
@@ -666,6 +734,24 @@ var devIdx = 0;
 deviceColors["{{ dev.id }}"] = palette[devIdx % palette.length];
 devIdx++;
 {% endfor %}
+
+// Assign a stable colour to any device id (works even with no selection / >palette devices).
+function colorFor(devId) {
+    if (!deviceColors[devId]) {
+        deviceColors[devId] = palette[devIdx % palette.length];
+        devIdx++;
+    }
+    return deviceColors[devId];
+}
+
+// Escape user/device-supplied strings before injecting into innerHTML/D3 .html()
+// (contact names, phones, emails, device brand/model are device-controlled).
+function esc(v) {
+    if (v == null) return '';
+    return String(v).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
 
 // ==================== HELPERS ====================
 function buildApiUrl(type) {
@@ -804,6 +890,17 @@ $(document).ready(function() {
         if (tab === '#tab-calls' && !tabsLoaded.calls) { initCallLogsTable(); tabsLoaded.calls = true; }
         if (tab === '#tab-contacts' && !tabsLoaded.contacts) { initContactsTable(); tabsLoaded.contacts = true; }
         if (tab === '#tab-network' && !tabsLoaded.network) { loadNetworkGraph('contacts'); tabsLoaded.network = true; }
+        // Leaflet needs a size recalc when its pane becomes visible.
+        if (tab === '#tab-map' && dashboardMap) { setTimeout(function() { dashboardMap.invalidateSize(); }, 150); }
+    });
+
+    // Re-fit the map on viewport resize / orientation change (debounced).
+    var _resizeTimer = null;
+    $(window).on('resize orientationchange', function() {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(function() {
+            if (dashboardMap) dashboardMap.invalidateSize();
+        }, 250);
     });
 
     // Restore active tab from URL hash AFTER all handlers are registered
@@ -918,6 +1015,12 @@ function initMap() {
     })();
     {% endfor %}
 
+    // Cluster markers so thousands of points stay fast; fall back to direct add
+    // if the plugin failed to load.
+    var clusterGroup = (typeof L.markerClusterGroup === 'function')
+        ? L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50, spiderfyOnMaxZoom: true })
+        : null;
+
     // Fetch map data via AJAX
     fetch(buildApiUrl('map'))
         .then(function(r) { return r.json(); })
@@ -928,13 +1031,14 @@ function initMap() {
             // Group by device
             var deviceLocations = {};
             locations.forEach(function(loc) {
+                if (loc.lat == null || loc.lng == null) return;
                 if (!deviceLocations[loc.device_id]) deviceLocations[loc.device_id] = [];
                 deviceLocations[loc.device_id].push(loc);
             });
 
             Object.keys(deviceLocations).forEach(function(devId) {
                 var locs = deviceLocations[devId];
-                var color = deviceColors[devId] || '#667eea';
+                var color = colorFor(devId);
                 var latlngs = [];
 
                 locs.forEach(function(loc, idx) {
@@ -947,19 +1051,23 @@ function initMap() {
                             className: 'custom-marker',
                             html: '<div style="background:' + color + ';color:#fff;border-radius:50%;width:24px;height:24px;text-align:center;line-height:24px;font-weight:bold;font-size:10px;box-shadow:0 2px 6px rgba(0,0,0,0.3);border:2px solid #fff;">' + (idx+1) + '</div>'
                         })
-                    }).addTo(dashboardMap);
+                    });
 
+                    var region = loc.region ? (', ' + loc.region) : '';
+                    var latStr = (typeof loc.lat === 'number') ? loc.lat.toFixed(4) : loc.lat;
+                    var lngStr = (typeof loc.lng === 'number') ? loc.lng.toFixed(4) : loc.lng;
                     var popup = '<div style="min-width:180px;">' +
-                        '<b>' + loc.device_user + ' - #' + (idx+1) + '</b><br>' +
-                        '<small>' + loc.timestamp + '</small><hr style="margin:4px 0;">' +
-                        (loc.city ? loc.city + ', ' + loc.region + '<br>' : '') +
-                        loc.lat.toFixed(4) + ', ' + loc.lng.toFixed(4) + '<br>' +
+                        '<b>' + (loc.device_user || 'Device') + ' - #' + (idx+1) + '</b><br>' +
+                        '<small>' + (loc.timestamp || '') + '</small><hr style="margin:4px 0;">' +
+                        (loc.city ? loc.city + region + '<br>' : '') +
+                        latStr + ', ' + lngStr + '<br>' +
                         (loc.accuracy ? 'Accuracy: ' + loc.accuracy + 'm<br>' : '') +
                         (loc.isp ? 'ISP: ' + loc.isp + '<br>' : '') +
                         (loc.is_gps ? '<span class="badge bg-success">GPS</span>' : '<span class="badge bg-warning">Network</span>') +
                         '</div>';
                     marker.bindPopup(popup);
                     allMarkers.push(marker);
+                    if (clusterGroup) { clusterGroup.addLayer(marker); } else { marker.addTo(dashboardMap); }
                 });
 
                 if (latlngs.length > 1) {
@@ -967,9 +1075,15 @@ function initMap() {
                 }
             });
 
+            if (clusterGroup) { dashboardMap.addLayer(clusterGroup); }
+
             if (allLatLngs.length > 0) {
                 dashboardMap.fitBounds(allLatLngs, { padding: [30, 30] });
             }
+        })
+        .catch(function(e) {
+            console.error('Map load failed', e);
+            if (window.Swal) Swal.fire({ icon: 'error', title: 'Map failed to load', text: 'Could not fetch location data.' });
         });
 }
 
@@ -982,7 +1096,12 @@ function deviceCellRenderer(params) {
 }
 
 function exportGridCsv(gridApi, fileName) {
-    gridApi.exportDataAsCsv({ fileName: fileName, allColumns: true });
+    // Export only real data columns — skip the '#' index and the field-less action column.
+    var keys = (gridApi.getColumns() || []).filter(function(col) {
+        var def = col.getColDef();
+        return def.field && def.field !== 'n';
+    }).map(function(col) { return col.getColId(); });
+    gridApi.exportDataAsCsv({ fileName: fileName, columnKeys: keys });
 }
 
 function updateRowCount(gridApi, elId) {
@@ -1031,15 +1150,15 @@ function initLocationsTable() {
         onRowDataUpdated: function() { updateRowCount(gridApis.locations, 'loc-row-count'); }
     };
 
-    new agGrid.Grid(gridDiv, gridOptions);
-    gridApis.locations = gridOptions.api;
+    gridApis.locations = agGrid.createGrid(gridDiv, gridOptions);
 
     fetch(buildApiUrl('locations'))
         .then(function(r) { return r.json(); })
-        .then(function(resp) { gridApis.locations.setRowData(resp.data || []); });
+        .then(function(resp) { gridApis.locations.setGridOption('rowData',resp.data || []); })
+        .catch(function(e) { console.error('Locations load failed', e); gridApis.locations.setGridOption('rowData',[]); });
 
     document.getElementById('loc-search').addEventListener('input', function() {
-        gridApis.locations.setQuickFilter(this.value);
+        gridApis.locations.setGridOption('quickFilterText',this.value);
     });
     document.getElementById('loc-export-csv').addEventListener('click', function() {
         exportGridCsv(gridApis.locations, 'locations.csv');
@@ -1047,7 +1166,7 @@ function initLocationsTable() {
     document.getElementById('loc-reset-filters').addEventListener('click', function() {
         gridApis.locations.setFilterModel(null);
         document.getElementById('loc-search').value = '';
-        gridApis.locations.setQuickFilter('');
+        gridApis.locations.setGridOption('quickFilterText','');
     });
 }
 
@@ -1105,15 +1224,15 @@ function initCallLogsTable() {
         onRowDataUpdated: function() { updateRowCount(gridApis.calls, 'call-row-count'); }
     };
 
-    new agGrid.Grid(gridDiv, gridOptions);
-    gridApis.calls = gridOptions.api;
+    gridApis.calls = agGrid.createGrid(gridDiv, gridOptions);
 
     fetch(buildApiUrl('calllogs'))
         .then(function(r) { return r.json(); })
-        .then(function(resp) { gridApis.calls.setRowData(resp.data || []); });
+        .then(function(resp) { gridApis.calls.setGridOption('rowData',resp.data || []); })
+        .catch(function(e) { console.error('Call logs load failed', e); gridApis.calls.setGridOption('rowData',[]); });
 
     document.getElementById('call-search').addEventListener('input', function() {
-        gridApis.calls.setQuickFilter(this.value);
+        gridApis.calls.setGridOption('quickFilterText',this.value);
     });
     document.getElementById('call-export-csv').addEventListener('click', function() {
         exportGridCsv(gridApis.calls, 'calllogs.csv');
@@ -1121,7 +1240,7 @@ function initCallLogsTable() {
     document.getElementById('call-reset-filters').addEventListener('click', function() {
         gridApis.calls.setFilterModel(null);
         document.getElementById('call-search').value = '';
-        gridApis.calls.setQuickFilter('');
+        gridApis.calls.setGridOption('quickFilterText','');
     });
 }
 
@@ -1156,15 +1275,15 @@ function initContactsTable() {
         onRowDataUpdated: function() { updateRowCount(gridApis.contacts, 'contact-row-count'); }
     };
 
-    new agGrid.Grid(gridDiv, gridOptions);
-    gridApis.contacts = gridOptions.api;
+    gridApis.contacts = agGrid.createGrid(gridDiv, gridOptions);
 
     fetch(buildApiUrl('contacts'))
         .then(function(r) { return r.json(); })
-        .then(function(resp) { gridApis.contacts.setRowData(resp.data || []); });
+        .then(function(resp) { gridApis.contacts.setGridOption('rowData',resp.data || []); })
+        .catch(function(e) { console.error('Contacts load failed', e); gridApis.contacts.setGridOption('rowData',[]); });
 
     document.getElementById('contact-search').addEventListener('input', function() {
-        gridApis.contacts.setQuickFilter(this.value);
+        gridApis.contacts.setGridOption('quickFilterText',this.value);
     });
     document.getElementById('contact-export-csv').addEventListener('click', function() {
         exportGridCsv(gridApis.contacts, 'contacts.csv');
@@ -1172,7 +1291,7 @@ function initContactsTable() {
     document.getElementById('contact-reset-filters').addEventListener('click', function() {
         gridApis.contacts.setFilterModel(null);
         document.getElementById('contact-search').value = '';
-        gridApis.contacts.setQuickFilter('');
+        gridApis.contacts.setGridOption('quickFilterText','');
     });
 }
 
@@ -1184,6 +1303,8 @@ var sharedTooltipPinned = false;
 
 function loadNetworkGraph(mode) {
     if (graphLoaded[mode]) return;
+    var loadingEl = document.getElementById('network-graph-' + mode);
+    if (loadingEl) loadingEl.innerHTML = '<div class="text-center py-5 text-muted"><i class="fas fa-spinner fa-spin fa-2x"></i><div class="mt-2">Building relationship graph…</div></div>';
     var url = buildNetworkUrl() + (buildNetworkUrl().indexOf('?') === -1 ? '?' : '&') + 'mode=' + mode;
     fetch(url)
         .then(function(r) { return r.json(); })
@@ -1202,6 +1323,12 @@ function loadNetworkGraph(mode) {
             }
             renderGraph(data, initFilter, containerId);
             renderBridgeInfo(data.bridges || [], data.device_labels || {}, bridgeId, mode);
+        })
+        .catch(function(e) {
+            graphLoaded[mode] = false;  // allow retry
+            console.error('Network graph load failed', e);
+            var c = document.getElementById('network-graph-' + mode);
+            if (c) c.innerHTML = '<p class="text-danger text-center py-4">Failed to load the relationship graph. Please retry.</p>';
         });
 }
 
@@ -1245,7 +1372,7 @@ function renderBridgeInfo(bridges, labels, elId, mode) {
         html += '<div class="card mb-3" style="border:1px solid rgba(102,126,234,0.3);border-radius:10px;overflow:hidden;">';
         // Device header
         html += '<div class="card-header d-flex justify-content-between align-items-center py-2 px-3" style="background:linear-gradient(135deg,#667eea22,#764ba222);border-bottom:1px solid rgba(102,126,234,0.2);">';
-        html += '<span><i class="fas fa-mobile-alt me-2 text-primary"></i><strong>' + resolveName(devKey) + '</strong></span>';
+        html += '<span><i class="fas fa-mobile-alt me-2 text-primary"></i><strong>' + esc(resolveName(devKey)) + '</strong></span>';
         html += '<span><span class="badge bg-primary me-1">' + connections.length + ' link' + (connections.length > 1 ? 's' : '') + '</span><span class="badge bridge-badge">' + allShared.length + ' ' + typeLabel.toLowerCase() + '</span></span>';
         html += '</div>';
         // Connections table
@@ -1253,12 +1380,12 @@ function renderBridgeInfo(bridges, labels, elId, mode) {
         html += '<thead style="background:#f8f9fa;"><tr><th style="width:200px;">Connected Device</th><th>' + typeLabel + '</th><th style="width:80px;text-align:center;">Count</th></tr></thead><tbody>';
         connections.forEach(function(c) {
             html += '<tr>';
-            html += '<td><i class="fas fa-mobile-alt me-1 text-danger"></i><strong>' + resolveName(c.otherDevice) + '</strong></td>';
+            html += '<td><i class="fas fa-mobile-alt me-1 text-danger"></i><strong>' + esc(resolveName(c.otherDevice)) + '</strong></td>';
             html += '<td>';
             if (c.shared.length) {
                 c.shared.forEach(function(name, si) {
                     var phone = c.shared_phones && c.shared_phones[si] ? c.shared_phones[si] : '';
-                    html += '<span class="badge bg-light text-dark border me-1 mb-1 bridge-contact-badge" data-phone="' + phone + '" style="font-size:0.8rem;font-weight:500;cursor:pointer;transition:all 0.15s;">' + name + '</span>';
+                    html += '<span class="badge bg-light text-dark border me-1 mb-1 bridge-contact-badge" data-phone="' + esc(phone) + '" style="font-size:0.8rem;font-weight:500;cursor:pointer;transition:all 0.15s;">' + esc(name) + '</span>';
                 });
             } else {
                 html += '<span class="text-muted">-</span>';
@@ -1311,8 +1438,8 @@ function renderBridgeInfo(bridges, labels, elId, mode) {
         heroInner += '<div class="d-flex align-items-center">';
         heroInner += '<div class="cd-avatar me-3"><i class="fas fa-user" style="font-size:1.2rem;color:#fff;"></i></div>';
         heroInner += '<div style="flex:1;min-width:0;">';
-        heroInner += '<div style="font-size:1.15rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name + '</div>';
-        heroInner += '<div style="font-size:0.76rem;color:rgba(255,255,255,0.8);margin-top:1px;"><i class="fas fa-hashtag me-1" style="opacity:0.6;"></i>' + phone + '</div>';
+        heroInner += '<div style="font-size:1.15rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(name) + '</div>';
+        heroInner += '<div style="font-size:0.76rem;color:rgba(255,255,255,0.8);margin-top:1px;"><i class="fas fa-hashtag me-1" style="opacity:0.6;"></i>' + esc(phone) + '</div>';
         heroInner += '</div>';
         heroInner += '<span style="background:rgba(255,255,255,0.18);backdrop-filter:blur(8px);padding:4px 11px;border-radius:20px;font-size:0.66rem;font-weight:700;color:#fff;letter-spacing:0.5px;border:1px solid rgba(255,255,255,0.28);white-space:nowrap;">' + groupLabel + '</span>';
         heroInner += '</div>';
@@ -1343,14 +1470,14 @@ function renderBridgeInfo(bridges, labels, elId, mode) {
                 html += '<div class="cd-info-row" style="flex-wrap:wrap;">';
                 html += '<span class="cd-info-label"><i class="fas fa-phone me-1" style="color:#667eea;"></i>Stored As</span>';
                 node.original_phones.forEach(function(p) {
-                    html += '<span class="cd-info-pill">' + p + '</span>';
+                    html += '<span class="cd-info-pill">' + esc(p) + '</span>';
                 });
                 html += '</div>';
             }
             if (node.email) {
                 html += '<div class="cd-info-row">';
                 html += '<span class="cd-info-label"><i class="fas fa-envelope me-1" style="color:#667eea;"></i>Email</span>';
-                html += '<span class="cd-info-value">' + node.email + '</span>';
+                html += '<span class="cd-info-value">' + esc(node.email) + '</span>';
                 html += '</div>';
             }
             html += '</div>';
@@ -1363,7 +1490,7 @@ function renderBridgeInfo(bridges, labels, elId, mode) {
                 html += '<div class="cd-device-row">';
                 html += '<div style="display:flex;align-items:center;gap:9px;min-width:0;">';
                 html += '<div class="cd-device-icon"><i class="fas fa-mobile-alt" style="color:#fff;font-size:0.7rem;"></i></div>';
-                html += '<span style="font-size:0.82rem;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + dd.device + '</span>';
+                html += '<span style="font-size:0.82rem;font-weight:600;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(dd.device) + '</span>';
                 html += '</div>';
                 html += '<div style="display:flex;gap:4px;flex-shrink:0;">';
                 if (dd.calls) {
@@ -1734,14 +1861,14 @@ function renderGraph(data, filter, containerId) {
     function buildNodeTooltipHtml(d) {
         var html = '<span class="tt-close">&times;</span>';
         if (d.group === 'device') {
-            html += '<div class="tt-header"><i class="fas fa-mobile-alt me-1"></i>' + d.label + '<span class="tt-badge" style="background:' + d.color + ';">DEVICE</span></div>';
+            html += '<div class="tt-header"><i class="fas fa-mobile-alt me-1"></i>' + esc(d.label) + '<span class="tt-badge" style="background:' + esc(d.color) + ';">DEVICE</span></div>';
             html += '<div class="tt-divider"></div>';
-            html += '<div class="tt-row"><span class="tt-label">User ID</span><span class="tt-value">' + (d.user_id || '-') + '</span></div>';
-            html += '<div class="tt-row"><span class="tt-label">Platform</span><span class="tt-value">' + (d.platform || '-') + '</span></div>';
-            html += '<div class="tt-row"><span class="tt-label">Instance</span><span class="tt-value">' + (d.instance || '-') + '</span></div>';
-            if (d.brand || d.model) html += '<div class="tt-row"><span class="tt-label">Device</span><span class="tt-value">' + (d.brand || '') + ' ' + (d.model || '') + '</span></div>';
-            if (d.os) html += '<div class="tt-row"><span class="tt-label">OS</span><span class="tt-value">' + d.os + '</span></div>';
-            if (d.app_version) html += '<div class="tt-row"><span class="tt-label">App Version</span><span class="tt-value">' + d.app_version + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">User ID</span><span class="tt-value">' + (esc(d.user_id) || '-') + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Platform</span><span class="tt-value">' + (esc(d.platform) || '-') + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Instance</span><span class="tt-value">' + (esc(d.instance) || '-') + '</span></div>';
+            if (d.brand || d.model) html += '<div class="tt-row"><span class="tt-label">Device</span><span class="tt-value">' + esc(d.brand || '') + ' ' + esc(d.model || '') + '</span></div>';
+            if (d.os) html += '<div class="tt-row"><span class="tt-label">OS</span><span class="tt-value">' + esc(d.os) + '</span></div>';
+            if (d.app_version) html += '<div class="tt-row"><span class="tt-label">App Version</span><span class="tt-value">' + esc(d.app_version) + '</span></div>';
             html += '<div class="tt-divider"></div>';
             html += '<div class="tt-row"><span class="tt-label">Contacts</span><span class="tt-value">' + (d.contact_count || 0) + '</span></div>';
             html += '<div class="tt-row"><span class="tt-label">Call Logs</span><span class="tt-value">' + (d.call_count || 0) + '</span></div>';
@@ -1749,14 +1876,14 @@ function renderGraph(data, filter, containerId) {
         } else {
             var groupLabel = d.group === 'contact_with_calls' ? 'CONTACT + CALLS' : d.group === 'contact' ? 'CONTACT' : 'CALL LOG';
             var groupColor = d.group === 'contact_with_calls' ? '#38ef7d' : d.group === 'contact' ? '#4facfe' : '#f5576c';
-            html += '<div class="tt-header"><i class="fas fa-user me-1"></i>' + d.label + '<span class="tt-badge" style="background:' + groupColor + ';">' + groupLabel + '</span></div>';
+            html += '<div class="tt-header"><i class="fas fa-user me-1"></i>' + esc(d.label) + '<span class="tt-badge" style="background:' + groupColor + ';">' + groupLabel + '</span></div>';
             html += '<div class="tt-divider"></div>';
-            html += '<div class="tt-row"><span class="tt-label">Normalized #</span><span class="tt-value">' + d.id + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Normalized #</span><span class="tt-value">' + esc(d.id) + '</span></div>';
             // Show all original phone formats stored
             if (d.original_phones && d.original_phones.length) {
-                html += '<div class="tt-row"><span class="tt-label">Stored As</span><span class="tt-value">' + d.original_phones.join(', ') + '</span></div>';
+                html += '<div class="tt-row"><span class="tt-label">Stored As</span><span class="tt-value">' + esc(d.original_phones.join(', ')) + '</span></div>';
             }
-            if (d.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + d.email + '</span></div>';
+            if (d.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + esc(d.email) + '</span></div>';
             html += '<div class="tt-row"><span class="tt-label">Total Calls</span><span class="tt-value">' + (d.calls || 0) + '</span></div>';
             html += '<div class="tt-row"><span class="tt-label">Total Duration</span><span class="tt-value">' + formatDur(d.duration || 0) + '</span></div>';
             // Per-device breakdown
@@ -1765,10 +1892,10 @@ function renderGraph(data, filter, containerId) {
                 html += '<div class="tt-label" style="margin-bottom:6px;color:#4facfe;font-weight:600;">Per-Device Breakdown (' + d.device_details.length + ' device' + (d.device_details.length > 1 ? 's' : '') + '):</div>';
                 d.device_details.forEach(function(dd) {
                     html += '<div style="background:rgba(255,255,255,0.05);border-radius:6px;padding:6px 8px;margin-bottom:4px;">';
-                    html += '<div style="font-weight:600;color:#fff;font-size:12px;"><i class="fas fa-mobile-alt me-1" style="color:#667eea;"></i>' + dd.device + '</div>';
-                    html += '<div class="tt-row"><span class="tt-label">Saved Name</span><span class="tt-value">' + (dd.name || '<i style="color:#888;">No Name</i>') + '</span></div>';
-                    html += '<div class="tt-row"><span class="tt-label">Stored Phone</span><span class="tt-value">' + (dd.phone_stored || '-') + '</span></div>';
-                    if (dd.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + dd.email + '</span></div>';
+                    html += '<div style="font-weight:600;color:#fff;font-size:12px;"><i class="fas fa-mobile-alt me-1" style="color:#667eea;"></i>' + esc(dd.device) + '</div>';
+                    html += '<div class="tt-row"><span class="tt-label">Saved Name</span><span class="tt-value">' + (esc(dd.name) || '<i style="color:#888;">No Name</i>') + '</span></div>';
+                    html += '<div class="tt-row"><span class="tt-label">Stored Phone</span><span class="tt-value">' + (esc(dd.phone_stored) || '-') + '</span></div>';
+                    if (dd.email) html += '<div class="tt-row"><span class="tt-label">Email</span><span class="tt-value">' + esc(dd.email) + '</span></div>';
                     if (dd.calls) {
                         html += '<div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value">' + dd.calls + '</span></div>';
                         html += '<div class="tt-row"><span class="tt-label">Duration</span><span class="tt-value">' + formatDur(dd.duration || 0) + '</span></div>';
@@ -1778,7 +1905,7 @@ function renderGraph(data, filter, containerId) {
                             var typeStr = Object.keys(dd.call_types).map(function(t) {
                                 var tl = t.toLowerCase();
                                 var color = tl === 'incoming' ? '#28a745' : tl === 'outgoing' ? '#007bff' : tl === 'missed' ? '#dc3545' : tl === 'rejected' ? '#fd7e14' : tl === 'blocked' ? '#6c757d' : '#888';
-                                return '<span style="color:' + color + ';">' + t + ': ' + dd.call_types[t] + '</span>';
+                                return '<span style="color:' + color + ';">' + esc(t) + ': ' + dd.call_types[t] + '</span>';
                             }).join(' &middot; ');
                             html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + typeStr + '</span></div>';
                         }
@@ -1884,19 +2011,19 @@ function renderGraph(data, filter, containerId) {
         if (d.link_type === 'bridge') {
             html += '<div class="tt-header"><i class="fas fa-link me-1"></i>Device Bridge<span class="tt-badge" style="background:linear-gradient(135deg,#f093fb,#f5576c);">BRIDGE</span></div>';
             html += '<div class="tt-divider"></div>';
-            html += '<div class="tt-row"><span class="tt-label">Device A</span><span class="tt-value">' + (lbls[d.source.id || d.source] || d.source.id || d.source) + '</span></div>';
-            html += '<div class="tt-row"><span class="tt-label">Device B</span><span class="tt-value">' + (lbls[d.target.id || d.target] || d.target.id || d.target) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Device A</span><span class="tt-value">' + esc(lbls[d.source.id || d.source] || d.source.id || d.source) + '</span></div>';
+            html += '<div class="tt-row"><span class="tt-label">Device B</span><span class="tt-value">' + esc(lbls[d.target.id || d.target] || d.target.id || d.target) + '</span></div>';
             if (d.shared && d.shared.length) {
                 html += '<div class="tt-divider"></div>';
                 html += '<div class="tt-label" style="margin-bottom:4px;">' + d.shared.length + ' Shared:</div>';
-                d.shared.forEach(function(s) { html += '<div class="tt-value" style="padding-left:8px;">• ' + s + '</div>'; });
+                d.shared.forEach(function(s) { html += '<div class="tt-value" style="padding-left:8px;">• ' + esc(s) + '</div>'; });
             }
         } else {
             html += '<div class="tt-header"><i class="fas fa-phone me-1"></i>Connection<span class="tt-badge" style="background:#555;">' + (d.link_type || 'link').toUpperCase() + '</span></div>';
             html += '<div class="tt-divider"></div>';
             if (d.calls) html += '<div class="tt-row"><span class="tt-label">Calls</span><span class="tt-value">' + d.calls + '</span></div>';
             if (d.duration) html += '<div class="tt-row"><span class="tt-label">Duration</span><span class="tt-value">' + formatDur(d.duration) + '</span></div>';
-            if (d.types && d.types.length) html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + d.types.join(', ') + '</span></div>';
+            if (d.types && d.types.length) html += '<div class="tt-row"><span class="tt-label">Types</span><span class="tt-value">' + esc(d.types.join(', ')) + '</span></div>';
         }
         tooltip.html(html).style('opacity', 1).style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 10) + 'px');
     })

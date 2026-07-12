@@ -4,7 +4,7 @@
 {% block content %}
 <div class="row align-items-center mb-3">
     <div class="col">
-        <h2 class="mb-0">Devices</h2>
+        <h2 class="mb-0">Devices <span class="badge text-bg-secondary align-middle">{{ devices|length }}</span></h2>
     </div>
 
     <div class="col-auto">
@@ -27,36 +27,42 @@
         <button class="btn btn-success btn-sm btn-curve" title="Test Notification" onclick="testNotification()">
             <i class="fas fa-bell"></i>
         </button>
-        <!-- <button class="btn btn-warning btn-sm btn-curve" title="Data-Only Notification" onclick="testNotification('m1')">
-            <i class="fas fa-bell"></i>
-        </button> -->
     </div>
 
 </div>
 
-<table class="table table-striped table-bordered" id="link-registry-table">
+<div class="table-responsive">
+<table class="table table-striped table-bordered align-middle" id="link-registry-table">
 	<thead class="table-dark">
 		<tr>
 			<th>User</th>
-			<th>Instance</th>
+			<th class="d-none d-md-table-cell">Instance</th>
+			<th class="d-none d-md-table-cell">Platform</th>
 			<th>Device ID</th>
+			<th>Status</th>
+			<th class="d-none d-lg-table-cell">Last Login</th>
 		</tr>
 	</thead>
 	<tbody class="two-col-form">
 		{% for device in devices %}
 		<tr onclick="window.location='{% url 'device_view' device.id %}'" style="cursor: pointer;">
-			<td>{{ device.user_id|capfirst }}</td>
-			<td>{{ device.instance }}
-                <span class="text-danger">{{ device.is_active|yesno:",• Disabled" }}</span>
-                {% if device.retry_count > 0 %}
-                    <span class="text-warning">({{ device.retry_count }} retries)</span>
-                {% endif %}
-            </td>
-			<td>{{ device.device_id }}</td>
+			<td class="fw-semibold">{{ device.user_id|capfirst }}</td>
+			<td class="d-none d-md-table-cell">{{ device.instance|default:"—" }}</td>
+			<td class="d-none d-md-table-cell">{{ device.platform|default:"—" }}</td>
+			<td class="text-nowrap"><small>{{ device.device_id }}</small></td>
+			<td class="text-nowrap">
+			    {% if device.is_active %}<span class="badge text-bg-success">Active</span>
+			    {% else %}<span class="badge text-bg-danger">Disabled</span>{% endif %}
+			    {% if device.retry_count > 0 %}<span class="badge text-bg-warning">{{ device.retry_count }} retries</span>{% endif %}
+			</td>
+			<td class="d-none d-lg-table-cell text-nowrap">{{ device.last_login|date:"d-m-Y H:i" }}</td>
 		</tr>
+		{% empty %}
+		<tr><td colspan="6" class="text-center text-muted py-4">No devices found.</td></tr>
 		{% endfor %}
 	</tbody>
 </table>
+</div>
 
 {% endblock %}
 
@@ -77,18 +83,10 @@ function initDataTable() {
 
 $(document).ready(function () {
     initDataTable();
-
-    $(window).on('resize', function () {
-        initDataTable();
-    });
 });
 
-function testNotification(urlmode) {
-    if (urlmode === 'm1') {
-        url = "{% url 'send_notification' %}?data_only=true";
-    } else {
-        url = "{% url 'send_notification' %}";
-    }
+function testNotification() {
+    const url = "{% url 'send_notification' %}";
     Swal.fire({
         title: 'Test Notification',
         text: "This will send a test notification to all devices. Are you sure?",

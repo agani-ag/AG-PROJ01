@@ -14,10 +14,10 @@
                 <div class="d-flex gap-2">
                     <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm" title="Back To Devices"><i class="fas fa-arrow-left me-1"></i>Back</a>
                     <button onclick="sendCustomNotification()" class="btn btn-primary btn-sm" title="Send Notification"><i class="fas fa-paper-plane me-1"></i>Notify</button>
-                    <a href="{% url 'device_delete' device.id %}" class="btn btn-outline-danger btn-sm" title="Delete Device"><i class="fas fa-trash-alt me-1"></i>Delete</a>
-                    <!-- <button onclick="showCloudConfig()" class="btn btn-warning btn-sm" title="Cloud Backup"><i class="fas fa-cloud me-1"></i>Cloud</button> -->
+                    <button type="button" onclick="deleteDevice()" class="btn btn-outline-danger btn-sm" title="Delete Device"><i class="fas fa-trash-alt me-1"></i>Delete</button>
                 </div>
             </div>
+            <form method="post" action="{% url 'device_delete' device.id %}" id="deviceDeleteForm" class="d-none">{% csrf_token %}</form>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped table-sm mb-4">
                     <tbody>
@@ -76,6 +76,7 @@
                             {% if device.retry_count > 0 %}
                                 <span class="text-warning">({{ device.retry_count }} retries)</span>
                             {% endif %}
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -203,6 +204,7 @@
                             <th>Recorded At</th>
                         </tr>
                     </thead>
+                    <tbody>
                         {% for network_info in network_infos %}
                         <tr>
                             <td>{{ network_info.type }}</td>
@@ -255,6 +257,7 @@
                             <th>Tags</th>
                         </tr>
                     </thead>
+                    <tbody>
                         {% for device_info in device_infos %}
                         <tr>
                             <td>{{ device_info.brand }}</td>
@@ -334,6 +337,18 @@
 {% block script %}
 <script>
 var DEVICE_DATA_API = "{% url 'device_view_data_api' device.id %}";
+
+function deleteDevice() {
+    Swal.fire({
+        title: 'Delete this device?',
+        text: 'This permanently removes the device and all its contacts, call logs and locations.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((r) => { if (r.isConfirmed) document.getElementById('deviceDeleteForm').submit(); });
+}
 
 $('#calllogs-table').DataTable({
     ajax: { url: DEVICE_DATA_API + '?type=calllogs', dataSrc: 'data' },

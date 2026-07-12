@@ -589,9 +589,6 @@ class Reminder(models.Model):
     class Meta:
         ordering = ['-created_at']
 
-    def __str__(self):
-        return f"{self.name} ({self.phone_number}) - {self.call_type} at {self.timestamp}"
-
 class PublicUser(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField(blank=True, null=True)

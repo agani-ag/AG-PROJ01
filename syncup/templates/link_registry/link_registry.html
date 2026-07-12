@@ -40,10 +40,10 @@
 	</thead>
 	<tbody class="two-col-form">
 		{% for link_registry in link_registries %}
-		<tr onclick="window.location='{% url 'link_registry_edit' link_registry.id %}'" style="cursor: pointer;">
+		<tr data-href="{% url 'link_registry_edit' link_registry.id %}" style="cursor: pointer;">
 			<td>{{ link_registry.user }}</td>
 			<td>{{ link_registry.name }}</td>
-			<td onclick="event.stopPropagation()" style="max-width:340px;">
+			<td style="max-width:340px;">
 				<span class="d-inline-block text-truncate align-middle" style="max-width:280px;">
 					<a href="{{ link_registry.url }}" target="_blank" rel="noopener">{{ link_registry.url }}</a>
 				</span>
@@ -78,6 +78,21 @@ function initDataTable() {
     });
 }
 
+function copyToClipboard(text) {
+    var ok = function () { Swal.fire({ icon: 'success', title: 'Copied', timer: 900, showConfirmButton: false }); };
+    var fail = function () { Swal.fire({ icon: 'error', title: 'Copy failed', text: 'Select the URL and copy manually.' }); };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else {
+        // Fallback for non-HTTPS contexts where navigator.clipboard is unavailable.
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        try { document.execCommand('copy') ? ok() : fail(); } catch (e) { fail(); }
+        document.body.removeChild(ta);
+    }
+}
+
 $(document).ready(function () {
     initDataTable();
 
@@ -85,13 +100,17 @@ $(document).ready(function () {
         initDataTable();
     });
 
-    // Copy URL to clipboard (don't trigger the row's edit navigation).
+    // Open the lead's edit page on row click — but let links/buttons work normally.
+    $('#link-registry-table tbody').on('click', 'tr', function (e) {
+        if ($(e.target).closest('a, button').length) return;
+        var href = $(this).data('href');
+        if (href) window.location = href;
+    });
+
+    // Copy URL to clipboard.
     $('#link-registry-table').on('click', '.copy-btn', function (e) {
         e.stopPropagation();
-        var url = $(this).data('url');
-        navigator.clipboard.writeText(url).then(function () {
-            Swal.fire({ icon: 'success', title: 'Copied', timer: 900, showConfirmButton: false });
-        });
+        copyToClipboard($(this).data('url'));
     });
 });
 </script>
