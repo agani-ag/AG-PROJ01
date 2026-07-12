@@ -158,6 +158,11 @@ class LinkRegistryForm(ModelForm):
         parsed = urlparse(url)
         if not parsed.scheme:
             url = 'https://' + url
+            parsed = urlparse(url)
+
+        # These links are delivered to devices — only allow web schemes.
+        if parsed.scheme not in ('http', 'https'):
+            raise forms.ValidationError('Only http and https links are allowed.')
 
         return url
 

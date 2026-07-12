@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 
 from ..models import (
@@ -14,21 +15,35 @@ from ..forms import (
     LinkRegistryForm, InstanceInfoForm
 )
 
+
+# These links are delivered to users' devices — keep management to superusers.
+def _deny_non_superuser(request):
+    if not request.user.is_superuser:
+        messages.error(request, "You are not authorized to manage the link registry.")
+        return redirect('profile_edit')
+    return None
+
 # =============== LINK REGISTRY VIEWS ===============
 @login_required
 def link_registry(request):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     user_filter = request.GET.get('filter')
-    queryset = LinkRegistry.objects.all()
+    queryset = LinkRegistry.objects.select_related('user').all()
     if user_filter:
         queryset = queryset.filter(user__user_id=user_filter)
     context["link_registries"] = queryset
-    context["users"] = UserProfile.objects.values_list('name','user_id')
+    context["users"] = UserProfile.objects.values_list('name', 'user_id')
     context["selected_user"] = user_filter
     return render(request, 'link_registry/link_registry.html', context)
 
 @login_required
 def link_registry_add(request):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     if request.method == 'POST':
         form = LinkRegistryForm(request.POST)
@@ -45,6 +60,9 @@ def link_registry_add(request):
 
 @login_required
 def link_registry_edit(request, link_registry_id):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     link_registry = LinkRegistry.objects.filter(id=link_registry_id).first()
     if not link_registry:
@@ -66,7 +84,11 @@ def link_registry_edit(request, link_registry_id):
     return render(request, 'link_registry/link_registry_edit.html', context)
 
 @login_required
+@require_POST
 def link_registry_delete(request, link_registry_id):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     link_registry = LinkRegistry.objects.filter(id=link_registry_id).first()
     if link_registry:
         link_registry.delete()
@@ -78,12 +100,18 @@ def link_registry_delete(request, link_registry_id):
 # =============== INSTANCE INFO VIEWS ===============
 @login_required
 def instance_info(request):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     context["instances"] = InstanceInfo.objects.all()
     return render(request, 'link_registry/instances.html', context)
 
 @login_required
 def instance_info_add(request):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     if request.method == 'POST':
         form = InstanceInfoForm(request.POST)
@@ -100,6 +128,9 @@ def instance_info_add(request):
 
 @login_required
 def instance_info_edit(request, instance_info_id):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     context = {}
     instance_info = InstanceInfo.objects.filter(id=instance_info_id).first()
     if not instance_info:
@@ -121,7 +152,11 @@ def instance_info_edit(request, instance_info_id):
     return render(request, 'link_registry/instance_info_edit.html', context)
 
 @login_required
+@require_POST
 def instance_info_delete(request, instance_info_id):
+    denied = _deny_non_superuser(request)
+    if denied:
+        return denied
     instance_info = InstanceInfo.objects.filter(id=instance_info_id).first()
     if instance_info:
         instance_info.delete()

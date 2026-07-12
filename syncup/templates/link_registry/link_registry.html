@@ -12,8 +12,8 @@
             <select name="filter" class="form-control form-control-sm" onchange="this.form.submit()">
                 <option value="">All Users</option>
                 {% for name, user_id in users %}
-                    <option value="{{ user_id }}" {% if user_id == selected_user %}selected{% endif %}>
-                        {{ name }}
+                    <option value="{{ user_id }}" {% if user_id|stringformat:'s' == selected_user %}selected{% endif %}>
+                        {{ name|default:"(no name)" }}
                     </option>
                 {% endfor %}
             </select>
@@ -29,11 +29,12 @@
     </div>
 </div>
 
-<table class="table table-striped table-bordered" id="link-registry-table">
+<table class="table table-striped table-bordered align-middle" id="link-registry-table">
 	<thead class="table-dark">
 		<tr>
+			<th>User</th>
 			<th>Name</th>
-			<th>Link</th>
+			<th>URL</th>
 			<th>Active</th>
 		</tr>
 	</thead>
@@ -42,10 +43,17 @@
 		<tr onclick="window.location='{% url 'link_registry_edit' link_registry.id %}'" style="cursor: pointer;">
 			<td>{{ link_registry.user }}</td>
 			<td>{{ link_registry.name }}</td>
+			<td onclick="event.stopPropagation()" style="max-width:340px;">
+				<span class="d-inline-block text-truncate align-middle" style="max-width:280px;">
+					<a href="{{ link_registry.url }}" target="_blank" rel="noopener">{{ link_registry.url }}</a>
+				</span>
+				<button type="button" class="btn btn-sm btn-outline-secondary ms-1 copy-btn"
+					data-url="{{ link_registry.url }}" title="Copy URL"><i class="fas fa-copy"></i></button>
+			</td>
 			<td>{% if link_registry.is_active %}
-				<span class="text-success font-weight-bold">Yes</span>
+				<span class="badge text-bg-success">Yes</span>
 				{% else %}
-				<span class="text-danger font-weight-bold">No</span>
+				<span class="badge text-bg-danger">No</span>
 				{% endif %}
 			</td>
 		</tr>
@@ -75,6 +83,15 @@ $(document).ready(function () {
 
     $(window).on('resize', function () {
         initDataTable();
+    });
+
+    // Copy URL to clipboard (don't trigger the row's edit navigation).
+    $('#link-registry-table').on('click', '.copy-btn', function (e) {
+        e.stopPropagation();
+        var url = $(this).data('url');
+        navigator.clipboard.writeText(url).then(function () {
+            Swal.fire({ icon: 'success', title: 'Copied', timer: 900, showConfirmButton: false });
+        });
     });
 });
 </script>

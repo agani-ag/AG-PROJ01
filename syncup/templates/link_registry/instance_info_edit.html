@@ -67,21 +67,25 @@
             <!-- Submit -->
 			<div class="d-flex gap-2 mt-4">
 				<button type="submit" class="btn btn-primary btn-lg flex-fill">
-					<i class="fas fa-check me-2"></i>
+					<i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Instance{% endif %}
 				</button>
 
                 {% if is_edit %}
-                <a href="{% url 'instance_info_delete' instance_info.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
-					<i class="fas fa-trash me-2"></i>
-				</a>
+                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+					<i class="fas fa-trash me-2"></i>Delete
+				</button>
                 {% endif %}
 
-                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
-					<i class="fas fa-arrow-left me-2"></i>
+                <a href="{% url 'instance_info' %}" class="btn btn-secondary btn-lg flex-fill">
+					<i class="fas fa-arrow-left me-2"></i>Back
 				</a>
 			</div>
 
         </form>
+
+        {% if is_edit %}
+        <form method="post" action="{% url 'instance_info_delete' instance_info.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -90,16 +94,16 @@
 {% if is_edit %}
 <script>
     function showDeleteAlert() {
-        swal.fire({
-            title: 'Link Deleted',
-            text: 'Do You want to delete this link?',
+        Swal.fire({
+            title: 'Delete this instance?',
             icon: 'warning',
             showCancelButton: true,
+            confirmButtonColor: '#dc3545',
             confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'No, cancel'
+            cancelButtonText: 'Cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "{% url 'instance_info_delete' instance_info.id %}";
+                document.getElementById('deleteForm').submit();
             }
         });
     }
