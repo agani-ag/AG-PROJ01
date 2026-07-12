@@ -1,173 +1,186 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Add Material Request{% endblock %}
+{% block title %}{% if is_edit %}Edit Material Request{% else %}Add Material Request{% endif %}{% endblock %}
+
+{% block head %}
+<style>
+  .errorlist { color: #dc3545; list-style: none; padding-left: 0; margin: .25rem 0 0; font-size: .85rem; }
+  .field-invalid { border: 1px solid #dc3545 !important; }
+
+  /* Requirement builder — keep inputs readable, scroll on small screens */
+  #requirement-table { min-width: 620px; }
+  #requirement-table thead th { background: #eef2f8; font-weight: 700; white-space: nowrap; }
+  #requirement-table td { vertical-align: middle; padding: .5rem; }
+  #requirement-table input.form-control { font-size: 1rem; padding: .5rem .75rem; }
+  #requirement-table .material { min-width: 220px; }
+  #requirement-table .quantity { min-width: 110px; }
+  #requirement-table .unit { min-width: 140px; }
+  #requirement-table tbody tr:hover { background: #f8fafc; }
+  .req-hint { font-size: .8rem; color: #6c757d; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
+  <div class="col-12 col-md-11 col-lg-10">
 
-        <!-- Header -->
-		<div class="text-center mb-4">
-            {% if is_edit %}
-                <h2 class="fw-bold">Edit Material Request</h2>
-            {% else %}
-			    <h2 class="fw-bold">Add Material Request</h2>
-            {% endif %}
-		</div>
-
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-
-            <!-- Name & Lead -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Name</label>
-                    {{ form.name }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Lead</label>
-                    {{ form.lead }}
-                </div>
-            </div>
-
-            <!-- Type & Status -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Type</label>
-                    {{ form.type }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Status</label>
-                    {{ form.status }}
-                </div>
-            </div>
-
-            <!-- Requirement -->
-            <div class="row">
-                <div class="mb-3">
-                    <label class="form-label">Requirement</label>
-
-                    <table class="table table-bordered" id="requirement-table">
-                        <thead>
-                            <tr>
-                                <th>Material</th>
-                                <th>Quantity</th>
-                                <th>
-                                    <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+</button>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody id="requirement-body">
-                        </tbody>
-                    </table>
-
-                    <!-- Hidden field -->
-                    <input type="hidden" name="requirement" id="requirement-data">
-                </div>
-            </div>
-
-            <!-- Description -->
-            <div class="row">
-                <div class="col-12">
-                    <label class="form-label">Description</label>
-                    {{ form.description }}
-                </div>
-            </div>
-
-            <!-- Submit -->
-			<div class="d-flex gap-2 mt-4">
-				<button type="submit" class="btn btn-primary btn-lg flex-fill">
-					<i class="fas fa-check me-2"></i>
-				</button>
-
-                {% if is_edit %}
-                <a href="{% url 'material_request_delete' material_request.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
-					<i class="fas fa-trash me-2"></i>
-				</a>
-                {% endif %}
-
-                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
-					<i class="fas fa-arrow-left me-2"></i>
-				</a>
-			</div>
-
-        </form>
+    <div class="text-center mb-3">
+      <h2 class="fw-bold">{% if is_edit %}Edit Material Request{% else %}Add Material Request{% endif %}</h2>
     </div>
+
+    {% if form.errors %}
+      <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="fas fa-triangle-exclamation"></i><span>Please correct the highlighted fields below.</span>
+      </div>
+    {% endif %}
+
+    <form method="POST" id="mrForm" novalidate class="card shadow-sm p-3 p-md-4">
+      {% csrf_token %}
+
+      <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+          <label class="form-label">Name <span class="text-danger">*</span></label>
+          {{ form.name }} {{ form.name.errors }}
+          <div id="err-name" class="text-danger small d-none"></div>
+        </div>
+        <div class="col-12 col-md-6 mb-3">
+          <label class="form-label">Lead <span class="text-danger">*</span></label>
+          {{ form.lead }} {{ form.lead.errors }}
+          <div id="err-lead" class="text-danger small d-none"></div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-12 col-md-6 mb-3">
+          <label class="form-label">Type</label>
+          {{ form.type }} {{ form.type.errors }}
+        </div>
+        <div class="col-12 col-md-6 mb-3">
+          <label class="form-label">Status</label>
+          {{ form.status }} {{ form.status.errors }}
+        </div>
+      </div>
+
+      <!-- Requirement builder -->
+      <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <label class="form-label mb-0">Requirement <span class="text-danger">*</span></label>
+          <button type="button" class="btn btn-sm btn-outline-success" onclick="addRow()"><i class="fas fa-plus"></i> Add item</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-bordered align-middle mb-0" id="requirement-table">
+            <thead class="table-light">
+              <tr>
+                <th style="width:45%">Material</th>
+                <th style="width:20%">Quantity</th>
+                <th style="width:25%">Unit</th>
+                <th style="width:10%"></th>
+              </tr>
+            </thead>
+            <tbody id="requirement-body"></tbody>
+          </table>
+        </div>
+        <div class="req-hint d-md-none mt-1"><i class="fas fa-arrows-left-right"></i> Swipe the table sideways to see all columns.</div>
+        <div id="err-requirement" class="text-danger small d-none mt-1"></div>
+        <input type="hidden" name="requirement" id="requirement-data">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Description</label>
+        {{ form.description }} {{ form.description.errors }}
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex gap-2 mt-3">
+        <button type="submit" class="btn btn-primary btn-lg flex-fill">
+          <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Request{% endif %}
+        </button>
+        {% if is_edit %}
+        <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+          <i class="fas fa-trash me-2"></i>Delete
+        </button>
+        {% endif %}
+        <a href="#" class="btn btn-secondary btn-lg flex-fill" onclick="window.history.back(); return false;">
+          <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+      </div>
+    </form>
+
+    {% if is_edit %}
+    <form method="post" action="{% url 'material_request_delete' material_request.id %}" id="deleteForm" class="d-none">{% csrf_token %}<input type="hidden" name="catch" value="{{ catch|default:'' }}"></form>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}
 
 {% block script %}
-{% if is_edit %}
 <script>
-    function showDeleteAlert() {
-        swal.fire({
-            title: 'Material Request Deleted',
-            text: 'Do You want to delete this material request?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'No, cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = "{% url 'material_request_delete' material_request.id %}";
-            }
-        });
-    }
+{% if is_edit %}
+function showDeleteAlert() {
+  Swal.fire({
+    title: 'Delete this material request?',
+    icon: 'warning', showCancelButton: true,
+    confirmButtonColor: '#dc3545', confirmButtonText: 'Yes, delete it!', cancelButtonText: 'Cancel'
+  }).then((r) => { if (r.isConfirmed) document.getElementById('deleteForm').submit(); });
+}
+{% endif %}
 
-// Existing data from Django (for edit page)
+// Existing requirement rows (edit) — safe default of [] on add.
 let existingData = {{ form.instance.requirement|default:"[]"|safe }};
+if (!Array.isArray(existingData)) existingData = [];
 
-// Load existing rows
-window.onload = function () {
-    if (existingData.length > 0) {
-        existingData.forEach(item => addRow(item.material, item.quantity));
-    } else {
-        addRow(); // empty row for new form
-    }
-};
-
-function addRow(material = "", quantity = "") {
-    let table = document.getElementById("requirement-body");
-
-    let row = `
-        <tr>
-            <td><input type="text" class="form-control material" value="${material}"></td>
-            <td><input type="number" class="form-control quantity" value="${quantity}"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">-</button></td>
-        </tr>
-    `;
-    table.insertAdjacentHTML('beforeend', row);
+function addRow(material = "", quantity = "", unit = "") {
+  const row =
+    '<tr>' +
+      '<td><input type="text" class="form-control material" placeholder="e.g. Cement" value="' + material + '"></td>' +
+      '<td><input type="number" min="0" step="any" class="form-control quantity" placeholder="0" value="' + quantity + '"></td>' +
+      '<td><input type="text" class="form-control unit" placeholder="bags / kg / nos" value="' + unit + '"></td>' +
+      '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="fas fa-times"></i></button></td>' +
+    '</tr>';
+  document.getElementById("requirement-body").insertAdjacentHTML('beforeend', row);
 }
 
-function removeRow(btn) {
-    let row = btn.closest("tr");
-    row.remove();
-}
+function removeRow(btn) { btn.closest("tr").remove(); }
 
-// Convert table → JSON before submit
-document.querySelector("form").addEventListener("submit", function () {
-    let data = [];
+document.addEventListener("DOMContentLoaded", function () {
+  if (existingData.length) existingData.forEach(i => addRow(i.material, i.quantity, i.unit || ""));
+  else addRow();
+});
 
-    document.querySelectorAll("#requirement-body tr").forEach(row => {
-        let material = row.querySelector(".material").value;
-        let quantity = row.querySelector(".quantity").value;
+// Validate + serialise the requirement table before submit.
+document.getElementById("mrForm").addEventListener("submit", function (e) {
+  const problems = [];
 
-        if (material && quantity) {
-            data.push({ material, quantity });
-        }
-    });
+  const nameEl = document.getElementById("id_name");
+  const leadEl = document.getElementById("id_lead");
+  [["id_name", "err-name", "Name"], ["id_lead", "err-lead", "Lead"]].forEach(([id, errId, label]) => {
+    const el = document.getElementById(id);
+    const msg = document.getElementById(errId);
+    if (el && !el.value.trim()) {
+      el.classList.add("field-invalid"); msg.textContent = label + " is required."; msg.classList.remove("d-none");
+      problems.push(label);
+    } else if (el) { el.classList.remove("field-invalid"); if (msg) msg.classList.add("d-none"); }
+  });
 
-    if (data.length === 0) {
-        swal.fire({
-            title: 'Requirement Missing',
-            text: 'Please add at least one material with quantity.',
-            icon: 'warning',
-        });
-        event.preventDefault();
-        return;
-    }
+  const data = [];
+  document.querySelectorAll("#requirement-body tr").forEach(row => {
+    const material = row.querySelector(".material").value.trim();
+    const quantity = row.querySelector(".quantity").value.trim();
+    const unit = row.querySelector(".unit").value.trim();
+    if (material && quantity) data.push({ material, quantity, unit });
+  });
+  const reqErr = document.getElementById("err-requirement");
+  if (!data.length) {
+    reqErr.textContent = "Add at least one material with a quantity."; reqErr.classList.remove("d-none");
+    problems.push("Requirement");
+  } else { reqErr.classList.add("d-none"); }
 
-    document.getElementById("requirement-data").value = JSON.stringify(data);
+  if (problems.length) {
+    e.preventDefault();
+    Swal.fire({ icon: 'error', title: 'Check the form', html: 'Please fix:<br><b>' + problems.join(', ') + '</b>', confirmButtonColor: '#0d6efd' });
+    return;
+  }
+  document.getElementById("requirement-data").value = JSON.stringify(data);
 });
 </script>
-{% endif %}
 {% endblock %}

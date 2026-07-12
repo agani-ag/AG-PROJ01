@@ -1,359 +1,312 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Add Lead{% endblock %}
+{% block title %}{% if is_edit %}Edit Lead{% else %}Add Lead{% endif %}{% endblock %}
+
+{% block head %}
+<style>
+  .errorlist { color: #dc3545; list-style: none; padding-left: 0; margin: .25rem 0 0; font-size: .85rem; }
+  .nav-tabs .nav-link.has-error { color: #dc3545; }
+  .nav-tabs .nav-link.has-error::after { content: " !"; font-weight: 700; }
+  .field-invalid { border: 1px solid #dc3545 !important; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
+  <div class="col-12 col-md-11 col-lg-9">
 
-        <!-- Header -->
-		<div class="text-center mb-4">
-            {% if is_edit %}
-                <h2 class="fw-bold">Edit Lead</h2>
-            {% else %}
-			    <h2 class="fw-bold">Add Lead</h2>
-            {% endif %}
-		</div>
-
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-
-            <!-- Name & Type -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Name</label>
-                    {{ form.name }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Type</label>
-                    {{ form.type }}
-                </div>
-            </div>
-
-            <!-- Project Stage & Status -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Project Stage</label>
-                    {{ form.project_stage }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Status</label>
-                    {{ form.status }}
-                </div>
-            </div>
-
-			<!-- Source Type & Referrer -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Source Type</label>
-                    {{ form.source_type }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Referrer</label>
-                    {{ form.referral_worker }}
-                </div>
-            </div>
-			
-            <!-- Workers -->
-            <div class="row">
-                <div class="col-12">
-                    <label class="form-label">Workers</label>
-                    {{ form.workers }}
-                </div>
-            </div>
-
-			<hr class="my-4">
-
-			<!-- Phone & Email -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Phone</label>
-                    {{ form.phone }}
-                </div>
-				<div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Email</label>
-                    {{ form.email }}
-                </div>
-            </div>
-				
-            <!-- Location & Pincode -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Location</label>
-                    {{ form.location }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Pincode</label>
-                    {{ form.pincode }}
-                </div>
-            </div>
-
-			<!-- Latitude & Longitude -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Latitude</label>
-                    {{ form.latitude }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Longitude</label>
-                    {{ form.longitude }}
-                </div>
-            </div>
-            <!-- Location Picker -->
-            <div class="mb-3">
-                <label class="form-label">Pick Location on Map</label>
-                <div id="map" style="height: 400px; border-radius: 10px;"></div>
-            </div>
-
-			<hr class="my-4">
-			
-            <!-- Assigned To -->
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Assigned To</label>
-                    {{ form.assigned_to }}
-                </div>
-            </div>
-
-            <!-- Submit -->
-			<div class="d-flex gap-2 mt-4">
-				<button type="submit" class="btn btn-primary btn-lg flex-fill">
-					<i class="fas fa-check me-2"></i>
-				</button>
-
-                {% if is_edit %}
-                <a href="{% url 'lead_delete' lead.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
-					<i class="fas fa-trash me-2"></i>
-				</a>
-                {% endif %}
-
-                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
-					<i class="fas fa-arrow-left me-2"></i>
-				</a>
-			</div>
-
-        </form>
+    <div class="text-center mb-3">
+      <h2 class="fw-bold">{% if is_edit %}Edit Lead{% else %}Add Lead{% endif %}</h2>
     </div>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+    {% if form.errors %}
+      <div class="alert alert-danger d-flex align-items-center gap-2">
+        <i class="fas fa-triangle-exclamation"></i>
+        <span>Please correct the highlighted fields below.</span>
+      </div>
+    {% endif %}
+
+    <form method="POST" id="leadForm" novalidate class="card shadow-sm p-3 p-md-4">
+      {% csrf_token %}
+
+      <!-- Tabs -->
+      <ul class="nav nav-tabs mb-3" id="leadTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-details" type="button">Details</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-contact" type="button">Contact</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="tab-location-btn" data-bs-toggle="tab" data-bs-target="#tab-location" type="button">Location</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-assign" type="button">Assignment</button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+        <!-- Details -->
+        <div class="tab-pane fade show active" id="tab-details">
+          <div class="row">
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Name <span class="text-danger">*</span></label>
+              {{ form.name }} {{ form.name.errors }}
+              <div id="err-name" class="text-danger small d-none"></div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Type</label>
+              {{ form.type }} {{ form.type.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Project Stage</label>
+              {{ form.project_stage }} {{ form.project_stage.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Status</label>
+              {{ form.status }} {{ form.status.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Source Type</label>
+              {{ form.source_type }} {{ form.source_type.errors }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact -->
+        <div class="tab-pane fade" id="tab-contact">
+          <div class="row">
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Phone <span class="text-danger">*</span></label>
+              {{ form.phone }} {{ form.phone.errors }}
+              <div id="err-phone" class="text-danger small d-none"></div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Email</label>
+              {{ form.email }} {{ form.email.errors }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Location -->
+        <div class="tab-pane fade" id="tab-location">
+          <div class="row">
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Location <span class="text-danger">*</span></label>
+              {{ form.location }} {{ form.location.errors }}
+              <div id="err-location" class="text-danger small d-none"></div>
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Pincode</label>
+              {{ form.pincode }} {{ form.pincode.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Latitude</label>
+              {{ form.latitude }} {{ form.latitude.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Longitude</label>
+              {{ form.longitude }} {{ form.longitude.errors }}
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Pick Location on Map</label>
+            <div id="map" style="height: 380px; border-radius: 10px;"></div>
+          </div>
+        </div>
+
+        <!-- Assignment -->
+        <div class="tab-pane fade" id="tab-assign">
+          <div class="row">
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Assigned To</label>
+              {{ form.assigned_to }} {{ form.assigned_to.errors }}
+            </div>
+            <div class="col-12 col-md-6 mb-3">
+              <label class="form-label">Referrer</label>
+              {{ form.referral_worker }} {{ form.referral_worker.errors }}
+            </div>
+            <div class="col-12 mb-3">
+              <label class="form-label">Site Workers</label>
+              {{ form.workers }} {{ form.workers.errors }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex gap-2 mt-4">
+        <button type="submit" class="btn btn-primary btn-lg flex-fill">
+          <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Lead{% endif %}
+        </button>
+        {% if is_edit %}
+        <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+          <i class="fas fa-trash me-2"></i>Delete
+        </button>
+        {% endif %}
+        <a href="#" class="btn btn-secondary btn-lg flex-fill" onclick="window.history.back(); return false;">
+          <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+      </div>
+    </form>
+
+    {% if is_edit %}
+    <form method="post" action="{% url 'lead_delete' lead.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}
 
 {% block script %}
+<script src="{% static 'js/crm_leaflet.js' %}"></script>
 <script>
 {% if is_edit %}
-    function showDeleteAlert() {
-        swal.fire({
-            title: 'Lead Deleted',
-            text: 'Do You want to delete this lead?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'No, cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = "{% url 'lead_delete' lead.id %}";
-            }
-        });
-    }
+function showDeleteAlert() {
+  Swal.fire({
+    title: 'Delete this lead?',
+    text: 'This also removes its opportunities, activities, material requests and commissions.',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc3545',
+    confirmButtonText: 'Yes, delete it!',
+    cancelButtonText: 'Cancel'
+  }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
+}
 {% endif %}
 
-let map;
-let marker;
-let geocoder;
+let map, marker, mapReady = false;
 
-// 🚀 Init map
-function initMap(lat = 12.602429, lng = 78.595726) { // Headquarters Location
-    map = L.map('map').setView([lat, lng], 13);
-
-    let cartoLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let topoLayer = L.tileLayer(
-        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenTopoMap'
-        }
-    );
-
-    let darkLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let osmLayer = L.tileLayer(
-        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenStreetMap'
-        }
-    );
-
-    let googleLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-        { 
-            attribution: '&copy; Google Maps',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-
-    let satelliteLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        {
-            attribution: '&copy; Google Maps',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-
-    // Default layer
-    googleLayer.addTo(map);
-
-    // Layer control
-    let baseMaps = {
-        "☀️ Light": cartoLayer,
-        "🌙 Dark": darkLayer,
-        "🗺️ Google": googleLayer,
-        "⛰️ Terrain": topoLayer,
-        "🗺️ OSM": osmLayer,
-        "🛰️ Satellite": satelliteLayer
-    };
-
-    L.control.layers(baseMaps).addTo(map);
-
-    marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-
-    // 🔍 Search bar (Leaflet Geocoder)
-    geocoder = L.Control.geocoder({
-        defaultMarkGeocode: false
-    })
-    .on('markgeocode', function(e) {
-        let center = e.geocode.center;
-
-        map.setView(center, 15);
-        marker.setLatLng(center);
-
-        setLatLng(center.lat, center.lng);
-        autofillAddress(center.lat, center.lng);
-    })
-    .addTo(map);
-
-    // 📍 Add "Use Current Location" button on map
-    let locateControl = L.control({ position: 'topleft' });
-
-    locateControl.onAdd = function(map) {
-        let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        div.style.backgroundColor = 'white';
-        div.style.width = '34px';
-        div.style.height = '34px';
-        div.style.cursor = 'pointer';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'center';
-        div.title = "Use Current Location";
-        div.innerHTML = '📍';
-
-        div.onclick = function(e) {
-            e.preventDefault();
-            getLiveLocation();
-        };
-
-        return div;
-    };
-
-    locateControl.addTo(map);
-
-    // 🖱 Drag marker
-    marker.on('dragend', function () {
-        let pos = marker.getLatLng();
-        setLatLng(pos.lat, pos.lng);
-        autofillAddress(pos.lat, pos.lng);
-    });
-
-    // 🖱 Click map
-    map.on('click', function (e) {
-        let lat = e.latlng.lat;
-        let lng = e.latlng.lng;
-
-        marker.setLatLng([lat, lng]);
-        setLatLng(lat, lng);
-        autofillAddress(lat, lng);
-    });
+function setLatLng(lat, lng) {
+  document.getElementById("id_latitude").value = lat.toFixed(6);
+  document.getElementById("id_longitude").value = lng.toFixed(6);
+  if (map && marker) { marker.setLatLng([lat, lng]); map.setView([lat, lng], 15); }
 }
 
-// 📍 Set lat/lng everywhere
-function setLatLng(lat, lng) {
-    document.getElementById("id_latitude").value = lat.toFixed(6);
-    document.getElementById("id_longitude").value = lng.toFixed(6);
-
-    if (map && marker) {
-        marker.setLatLng([lat, lng]);
-        map.setView([lat, lng], 15);
-    }
+function autofillAddress(lat, lng) {
+  fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.display_name) document.getElementById("id_location").value = data.display_name;
+      if (data.address && data.address.postcode) document.getElementById("id_pincode").value = data.address.postcode;
+    })
+    .catch(() => {});
 }
 
 function getLiveLocation() {
-    if (!navigator.geolocation) {
-        swal.fire({
-            title: 'Error',
-            text: 'Geolocation is not supported by your browser.',
-            icon: 'error'
-        });
-        return;
-    }
-
-    swal.fire({
-        title: 'Fetching Location...',
-        text: 'Please allow location access',
-        allowOutsideClick: false,
-        didOpen: () => {
-            swal.showLoading();
-        }
-    });
-
-    navigator.geolocation.getCurrentPosition(
-        function(position) {
-            let lat = position.coords.latitude;
-            let lng = position.coords.longitude;
-
-            setLatLng(lat, lng);
-            autofillAddress(lat, lng);
-
-            swal.close();
-        },
-        function(error) {
-            swal.fire({
-                title: 'Needed Permission',
-                text: 'Please allow location access to use this feature.',
-                icon: 'warning'
-            });
-        },
-        {
-            enableHighAccuracy: true,
-            timeout: 10000
-        }
-    );
+  if (!navigator.geolocation) { Swal.fire({ title: 'Error', text: 'Geolocation is not supported.', icon: 'error' }); return; }
+  Swal.fire({ title: 'Fetching Location…', text: 'Please allow location access', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+  navigator.geolocation.getCurrentPosition(
+    (pos) => { setLatLng(pos.coords.latitude, pos.coords.longitude); autofillAddress(pos.coords.latitude, pos.coords.longitude); Swal.close(); },
+    () => { Swal.fire({ title: 'Permission needed', text: 'Please allow location access to use this feature.', icon: 'warning' }); },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
 }
 
-// 🏠 Reverse Geocoding (NO Google API)
-function autofillAddress(lat, lng) {
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.display_name) {
-                document.getElementById("id_location").value = data.display_name;
-            }
+function initMap() {
+  // Center on existing coords if present, else headquarters.
+  const curLat = parseFloat(document.getElementById("id_latitude").value);
+  const curLng = parseFloat(document.getElementById("id_longitude").value);
+  const lat = isNaN(curLat) ? 12.602429 : curLat;
+  const lng = isNaN(curLng) ? 78.595726 : curLng;
 
-            if (data.address && data.address.postcode) {
-                document.getElementById("id_pincode").value = data.address.postcode;
-            }
-        });
+  map = L.map('map').setView([lat, lng], 13);
+  crmBaseLayers(map, "🗺️ Google");
+  marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+
+  L.Control.geocoder({ defaultMarkGeocode: false })
+    .on('markgeocode', (e) => {
+      const c = e.geocode.center;
+      map.setView(c, 15); marker.setLatLng(c); setLatLng(c.lat, c.lng); autofillAddress(c.lat, c.lng);
+    }).addTo(map);
+
+  crmLocateControl(map, "Use Current Location", getLiveLocation);
+
+  marker.on('dragend', () => { const p = marker.getLatLng(); setLatLng(p.lat, p.lng); autofillAddress(p.lat, p.lng); });
+  map.on('click', (e) => { marker.setLatLng([e.latlng.lat, e.latlng.lng]); setLatLng(e.latlng.lat, e.latlng.lng); autofillAddress(e.latlng.lat, e.latlng.lng); });
 }
 
-// 🚀 Init on load
-document.addEventListener("DOMContentLoaded", function () {
-    initMap();
+// Lazy-init the map only when the Location tab is first shown (correct sizing + faster load).
+document.getElementById('tab-location-btn').addEventListener('shown.bs.tab', function () {
+  if (!mapReady) { initMap(); mapReady = true; }
+  else if (map) { map.invalidateSize(); }
 });
+
+// ---- client-side required-field validation (works with tabs) ----
+const REQUIRED_FIELDS = [
+  { name: 'name', label: 'Name', tab: '#tab-details' },
+  { name: 'phone', label: 'Phone', tab: '#tab-contact' },
+  { name: 'location', label: 'Location', tab: '#tab-location' },
+];
+document.getElementById('leadForm').addEventListener('submit', function (e) {
+  let firstBad = null;
+  const missing = [];
+  const badTabs = new Set();
+  document.querySelectorAll('#leadTabs .nav-link').forEach(b => b.classList.remove('has-error'));
+
+  REQUIRED_FIELDS.forEach(f => {
+    const el = document.getElementById('id_' + f.name);
+    const msg = document.getElementById('err-' + f.name);
+    const empty = el && !el.value.trim();
+    if (empty) {
+      el.classList.add('field-invalid');
+      if (msg) { msg.textContent = f.label + ' is required.'; msg.classList.remove('d-none'); }
+      badTabs.add(f.tab);
+      missing.push(f.label);
+      if (!firstBad) firstBad = f;
+    } else {
+      if (el) el.classList.remove('field-invalid');
+      if (msg) msg.classList.add('d-none');
+    }
+  });
+
+  if (!firstBad) return;  // all good → allow submit
+  e.preventDefault();
+  badTabs.forEach(t => {
+    const b = document.querySelector('[data-bs-target="' + t + '"]');
+    if (b) b.classList.add('has-error');
+  });
+  const btn = document.querySelector('[data-bs-target="' + firstBad.tab + '"]');
+  if (btn) new bootstrap.Tab(btn).show();
+  const el = document.getElementById('id_' + firstBad.name);
+  setTimeout(() => { if (el) el.focus(); }, 250);
+  Swal.fire({
+    icon: 'error',
+    title: 'Missing required fields',
+    html: 'Please fill in:<br><b>' + missing.join(', ') + '</b>',
+    confirmButtonColor: '#0d6efd',
+  });
+});
+
+// ---- server-side validation notifications (on reload with errors) ----
+window.LEAD_ERRORS = [ {% for field in form %}{% if field.errors %}"{{ field.name }}",{% endif %}{% endfor %} ];
+(function () {
+  const errs = window.LEAD_ERRORS || [];
+  if (!errs.length) return;
+  const fieldTab = {
+    name: '#tab-details', type: '#tab-details', project_stage: '#tab-details', status: '#tab-details', source_type: '#tab-details',
+    phone: '#tab-contact', email: '#tab-contact',
+    location: '#tab-location', pincode: '#tab-location', latitude: '#tab-location', longitude: '#tab-location',
+    assigned_to: '#tab-assign', referral_worker: '#tab-assign', workers: '#tab-assign',
+  };
+  const tabsWithError = new Set();
+  errs.forEach(name => {
+    const el = document.getElementById('id_' + name);
+    if (el) el.classList.add('field-invalid');
+    if (fieldTab[name]) tabsWithError.add(fieldTab[name]);
+  });
+  tabsWithError.forEach(tgt => {
+    const btn = document.querySelector('[data-bs-target="' + tgt + '"]');
+    if (btn) btn.classList.add('has-error');
+  });
+  const firstTab = fieldTab[errs[0]];
+  if (firstTab) {
+    const btn = document.querySelector('[data-bs-target="' + firstTab + '"]');
+    if (btn) new bootstrap.Tab(btn).show();
+  }
+  Swal.fire({ icon: 'error', title: 'Check the form', text: 'Please correct the highlighted fields.', confirmButtonColor: '#0d6efd' });
+})();
 </script>
 {% endblock %}

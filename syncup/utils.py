@@ -111,40 +111,69 @@ def generate_attendance(user, year, month):
     _, days_in_month = monthrange(year, month)
     holidays = set(Holiday.objects.filter(date__year=year, date__month=month).values_list('date', flat=True))
     working_days_map = {'MON':0,'TUE':1,'WED':2,'THU':3,'FRI':4,'SAT':5,'SUN':6}
-    user_working_days = [working_days_map[d] for d in user.working_days]
+    # working_days can be None/empty (nullable field) — guard against iterating None.
+    user_working_days = {working_days_map[d] for d in (user.working_days or []) if d in working_days_map}
 
+    # No configured working days → don't create or delete anything (safest).
+    if not user_working_days:
+        return
+
+    existing = dict(
+        Attendance.objects.filter(user=user, date__year=year, date__month=month)
+        .values_list('date', 'present')
+    )
+
+    # Create the missing working-day rows in one query.
+    to_create = []
     for day in range(1, days_in_month + 1):
         dt = date(year, month, day)
-        if dt.weekday() in user_working_days and dt not in holidays:
-            Attendance.objects.get_or_create(user=user, date=dt, defaults={'present': False})
+        if dt.weekday() in user_working_days and dt not in holidays and dt not in existing:
+            to_create.append(Attendance(user=user, date=dt, present=False))
+    if to_create:
+        Attendance.objects.bulk_create(to_create, ignore_conflicts=True)
+
+    # Reconcile: drop auto-generated (absent) rows that no longer fall on a
+    # working day or now land on a holiday. Never delete days marked present.
+    stale = [
+        dt for dt, present in existing.items()
+        if not present and (dt.weekday() not in user_working_days or dt in holidays)
+    ]
+    if stale:
+        Attendance.objects.filter(user=user, date__in=stale, present=False).delete()
 
 def calculate_salary(user, year, month):
     from .models import Attendance, SalaryTransaction
-    attendances = Attendance.objects.filter(user=user, date__year=year, date__month=month, present=True)
+    present_count = Attendance.objects.filter(user=user, date__year=year, date__month=month, present=True).count()
     total_working_days = Attendance.objects.filter(user=user, date__year=year, date__month=month).count()
-    
-    base_salary = user.salary or 0
-    daily_rate = base_salary / total_working_days if total_working_days else 0
-    salary = daily_rate * attendances.count()
-    salary = Decimal(salary)
+
+    base_salary = user.salary if user.salary is not None else Decimal(0)
+    if not isinstance(base_salary, Decimal):
+        base_salary = Decimal(str(base_salary))
+    daily_rate = (base_salary / total_working_days) if total_working_days else Decimal(0)
+    salary = daily_rate * present_count
 
     # Fetch credits and bonus for this month
     transaction = SalaryTransaction.objects.filter(user=user, month=month, year=year).first()
     credits = Decimal(transaction.credits) if transaction else Decimal(0)
     bonus = Decimal(transaction.bonus) if transaction else Decimal(0)
-    final_salary = salary - credits + bonus
+    final_salary = (salary - credits + bonus).quantize(Decimal('0.01'))
 
-    SalaryTransaction.objects.update_or_create(
-        user=user,
-        month=month,
-        year=year,
-        defaults={
-            'base_salary': base_salary,
-            'credits': credits,
-            'bonus': bonus,
-            'calculated_salary': final_salary
-        }
-    )
+    # Persist only when something actually changed — avoids a DB write on every
+    # calendar GET while keeping the stored value fresh for other readers.
+    if (transaction is None
+            or transaction.calculated_salary != final_salary
+            or transaction.base_salary != base_salary):
+        SalaryTransaction.objects.update_or_create(
+            user=user,
+            month=month,
+            year=year,
+            defaults={
+                'base_salary': base_salary,
+                'credits': credits,
+                'bonus': bonus,
+                'calculated_salary': final_salary
+            }
+        )
     return final_salary
 
 # =============== JSON Encoding/Decoding ===============

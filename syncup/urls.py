@@ -79,6 +79,9 @@ urlpatterns = [
     path('crm/lead/view/<int:lead_id>', crm.lead_view, name='lead_view'),
     path('crm/lead/edit/<int:lead_id>', crm.lead_edit, name='lead_edit'),
     path('crm/lead/delete/<int:lead_id>', crm.lead_delete, name='lead_delete'),
+    path('crm/lead/status/<int:lead_id>', crm.lead_status_update, name='lead_status_update'),
+    path('crm/lead/<int:lead_id>/activity/add', crm.lead_add_activity, name='lead_add_activity'),
+    path('crm/lead/<int:lead_id>/convert', crm.lead_convert, name='lead_convert'),
     # Opportunity URLs
     path('crm/opportunity', crm.opportunity, name='opportunity'),
     path('crm/opportunity/add', crm.opportunity_add, name='opportunity_add'),

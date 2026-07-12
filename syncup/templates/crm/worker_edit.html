@@ -124,7 +124,7 @@
             cancelButtonText: 'No, cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "{% url 'worker_delete' worker.id %}";
+                window.location.href = "{% url 'worker_delete' worker.id %}{% if catch %}?catch={{ catch }}{% endif %}";
             }
         });
     }

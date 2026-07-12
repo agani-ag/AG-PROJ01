@@ -84,6 +84,25 @@ class UserProfileEditForm(ModelForm):
             'special_menus_access': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
+class UserSelfProfileForm(ModelForm):
+    """Profile fields a user may edit for THEMSELVES. Excludes salary,
+    working_days and special_menus_access so a self-save never wipes them
+    (those are admin-only and not rendered on the self page)."""
+    class Meta:
+        model = UserProfile
+        fields = ['name', 'dob', 'email', 'phone', 'address', 'pincode', 'latitude', 'longitude']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'pincode': forms.TextInput(attrs={'class': 'form-control'}),
+            'latitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'longitude': forms.NumberInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'dob': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
+        }
+
+
 class PublicUserForm(ModelForm):
     class Meta:
         model = PublicUser
@@ -100,6 +119,23 @@ class PublicUserForm(ModelForm):
             'username': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
             'password': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
+
+class PublicUserSelfForm(ModelForm):
+    """Fields a public (non-logged-in) user may edit for themselves. Excludes
+    username, password and is_active so self-editing can't change credentials
+    or reactivate a disabled account."""
+    class Meta:
+        model = PublicUser
+        fields = ['name', 'email', 'phone', 'address', 'pincode', 'business_name']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'pincode': forms.NumberInput(attrs={'class': 'form-control'}),
+            'business_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
 
 class LinkRegistryForm(ModelForm):
     class Meta:
@@ -212,6 +248,14 @@ class LeadsForm(ModelForm):
             'phone': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
             'location': forms.TextInput(attrs={'class': 'form-control', 'required': 'true'}),
         }
+
+    def clean(self):
+        # Enforce server-side what the widgets require client-side.
+        cleaned = super().clean()
+        for field in ('phone', 'location'):
+            if not cleaned.get(field):
+                self.add_error(field, 'This field is required.')
+        return cleaned
 
 class OpportunityForm(ModelForm):
     class Meta:

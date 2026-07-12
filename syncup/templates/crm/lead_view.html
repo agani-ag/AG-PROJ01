@@ -1,362 +1,268 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}View Lead{% endblock %}
+{% block title %}{{ lead.name }}{% endblock %}
+
+{% block head %}
+<style>
+  .status-select {
+    width: auto; display: inline-block; font-weight: 600; font-size: .85rem;
+    border: 0; border-radius: 999px; padding: .2rem 1.8rem .2rem .8rem; cursor: pointer;
+  }
+  .sel-secondary { background: #6c757d; color: #fff; }
+  .sel-info { background: #0dcaf0; color: #000; }
+  .sel-primary { background: #0d6efd; color: #fff; }
+  .sel-warning { background: #ffc107; color: #000; }
+  .sel-success { background: #198754; color: #fff; }
+  .sel-danger { background: #dc3545; color: #fff; }
+  .timeline { list-style: none; padding-left: 0; margin: 0; }
+  .timeline li { position: relative; padding: 0 0 1rem 1.4rem; border-left: 2px solid #e6e8ef; }
+  .timeline li:last-child { border-left-color: transparent; }
+  .timeline li::before {
+    content: ""; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px;
+    border-radius: 50%; background: #0d6efd;
+  }
+  .timeline .t-meta { font-size: .78rem; color: #6c757d; }
+  .sec { scroll-margin-top: 16px; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
+  <div class="col-12 col-lg-10">
 
-        <!-- Header -->
-        <div class="text-center mb-4">
-            <h2 class="fw-bold">{{ lead.name }}</h2>
-            <h4 class="fw-bold">{{ lead.get_type_display }}</h4>
-        </div>
+    {% csrf_token %}
 
-        <div class="card shadow-sm p-4">
-
-            <div class="table-responsive">
-
-                <!-- Project Details -->
-                <h4 class="fw-bold mb-3">Project Details</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <tbody>
-                        <tr>
-                            <th scope="row">Project Stage</th>
-                            <td>{{ lead.get_project_stage_display }}</td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Status</th>
-                            <td>{{ lead.get_status_display }}</td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Source Type</th>
-                            <td>{{ lead.get_source_type_display }}</td>
-                        </tr>
-                        {% if lead.referral_worker %}
-                        <tr>
-                            <th scope="row">Referrer</th>
-                            <td>{{ lead.referral_worker }}</td>
-                        </tr>
-                        {% endif %}
-                        {% if lead.assigned_to %}
-                        <tr>
-                            <th scope="row">Assigned To</th>
-                            <td>{{ lead.assigned_to }}</td>
-                        </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-
-                <!-- Contact Information -->
-                <h4 class="fw-bold mb-3">Contact Information</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <tbody>
-                        <tr>
-                            <th scope="row">Phone</th>
-                            <td><a href="tel:{{ lead.phone }}" style="text-decoration: none;">{{ lead.phone }}</a></td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Email</th>
-                            <td>{% if lead.email %}<a href="mailto:{{ lead.email }}">{{ lead.email }}</a>{% else %}<span class="text-danger">N/A</span>{% endif %}</td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Location Information -->
-                <h4 class="fw-bold mb-3">Location Information</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <tbody>
-                        <tr>
-                            <th scope="row">Location</th>
-                            <td>{{ lead.location }}</td>
-                        </tr>
-                        <tr>
-                            <th scope="row">Pincode</th>
-                            <td>{% if lead.pincode %}{{ lead.pincode }}{% else %}<span class="text-danger">N/A</span>{% endif %}</td>
-                        </tr>
-                        {% if lead.latitude and lead.longitude %}
-                        <tr>
-                            <th scope="row" colspan="2" class="text-center">
-                                <div id="map" style="height: 400px; border-radius: 10px;"></div>
-                                <a href="https://www.google.com/maps/search/?api=1&query={{ lead.latitude }},{{ lead.longitude }}" 
-                                    target="_blank">View on Google Maps</a>
-                            </th>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <th scope="row" colspan="2">
-                            <span class="text-danger">Location coordinates not available</span>
-                            </th>
-                        </tr>
-                        {% endif %}
-                        <tr>
-                            <th scope="row" colspan="2">
-                            <a href="{% url 'lead_edit' lead.id %}" class="btn btn-primary w-100">Edit Lead</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Activity Information -->
-                <h4 class="fw-bold mb-3">Activity Information</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Lead</th>
-                            <th>Type</th>
-                            <th>FollowUp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for activity_log in activity_logs %}
-                        <tr onclick="window.location='{% url 'activity_log_edit' activity_log.id %}'" style="cursor: pointer;">
-                            <td>{{ activity_log.lead }}</td>
-                            <td>{{ activity_log.get_type_display }}</td>
-                            <td>{{ activity_log.follow_up_date }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No activity logs found.</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <th scope="row" colspan="3">
-                            <a href="{% url 'activity_log_add' %}?catch={{ lead.id }}" class="btn btn-secondary w-100">Add Activity Log</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Opportunities Information -->
-                <h4 class="fw-bold mb-3">Opportunities Information</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Name</th>
-                            <th>Estimation</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for opportunity in opportunities %}
-                        <tr onclick="window.location='{% url 'opportunity_edit' opportunity.id %}'" style="cursor: pointer;">
-                            <td>{{ opportunity.get_type_display }}</td>
-                            <td>{{ opportunity.estimated_value }}</td>
-                            <td>{{ opportunity.get_status_display }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No opportunities found.</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <th scope="row" colspan="3">
-                            <a href="{% url 'opportunity_add' %}?catch={{ lead.id }}" class="btn btn-secondary w-100">Add Opportunity</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Material Requests -->
-                <h4 class="fw-bold mb-3">Material Requests</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for material_request in material_requests %}
-                        <tr onclick="window.location='{% url 'material_request_edit' material_request.id %}'" style="cursor: pointer;">
-                            <td>{{ material_request.name }}</td>
-                            <td>{{ material_request.get_type_display }}</td>
-                            <td>{{ material_request.get_status_display }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No material requests found.</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <th scope="row" colspan="3">
-                            <a href="{% url 'material_request_add' %}?catch={{ lead.id }}" class="btn btn-secondary w-100">Add Material Request</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Commissions Information -->
-                <h4 class="fw-bold mb-3">Commissions Information</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Worker</th>
-                            <th>Amount</th>
-                            <th>Paid</th>
-                        </tr>
-                    </thead>
-	                <tbody>
-                        {% for commission in commissions %}
-                        <tr onclick="window.location='{% url 'worker_commissions_edit' commission.id %}'" style="cursor: pointer;">
-                            <td>{{ commission.worker }}</td>
-                            <td>{{ commission.commission_amount }}</td>
-                            <td>{% if commission.paid %}
-                                <span class="text-success font-weight-bold">Yes</span>
-                                {% else %}
-                                <span class="text-danger font-weight-bold">No</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No commissions found.</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <th scope="row" colspan="3">
-                            <a href="{% url 'worker_commissions_add' %}?catch={{ lead.id }}" class="btn btn-secondary w-100">Add Commission</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Site Workers Information -->
-                <h4 class="fw-bold mb-3">Site Workers</h4>
-                <table class="table table-bordered table-striped table-sm mb-4">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Phone</th>
-                        </tr>
-                    </thead>
-	                <tbody>
-                        {% for worker in lead.workers.all %}
-                        <tr onclick="window.location='{% url 'worker_edit' worker.id %}'" style="cursor: pointer;">
-                            <td>{{ worker.name }}</td>
-                            <td>{{ worker.job_role.name }}</td>
-                            <td>{{ worker.phone }}</td>
-                        </tr>
-                        {% empty %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted">No workers found.</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <th scope="row" colspan="3">
-                            <a href="{% url 'worker_add' %}?catch={{ lead.id }}" class="btn btn-secondary w-100">Add Worker</a>
-                            </th>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Edit Lead Button -->
-                <div class="d-grid gap-2 mb-4">
-                    <a href="{% url 'leads' %}" class="btn btn-danger w-100">Back To Leads</a>
-                </div>
-            
+    <!-- Summary header + quick actions -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+          <div>
+            <h3 class="fw-bold mb-1">{{ lead.name }}</h3>
+            <div class="text-muted">
+              {{ lead.get_type_display }} · {{ lead.get_project_stage_display|default:"—" }}
+              {% if lead.assigned_to %} · <i class="fas fa-user"></i> {{ lead.assigned_to.username }}{% endif %}
             </div>
+          </div>
+          <select class="status-select sel-{{ lead.status_color }}" id="leadStatus" data-lead="{{ lead.id }}" title="Change status">
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if value == lead.status %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
         </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a href="{% url 'lead_edit' lead.id %}" class="btn btn-primary btn-sm"><i class="fas fa-pen"></i> Edit</a>
+          {% if lead.phone %}
+          <a href="tel:{{ lead.phone }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-phone"></i> Call</a>
+          <a href="https://wa.me/{{ lead.phone|cut:'+'|cut:' '|cut:'-'|cut:'('|cut:')' }}" target="_blank" rel="noopener"
+             class="btn btn-outline-success btn-sm"><i class="fab fa-whatsapp"></i> WhatsApp</a>
+          {% endif %}
+          {% if lead.email %}
+          <a href="mailto:{{ lead.email }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-envelope"></i> Email</a>
+          {% endif %}
+          <form method="post" action="{% url 'lead_convert' lead.id %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-dark btn-sm"><i class="fas fa-arrow-right"></i> Convert to Opportunity</button>
+          </form>
+        </div>
+      </div>
     </div>
+
+    <div class="row g-3">
+      <!-- Contact + Project details -->
+      <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <h5 class="fw-bold mb-3">Details</h5>
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><th class="text-muted" style="width:40%">Source</th><td>{{ lead.get_source_type_display }}</td></tr>
+              {% if lead.referral_worker %}<tr><th class="text-muted">Referrer</th><td>{{ lead.referral_worker }}</td></tr>{% endif %}
+              <tr><th class="text-muted">Phone</th><td>{% if lead.phone %}<a href="tel:{{ lead.phone }}">{{ lead.phone }}</a>{% else %}<span class="text-danger">N/A</span>{% endif %}</td></tr>
+              <tr><th class="text-muted">Email</th><td>{% if lead.email %}<a href="mailto:{{ lead.email }}">{{ lead.email }}</a>{% else %}<span class="text-danger">N/A</span>{% endif %}</td></tr>
+              <tr><th class="text-muted">Location</th><td>{{ lead.location|default:"—" }}</td></tr>
+              <tr><th class="text-muted">Pincode</th><td>{{ lead.pincode|default:"—" }}</td></tr>
+            </tbody>
+          </table>
+        </div></div>
+      </div>
+
+      <!-- Location map -->
+      <div class="col-12 col-md-6">
+        <div class="card shadow-sm h-100"><div class="card-body">
+          <h5 class="fw-bold mb-3">Location</h5>
+          {% if lead.latitude and lead.longitude %}
+          <div id="map" style="height: 300px; border-radius: 10px;"></div>
+          <a class="btn btn-sm btn-outline-primary mt-2 w-100"
+             href="https://www.google.com/maps/search/?api=1&query={{ lead.latitude }},{{ lead.longitude }}"
+             target="_blank" rel="noopener">Open in Google Maps</a>
+          {% else %}
+          <p class="text-danger mb-0">Location coordinates not available.</p>
+          {% endif %}
+        </div></div>
+      </div>
+    </div>
+
+    <!-- Activity timeline + inline quick-add -->
+    <div class="card shadow-sm mt-3 sec" id="activity"><div class="card-body">
+      <h5 class="fw-bold mb-3">Activity</h5>
+      <form method="post" action="{% url 'lead_add_activity' lead.id %}" class="row g-2 align-items-end mb-3">
+        {% csrf_token %}
+        <div class="col-12 col-md-3">
+          <label class="form-label small mb-1">Type</label>
+          <select name="type" class="form-select form-select-sm">
+            {% for value, label in activity_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-5">
+          <label class="form-label small mb-1">Note</label>
+          <input type="text" name="description" class="form-control form-control-sm" placeholder="What happened?" required>
+        </div>
+        <div class="col-8 col-md-2">
+          <label class="form-label small mb-1">Follow-up</label>
+          <input type="date" name="follow_up_date" class="form-control form-control-sm">
+        </div>
+        <div class="col-4 col-md-2">
+          <button class="btn btn-primary btn-sm w-100" type="submit"><i class="fas fa-plus"></i> Add</button>
+        </div>
+      </form>
+
+      <ul class="timeline">
+        {% for a in activity_logs %}
+        <li>
+          <div class="d-flex justify-content-between">
+            <span><span class="badge text-bg-light">{{ a.get_type_display }}</span> {{ a.description|default:"" }}</span>
+            <a href="{% url 'activity_log_edit' a.id %}?catch={{ lead.id }}" class="text-muted small"><i class="fas fa-pen"></i></a>
+          </div>
+          <div class="t-meta">
+            {{ a.created_at|date:"d-m-Y H:i" }}{% if a.user %} · {{ a.user }}{% endif %}
+            {% if a.follow_up_date %} · Follow-up: {{ a.follow_up_date|date:"d-m-Y" }}{% endif %}
+          </div>
+        </li>
+        {% empty %}
+        <li style="border-left-color:transparent;"><span class="text-muted">No activity yet.</span></li>
+        {% endfor %}
+      </ul>
+    </div></div>
+
+    <!-- Opportunities -->
+    <div class="card shadow-sm mt-3 sec" id="opportunities"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0">Opportunities</h5>
+        <a href="{% url 'opportunity_add' %}?catch={{ lead.id }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-plus"></i> Add</a>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0">
+        <thead><tr><th>Type</th><th>Estimation</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for o in opportunities %}
+          <tr onclick="window.location='{% url 'opportunity_edit' o.id %}?catch={{ lead.id }}'" style="cursor:pointer;">
+            <td>{{ o.get_type_display }}</td>
+            <td>{{ o.estimated_value|default:"—" }}</td>
+            <td><span class="badge text-bg-{{ o.status_color }}">{{ o.get_status_display }}</span></td>
+          </tr>
+          {% empty %}<tr><td colspan="3" class="text-center text-muted">No opportunities.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+
+    <!-- Material Requests -->
+    <div class="card shadow-sm mt-3 sec" id="materials"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0">Material Requests</h5>
+        <a href="{% url 'material_request_add' %}?catch={{ lead.id }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-plus"></i> Add</a>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0">
+        <thead><tr><th>Name</th><th>Type</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for m in material_requests %}
+          <tr onclick="window.location='{% url 'material_request_edit' m.id %}?catch={{ lead.id }}'" style="cursor:pointer;">
+            <td>{{ m.name }}</td>
+            <td>{{ m.get_type_display }}</td>
+            <td><span class="badge text-bg-{{ m.status_color }}">{{ m.get_status_display }}</span></td>
+          </tr>
+          {% empty %}<tr><td colspan="3" class="text-center text-muted">No material requests.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+
+    <!-- Commissions -->
+    <div class="card shadow-sm mt-3 sec" id="commissions"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0">Commissions</h5>
+        <a href="{% url 'worker_commissions_add' %}?catch={{ lead.id }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-plus"></i> Add</a>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0">
+        <thead><tr><th>Worker</th><th>Amount</th><th>Paid</th></tr></thead>
+        <tbody>
+          {% for c in commissions %}
+          <tr onclick="window.location='{% url 'worker_commissions_edit' c.id %}?catch={{ lead.id }}'" style="cursor:pointer;">
+            <td>{{ c.worker }}</td>
+            <td>{{ c.commission_amount }}</td>
+            <td>{% if c.paid %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-danger">No</span>{% endif %}</td>
+          </tr>
+          {% empty %}<tr><td colspan="3" class="text-center text-muted">No commissions.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+
+    <!-- Site Workers -->
+    <div class="card shadow-sm mt-3 sec" id="workers"><div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="fw-bold mb-0">Site Workers</h5>
+        <a href="{% url 'worker_add' %}?catch={{ lead.id }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-plus"></i> Add</a>
+      </div>
+      <div class="table-responsive"><table class="table table-sm table-striped align-middle mb-0">
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th></tr></thead>
+        <tbody>
+          {% for worker in lead.workers.all %}
+          <tr onclick="window.location='{% url 'worker_edit' worker.id %}?catch={{ lead.id }}'" style="cursor:pointer;">
+            <td>{{ worker.name }}</td>
+            <td>{{ worker.job_role.name }}</td>
+            <td>{{ worker.phone }}</td>
+          </tr>
+          {% empty %}<tr><td colspan="3" class="text-center text-muted">No workers.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div></div>
+
+    <a href="{% url 'leads' %}" class="btn btn-secondary w-100 my-3"><i class="fas fa-arrow-left"></i> Back to Leads</a>
+  </div>
 </div>
 {% endblock %}
+
 {% block script %}
-{% if lead.latitude and lead.longitude %}
+<script src="{% static 'js/crm_leaflet.js' %}"></script>
 <script>
-    var latitude = {{ lead.latitude }};
-    var longitude = {{ lead.longitude }};
+document.addEventListener("DOMContentLoaded", function () {
+  // Inline status change on the header.
+  const sel = document.getElementById('leadStatus');
+  if (sel) {
+    const CSRF = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const STATUS_URL = "{% url 'lead_status_update' 0 %}";
+    let prev = sel.value;
+    sel.addEventListener('focus', function () { prev = sel.value; });
+    sel.addEventListener('change', function () {
+      fetch(STATUS_URL.replace(/0$/, sel.getAttribute('data-lead')), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'status=' + encodeURIComponent(sel.value),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Update failed');
+        sel.className = 'status-select sel-' + data.color;
+        prev = sel.value;
+      })
+      .catch(err => { Swal.fire({ icon: 'error', title: 'Could not update status', text: err.message }); sel.value = prev; });
+    });
+  }
 
-    // Initialize map centered on lead location
-    var map = L.map('map').setView([latitude, longitude], 13);
-
-    // Base Layers
-    let cartoLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let darkLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        {
-            attribution: '&copy; OpenStreetMap &copy; CartoDB'
-        }
-    );
-
-    let topoLayer = L.tileLayer(
-        'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenTopoMap'
-        }
-    );
-
-    let osmLayer = L.tileLayer(
-        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-            attribution: '&copy; OpenStreetMap'
-        }
-    );
-
-    let googleLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
-        { 
-            attribution: '&copy; Google Maps',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-
-    let satelliteLayer = L.tileLayer(
-        'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        {
-            attribution: '&copy; Google Maps',
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-        }
-    );
-
-    // Add default base layer
-    googleLayer.addTo(map);
-
-    // Layer control
-    let baseMaps = {
-        "☀️ Light": cartoLayer,
-        "🌙 Dark": darkLayer,
-        "🗺️ Google": googleLayer,
-        "⛰️ Terrain": topoLayer,
-        "🗺️ OSM": osmLayer,
-        "🛰️ Satellite": satelliteLayer
-    };
-    L.control.layers(baseMaps).addTo(map);
-
-    // Marker at lead location (non-draggable)
-    let marker = L.marker([latitude, longitude]).addTo(map);
-
-    // 📍 Add "Lead Location" button on map
-    let locateControl = L.control({ position: 'topleft' });
-
-    locateControl.onAdd = function(map) {
-        let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
-        div.style.backgroundColor = 'white';
-        div.style.width = '34px';
-        div.style.height = '34px';
-        div.style.cursor = 'pointer';
-        div.style.display = 'flex';
-        div.style.alignItems = 'center';
-        div.style.justifyContent = 'center';
-        div.title = "Lead Location";
-        div.innerHTML = '📍';
-
-        div.onclick = function(e) {
-            e.stopPropagation(); // Prevent map click events
-            map.setView([latitude, longitude], 15, { animate: true });
-        };
-
-        return div;
-    };
-
-    locateControl.addTo(map);
+  {% if lead.latitude and lead.longitude %}
+  const lat = {{ lead.latitude }}, lng = {{ lead.longitude }};
+  const map = L.map('map').setView([lat, lng], 14);
+  crmBaseLayers(map, "🗺️ Google");
+  L.marker([lat, lng]).addTo(map);
+  crmLocateControl(map, "Lead Location", function () { map.setView([lat, lng], 16, { animate: true }); });
+  {% endif %}
+});
 </script>
-{% endif %}
 {% endblock %}

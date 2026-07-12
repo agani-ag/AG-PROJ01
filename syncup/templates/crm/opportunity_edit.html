@@ -88,7 +88,7 @@
             cancelButtonText: 'No, cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "{% url 'opportunity_delete' opportunity.id %}";
+                window.location.href = "{% url 'opportunity_delete' opportunity.id %}{% if catch %}?catch={{ catch }}{% endif %}";
             }
         });
     }

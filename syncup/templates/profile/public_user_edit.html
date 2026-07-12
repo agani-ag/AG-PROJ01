@@ -1,32 +1,28 @@
 {% extends "base.html" %}
 {% load static %}
-{% if not user.is_authenticated %}
+{% if not is_admin %}
     {% block navbar %}{% endblock %}
 {% endif %}
-{% block title %}Add Public User{% endblock %}
+{% block title %}{% if is_admin %}{% if is_edit %}Edit{% else %}Add{% endif %} Public User{% else %}Public User{% endif %}{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-12 col-md-10 col-lg-8">
 
         <!-- Header -->
-        {% if user.is_authenticated %}
-		<div class="text-center mb-4">
-            {% if is_edit %}
-                <h2 class="fw-bold">Edit Public User</h2>
-            {% else %}
-			    <h2 class="fw-bold">Add Public User</h2>
-            {% endif %}
-		</div>
-        {% else %}
         <div class="text-center mb-4">
-            <h2 class="fw-bold">Public User</h2>
-		</div>
-        {% endif %}
+            {% if is_admin %}
+                <h2 class="fw-bold">{% if is_edit %}Edit Public User{% else %}Add Public User{% endif %}</h2>
+            {% else %}
+                <h2 class="fw-bold">My Page</h2>
+            {% endif %}
+        </div>
 
         <form method="POST" class="card shadow-sm p-4">
             {% csrf_token %}
+            <input type="hidden" name="token" value="{{ token }}">
 
-            <!-- Username & Password -->
+            {% if is_admin %}
+            <!-- Username & Password (admin only) -->
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
                     <label class="form-label">Username</label>
@@ -37,6 +33,7 @@
                     {{ form.password }}
                 </div>
             </div>
+            {% endif %}
 
             <!-- Name & Business Name -->
             <div class="row">
@@ -76,136 +73,104 @@
                     <label class="form-label">Pincode</label>
                     {{ form.pincode }}
                 </div>
+                {% if is_admin %}
                 <div class="col-12 col-md-6 mb-3">
                     <label class="form-label">Active</label>
                     {{ form.is_active }}
                 </div>
+                {% endif %}
             </div>
 
-            {% if user.is_authenticated %}
-            <!-- URLs -->
+            <!-- URLs (available to admin and to the verified public user) -->
             <div class="row">
                 <div class="mb-3">
-                    <label class="form-label">URLS</label>
-
+                    <label class="form-label">Links</label>
                     <table class="table table-bordered" id="urls-table">
                         <thead>
                             <tr>
                                 <th>Name</th>
-                                <th>Urls</th>
+                                <th>URL</th>
                                 <th>
                                     <button type="button" class="btn btn-sm btn-success" onclick="addRow()">+</button>
                                 </th>
                             </tr>
                         </thead>
-                        <tbody id="urls-body">
-                        </tbody>
+                        <tbody id="urls-body"></tbody>
                     </table>
-
-                    <!-- Hidden field -->
                     <input type="hidden" name="urls" id="urls-data">
                 </div>
             </div>
-            {% endif %}
-
-            {% if not user.is_authenticated %}
-            <input type="hidden" name="public_user" value="True">
-            {% endif %}
 
             <!-- Submit -->
-			<div class="d-flex gap-2 mt-4">
-				<button type="submit" class="btn btn-primary btn-lg flex-fill">
-					<i class="fas fa-check me-2"></i>
-				</button>
-                
-                {% if user.is_authenticated %}
-                {% if is_edit %}
-                <a href="{% url 'public_user_delete' public_user.id %}" class="btn btn-warning btn-lg flex-fill" onclick="showDeleteAlert(); return false;">
-					<i class="fas fa-trash me-2"></i>
-				</a>
+            <div class="d-flex gap-2 mt-4">
+                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                    <i class="fas fa-check me-2"></i>Save
+                </button>
+
+                {% if is_admin and is_edit %}
+                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+                    <i class="fas fa-trash me-2"></i>Delete
+                </button>
                 {% endif %}
 
-                <a href="#" class="btn btn-danger btn-lg flex-fill" onclick="window.history.back()">
-					<i class="fas fa-arrow-left me-2"></i>
-				</a>
+                {% if is_admin %}
+                <a href="{% url 'public_users' %}" class="btn btn-secondary btn-lg flex-fill">
+                    <i class="fas fa-arrow-left me-2"></i>Back
+                </a>
                 {% endif %}
-			</div>
-
+            </div>
         </form>
+
+        {% if is_admin and is_edit %}
+        <form method="post" action="{% url 'public_user_delete' public_user.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block script %}
-{% if is_edit %}
 <script>
-    function showDeleteAlert() {
-        swal.fire({
-            title: 'Link Deleted',
-            text: 'Do You want to delete this link?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, delete it!',
-            cancelButtonText: 'No, cancel'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location.href = "{% url 'public_user_delete' public_user.id %}";
-            }
-        });
-    }
+{% if is_admin and is_edit %}
+function showDeleteAlert() {
+    Swal.fire({
+        title: 'Delete this public user?',
+        icon: 'warning', showCancelButton: true,
+        confirmButtonColor: '#dc3545', confirmButtonText: 'Yes, delete it!', cancelButtonText: 'Cancel'
+    }).then((r) => { if (r.isConfirmed) document.getElementById('deleteForm').submit(); });
+}
+{% endif %}
 
-{% if user.is_authenticated %}
-    // Existing data from Django (for edit page) as a dictionary
-    let existingData = {{ form.instance.urls|default:"{}"|safe }};
+// Links (URLs) builder — works for admin add/edit and the verified public user.
+let existingData = {{ form.instance.urls|default:"{}"|safe }};
+if (typeof existingData !== 'object' || existingData === null) existingData = {};
 
-    // Load existing rows
-    window.onload = function () {
-        if (existingData && Object.keys(existingData).length > 0) {
-            // Iterate over dictionary entries
-            for (const [name, url] of Object.entries(existingData)) {
-                addRow(name, url);
-            }
-        } else {
-            addRow(); // empty row for new form
-        }
-    };
+function addRow(name = "", url = "") {
+    const row =
+        '<tr>' +
+            '<td><input type="text" class="form-control name" placeholder="e.g. Website" value="' + name + '"></td>' +
+            '<td><input type="text" class="form-control url" placeholder="https://…" value="' + url + '"></td>' +
+            '<td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">-</button></td>' +
+        '</tr>';
+    document.getElementById("urls-body").insertAdjacentHTML('beforeend', row);
+}
 
-    function addRow(name = "", url = "") {
-        let table = document.getElementById("urls-body");
+function removeRow(btn) { btn.closest("tr").remove(); }
 
-        let row = `
-            <tr>
-                <td><input type="text" class="form-control name" value="${name}"></td>
-                <td><input type="text" class="form-control url" value="${url}"></td>
-                <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow(this)">-</button></td>
-            </tr>
-        `;
-        table.insertAdjacentHTML('beforeend', row);
-    }
+document.addEventListener("DOMContentLoaded", function () {
+    const keys = Object.keys(existingData);
+    if (keys.length) keys.forEach(name => addRow(name, existingData[name]));
+    else addRow();
+});
 
-    function removeRow(btn) {
-        let row = btn.closest("tr");
-        row.remove();
-    }
-
-    // Convert table → JSON before submit
-    document.querySelector("form").addEventListener("submit", function (event) {
-        let data = {};
-
-        document.querySelectorAll("#urls-body tr").forEach(row => {
-            let name = row.querySelector(".name").value.trim();
-            let url = row.querySelector(".url").value.trim();
-
-            if (name && url) {
-                data[name] = url; // use name as key, url as value
-            }
-        });
-
-        document.getElementById("urls-data").value = JSON.stringify(data);
+// Serialise the links table → hidden field before submit.
+document.querySelector("form").addEventListener("submit", function () {
+    const data = {};
+    document.querySelectorAll("#urls-body tr").forEach(row => {
+        const name = row.querySelector(".name").value.trim();
+        const url = row.querySelector(".url").value.trim();
+        if (name && url) data[name] = url;
     });
-{% else %}
-    document.getElementById("id_username").readOnly = true;
-{% endif %}
+    document.getElementById("urls-data").value = JSON.stringify(data);
+});
 </script>
-{% endif %}
 {% endblock %}

@@ -1,50 +1,148 @@
 {% extends "base.html" %}
 {% load static %}
 
+{% block head %}
+<style>
+  .status-select {
+    width: auto; display: inline-block; font-weight: 600; font-size: .8rem;
+    border: 0; border-radius: 999px; padding: .15rem 1.6rem .15rem .7rem; cursor: pointer;
+  }
+  .sel-secondary { background: #6c757d; color: #fff; }
+  .sel-info      { background: #0dcaf0; color: #000; }
+  .sel-primary   { background: #0d6efd; color: #fff; }
+  .sel-warning   { background: #ffc107; color: #000; }
+  .sel-success   { background: #198754; color: #fff; }
+  .sel-danger    { background: #dc3545; color: #fff; }
+  .stage-badge   { background: #eef1f6; color: #334; font-weight: 600; }
+  td.lead-clip   { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row">
-	<div class="col">
-		<h2>Leads</h2>
-	</div>
-	<div class="col text-end">
-		<a href="{% url 'lead_add' %}" class="btn btn-primary btn-sm btn-curve" title="Add Lead">
-			<i class="fas fa-plus"></i></a>
-	</div>
+<div class="row align-items-center mb-2">
+  <div class="col"><h2 class="mb-0">Leads <span class="badge text-bg-secondary align-middle">{{ total }}</span></h2></div>
+  <div class="col text-end">
+    <a href="{% url 'lead_add' %}" class="btn btn-primary btn-sm" title="Add Lead">
+      <i class="fas fa-plus"></i> Add Lead</a>
+  </div>
 </div>
 
-<table class="table table-striped table-bordered" id="lead-table">
-	<thead class="table-dark">
-		<tr>
-			<th>Name</th>
-			<th>Stage</th>
-			<th>Status</th>
-		</tr>
-	</thead>
-	<tbody class="two-col-form">
-		{% for lead in leads %}
-		<tr onclick="window.location='{% url 'lead_view' lead.id %}'" style="cursor: pointer;">
-			<td>{{ lead.name }}</td>
-			<td>{{ lead.get_project_stage_display }}</td>
-			<td>{{ lead.get_status_display }}</td>
-		</tr>
-		{% endfor %}
-	</tbody>
-</table>
+<!-- Search (server-side) -->
+<form method="get" class="mb-2">
+  {% if cur_status != '' %}<input type="hidden" name="status" value="{{ cur_status }}">{% endif %}
+  <div class="input-group input-group-sm" style="max-width: 420px;">
+    <input type="search" name="q" class="form-control" placeholder="Search name, phone, location, email…" value="{{ q }}">
+    <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search"></i></button>
+    {% if q %}<a class="btn btn-outline-secondary" href="?{% if cur_status != '' %}status={{ cur_status }}{% endif %}">Clear</a>{% endif %}
+  </div>
+</form>
 
+<!-- Quick status filters (server-side, across all leads) -->
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="?{% if q %}q={{ q|urlencode }}{% endif %}"
+     class="btn btn-sm {% if cur_status == '' %}btn-dark{% else %}btn-outline-dark{% endif %}">All</a>
+  {% for value, label in status_choices %}
+  <a href="?status={{ value }}{% if q %}&q={{ q|urlencode }}{% endif %}"
+     class="btn btn-sm {% if cur_status|stringformat:'s' == value|stringformat:'s' %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% csrf_token %}
+
+<div class="table-responsive">
+  <table class="table table-striped table-bordered align-middle" id="lead-table" style="width:100%">
+    <thead class="table-dark">
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th class="d-none d-md-table-cell">Location</th>
+        <th class="d-none d-lg-table-cell">Assigned</th>
+        <th class="d-none d-lg-table-cell">Source</th>
+        <th>Stage</th>
+        <th>Status</th>
+        <th class="d-none d-md-table-cell">Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for lead in leads %}
+      <tr data-href="{% url 'lead_view' lead.id %}" style="cursor: pointer;">
+        <td class="fw-semibold">{{ lead.name }}</td>
+        <td class="text-nowrap">
+          {% if lead.phone %}<a href="tel:{{ lead.phone }}" onclick="event.stopPropagation()">{{ lead.phone }}</a>{% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td class="d-none d-md-table-cell lead-clip" title="{{ lead.location }}">{{ lead.location|default:"—" }}</td>
+        <td class="d-none d-lg-table-cell">{{ lead.assigned_to.username|default:"—" }}</td>
+        <td class="d-none d-lg-table-cell">{{ lead.get_source_type_display }}</td>
+        <td><span class="badge stage-badge">{{ lead.get_project_stage_display|default:"—" }}</span></td>
+        <td class="text-nowrap" onclick="event.stopPropagation()">
+          <select class="status-select sel-{{ lead.status_color }}" data-lead="{{ lead.id }}"
+                  aria-label="Change status for {{ lead.name }}">
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if value == lead.status %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </td>
+        <td class="d-none d-md-table-cell text-nowrap">{{ lead.created_at|date:"d-m-Y" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="text-center text-muted py-4">No leads found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <span class="small text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ total }} leads</span>
+  <ul class="pagination pagination-sm mb-0">
+    <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+      <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if cur_status != '' %}&status={{ cur_status }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">Previous</a>
+    </li>
+    <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+      <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if cur_status != '' %}&status={{ cur_status }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">Next</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
 {% endblock %}
 
 {% block script %}
 <script>
-$(document).ready( function () {
-	var isMobile = window.innerWidth <= 768;
-	$('#lead-table').DataTable({
-		"order": [],
-		"columnDefs": [],
-		"paging": true,
-        "lengthChange": !isMobile,
-        "searching": true,
-        "ordering": true,
-        });
+document.addEventListener("DOMContentLoaded", function () {
+  const CSRF = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  const STATUS_URL = "{% url 'lead_status_update' 0 %}";  // ends in /0 — swap the id
+
+  // Open lead on row click (phone + status cells stopPropagation).
+  document.querySelectorAll('#lead-table tbody tr[data-href]').forEach(function (tr) {
+    tr.addEventListener('click', function () { window.location = tr.getAttribute('data-href'); });
+  });
+
+  // Inline status change → AJAX save.
+  document.querySelectorAll('.status-select').forEach(function (sel) {
+    sel.dataset.prev = sel.value;
+    sel.addEventListener('focus', function () { sel.dataset.prev = sel.value; });
+    sel.addEventListener('change', function () {
+      const leadId = sel.getAttribute('data-lead');
+      const value = sel.value;
+      const prev = sel.dataset.prev;
+      fetch(STATUS_URL.replace(/0$/, leadId), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'status=' + encodeURIComponent(value),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Update failed');
+        sel.className = 'status-select sel-' + data.color;
+        sel.dataset.prev = value;
+      })
+      .catch(err => {
+        Swal.fire({ icon: 'error', title: 'Could not update status', text: err.message });
+        sel.value = prev;
+      });
+    });
+  });
 });
 </script>
 {% endblock %}

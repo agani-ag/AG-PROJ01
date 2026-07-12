@@ -7,9 +7,10 @@ from django.shortcuts import (
     render, redirect, get_object_or_404
 )
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 # Imports
 from ..models import (
-    User, UserProfile, 
+    User, UserProfile,
     Attendance, Holiday, SalaryTransaction
 )
 from ..utils import (
@@ -18,8 +19,11 @@ from ..utils import (
 # =============== Attendance Views ===============
 @login_required
 def attendances(request):
+    if not request.user.is_superuser:
+        messages.error(request, "You are not authorized to view all attendances.")
+        return redirect('profile_edit')
     context = {}
-    users = User.objects.filter(is_active=True, is_staff=True).select_related('profile').exclude(is_superuser=True)
+    users = User.objects.filter(is_active=True, is_staff=True).exclude(is_superuser=True)
     user_profiles = UserProfile.objects.filter(user__in=users).select_related('user')
     context["user_profiles"] = user_profiles
     return render(request, 'attendance/attendances.html', context)
@@ -27,13 +31,22 @@ def attendances(request):
 @login_required
 def attendance_calendar(request, user_id):
     user = get_object_or_404(UserProfile, id=user_id)
+    # A non-superuser may only view their own calendar (salary is shown here).
+    if not (request.user.is_superuser or user.user_id == request.user.id):
+        messages.error(request, "You can only view your own attendance.")
+        return redirect('profile_edit')
     today = date.today()
-    
-    # Get month and year from query parameters, default to current month/year
-    month = request.GET.get('month', today.month)
-    year = request.GET.get('year', today.year)
-    month = int(month)
-    year = int(year)
+
+    # Get month/year from query params, defaulting to today; validate to avoid 500s.
+    try:
+        month = int(request.GET.get('month', today.month))
+        year = int(request.GET.get('year', today.year))
+    except (TypeError, ValueError):
+        month, year = today.month, today.year
+    if not 1 <= month <= 12:
+        month = today.month
+    if not 1900 <= year <= 2100:
+        year = today.year
 
     # Generate attendance at the beginning of the month
     generate_attendance(user, year, month)
@@ -94,11 +107,15 @@ def attendance_calendar(request, user_id):
         'bonus': bonus
     })
 
+@login_required
+@require_POST
 def ajax_mark_attendance(request):
     """
     Toggle attendance via AJAX.
     Expects POST: user_id, date (YYYY-MM-DD)
     """
+    if not request.user.is_superuser:
+        return JsonResponse({'status': 'error', 'error': 'Not authorized'}, status=403)
     if request.method == "POST":
         user_id = request.POST.get('user_id')
         date_str = request.POST.get('date')
@@ -137,11 +154,15 @@ def ajax_mark_attendance(request):
 
     return JsonResponse({'status': 'error', 'error': 'Invalid request'})
 
+@login_required
+@require_POST
 def ajax_update_credit_bonus(request):
     """
     Update credits or bonus for a user's month via AJAX.
     Expects POST: user_id, month, year, field_type ('credits' or 'bonus'), amount
     """
+    if not request.user.is_superuser:
+        return JsonResponse({'status': 'error', 'error': 'Not authorized'}, status=403)
     if request.method == "POST":
         user_id = request.POST.get('user_id')
         month = request.POST.get('month')

@@ -227,7 +227,7 @@ class Leads(models.Model):
         (19, 'Inspection'), (20, 'Handover'),
         (21, 'Maintenance'),
     ]
-    project_stage = models.IntegerField(choices=PROJECT_STAGE, default=0)
+    project_stage = models.IntegerField(choices=PROJECT_STAGE, default=1)
     SOURCE_TYPES = [
         (0, 'Direct'),
         (1, 'Referral'),
@@ -603,6 +603,9 @@ class PublicUser(models.Model):
     password = models.CharField(max_length=255)
     urls = models.JSONField(blank=True, null=True, default=dict)
     is_active = models.BooleanField(default=True)
+    # Unguessable token that authorises a public (non-logged-in) user to edit
+    # only their own record via the link handed to them at login.
+    edit_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     last_login = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -179,8 +179,9 @@ def syncup_public_user(email_or_username, password, device_id):
         }, status=403)
 
     urls = user.urls if user.urls else {}
-    if not urls:
-        urls["SyncUp"] = f"{PROJ01_URL}/public-user/edit/{user.id}"
+    # Always (re)issue the self-edit link with the current token so the public
+    # user can manage their page; also repairs old tokenless links.
+    urls["SyncUp"] = f"{PROJ01_URL}/public-user/edit/{user.id}?token={user.edit_token}"
     data = {
         "success": True,
         "username": user.name if user.name else user.username,

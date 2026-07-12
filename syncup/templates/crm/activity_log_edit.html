@@ -84,7 +84,7 @@
             cancelButtonText: 'No, cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "{% url 'activity_log_delete' log.id %}";
+                window.location.href = "{% url 'activity_log_delete' log.id %}{% if catch %}?catch={{ catch }}{% endif %}";
             }
         });
     }

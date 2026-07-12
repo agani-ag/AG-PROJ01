@@ -82,7 +82,7 @@
             cancelButtonText: 'No, cancel'
         }).then((result) => {
             if (result.isConfirmed) {
-                window.location.href = "{% url 'worker_commissions_delete' commission.id %}";
+                window.location.href = "{% url 'worker_commissions_delete' commission.id %}{% if catch %}?catch={{ catch }}{% endif %}";
             }
         });
     }
