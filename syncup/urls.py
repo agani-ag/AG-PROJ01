@@ -118,6 +118,7 @@ urlpatterns = [
     path('device/view/<int:id>/api', device_access.device_view_data_api, name='device_view_data_api'),
     path('device/dashboard', device_access.device_dashboard, name='device_dashboard'),
     path('device/delete/<int:id>', device_access.device_delete, name='device_delete'),
+    path('device/merge/<int:id>', device_access.device_merge, name='device_merge'),
     path('device/api/network', device_access.device_network_api, name='device_network_api'),
     path('device/api/table', device_access.device_table_api, name='device_table_api'),
     # Device Notification URL

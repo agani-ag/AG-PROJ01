@@ -10,14 +10,59 @@
 
             <!-- Device Details -->
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4 class="fw-bold mb-0">Device Details</h4>
+                <h4 class="fw-bold mb-0">Device Details{% if not device.is_active %} <span class="badge text-bg-danger ms-2 align-middle">Disabled</span>{% endif %}</h4>
                 <div class="d-flex gap-2">
                     <a href="{% url 'device_list' %}" class="btn btn-outline-secondary btn-sm" title="Back To Devices"><i class="fas fa-arrow-left me-1"></i>Back</a>
                     <button onclick="sendCustomNotification()" class="btn btn-primary btn-sm" title="Send Notification"><i class="fas fa-paper-plane me-1"></i>Notify</button>
+                    <button type="button" onclick="openMergeModal()" class="btn btn-outline-warning btn-sm" title="Merge this device into another"><i class="fas fa-code-merge me-1"></i>Merge</button>
                     <button type="button" onclick="deleteDevice()" class="btn btn-outline-danger btn-sm" title="Delete Device"><i class="fas fa-trash-alt me-1"></i>Delete</button>
                 </div>
             </div>
             <form method="post" action="{% url 'device_delete' device.id %}" id="deviceDeleteForm" class="d-none">{% csrf_token %}</form>
+
+            <!-- Merge modal -->
+            <div class="modal fade" id="mergeModal" tabindex="-1">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <form method="post" action="{% url 'device_merge' device.id %}">
+                    {% csrf_token %}
+                    <div class="modal-header">
+                      <h5 class="modal-title"><i class="fas fa-code-merge me-2 text-warning"></i>Merge Device</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                      <p class="small text-muted mb-3">
+                        Move this device's <b>Contacts, Locations, Call Logs and Reminders</b> to the
+                        selected target device. This device (<b>{{ device.user_id|capfirst }}</b>) will be
+                        <b>disabled</b> afterwards. This cannot be undone.
+                      </p>
+                      <label class="form-label fw-semibold">Target device</label>
+                      <select name="target_id" class="form-select" required>
+                        <option value="">— Select a target device —</option>
+                        {% if same_user_devices %}
+                        <optgroup label="Same user ({{ device.user_id }})">
+                          {% for d in same_user_devices %}
+                          <option value="{{ d.id }}">{{ d.user_id|capfirst }} · {{ d.platform }} · {{ d.instance }} (id {{ d.id }}){% if not d.is_active %} — Disabled{% endif %}</option>
+                          {% endfor %}
+                        </optgroup>
+                        {% endif %}
+                        {% if other_devices %}
+                        <optgroup label="Other devices">
+                          {% for d in other_devices %}
+                          <option value="{{ d.id }}">{{ d.user_id|capfirst }} · {{ d.platform }} · {{ d.instance }} (id {{ d.id }}){% if not d.is_active %} — Disabled{% endif %}</option>
+                          {% endfor %}
+                        </optgroup>
+                        {% endif %}
+                      </select>
+                    </div>
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                      <button type="submit" class="btn btn-warning"><i class="fas fa-code-merge me-1"></i>Merge</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
             <div class="table-responsive">
                 <table class="table table-bordered table-striped table-sm mb-4">
                     <tbody>
@@ -337,6 +382,10 @@
 {% block script %}
 <script>
 var DEVICE_DATA_API = "{% url 'device_view_data_api' device.id %}";
+
+function openMergeModal() {
+    new bootstrap.Modal(document.getElementById('mergeModal')).show();
+}
 
 function deleteDevice() {
     Swal.fire({

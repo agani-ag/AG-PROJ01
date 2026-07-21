@@ -1402,6 +1402,9 @@ def device_view(request, id):
         'contact_count': Contact.objects.filter(device=device).count(),
         'location_count': Location.objects.filter(device=device).count(),
         'call_log_count': CallLog.objects.filter(device=device).count(),
+        # Merge target candidates (same user first, then everyone else).
+        'same_user_devices': Device.objects.filter(user_id=device.user_id).exclude(id=device.id).order_by('-last_login'),
+        'other_devices': Device.objects.exclude(user_id=device.user_id).order_by('user_id', '-last_login'),
     }
     return render(request, 'device_access/device_view.html', context)
 
@@ -1477,6 +1480,64 @@ def device_delete(request, id):
     else:
         messages.error(request, 'Device not found.')
     return redirect('device_list')
+
+
+def _dedup_device_records(device):
+    """Collapse duplicate history rows for a device (used after a merge), by each
+    model's natural key, keeping the newest row (highest id)."""
+    from django.db.models import Count, Max
+    specs = [
+        (Location, ['latitude', 'longitude']),
+        (Contact, ['phone_number']),
+        (CallLog, ['phone_number', 'timestamp']),
+    ]
+    for Model, key_fields in specs:
+        groups = (
+            Model.objects.filter(device=device)
+            .values(*key_fields).annotate(n=Count('id'), keep=Max('id'))
+            .filter(n__gt=1)
+        )
+        for g in groups.iterator():
+            flt = {f: g[f] for f in key_fields}
+            Model.objects.filter(device=device, **flt).exclude(id=g['keep']).delete()
+
+
+@_superuser_page
+@require_POST
+def device_merge(request, id):
+    """Merge the CURRENT device's user history (contacts, locations, call logs,
+    reminders) into a chosen TARGET device, then disable the source device."""
+    source = Device.objects.filter(id=id).first()
+    if not source:
+        messages.error(request, 'Device not found.')
+        return redirect('device_list')
+
+    target_id = request.POST.get('target_id')
+    target = Device.objects.filter(id=target_id).first() if (target_id and str(target_id).isdigit()) else None
+    if not target or target.id == source.id:
+        messages.error(request, 'Select a valid target device (different from this one).')
+        return redirect('device_view', id=source.id)
+
+    with transaction.atomic():
+        moved = {
+            'contacts': Contact.objects.filter(device=source).update(device=target),
+            'locations': Location.objects.filter(device=source).update(device=target),
+            'call_logs': CallLog.objects.filter(device=source).update(device=target),
+            'reminders': Reminder.objects.filter(device=source).update(device=target),
+        }
+        # Keep the old device as an audit record, but disable it.
+        source.is_active = False
+        source.save(update_fields=['is_active'])
+        # Clean up duplicates the move may have created on the target.
+        _dedup_device_records(target)
+
+    messages.success(
+        request,
+        f"Merged into {target.user_id} — moved {moved['contacts']} contacts, "
+        f"{moved['locations']} locations, {moved['call_logs']} call logs, "
+        f"{moved['reminders']} reminders. The old device was disabled."
+    )
+    return redirect('device_view', id=target.id)
 
 @_superuser_api
 @csrf_exempt
