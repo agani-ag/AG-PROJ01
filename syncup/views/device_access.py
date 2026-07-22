@@ -1482,6 +1482,22 @@ def device_delete(request, id):
     return redirect('device_list')
 
 
+def _move_records(Model, source, target, unique_fields=None):
+    """Reassign Model rows from source device to target. When unique_fields is
+    given (a per-device unique key, e.g. Contact's phone_number), first delete
+    the source rows that would collide with an existing target row — the target
+    keeps its own — then move the rest. Returns the number of rows moved."""
+    qs = Model.objects.filter(device=source)
+    if unique_fields:
+        existing = set(Model.objects.filter(device=target).values_list(*unique_fields))
+        if existing:
+            colliding = [row[0] for row in qs.values_list('id', *unique_fields) if row[1:] in existing]
+            if colliding:
+                Model.objects.filter(id__in=colliding).delete()
+                qs = Model.objects.filter(device=source)
+    return qs.update(device=target)
+
+
 def _dedup_device_records(device):
     """Collapse duplicate history rows for a device (used after a merge), by each
     model's natural key, keeping the newest row (highest id)."""
@@ -1520,15 +1536,17 @@ def device_merge(request, id):
 
     with transaction.atomic():
         moved = {
-            'contacts': Contact.objects.filter(device=source).update(device=target),
-            'locations': Location.objects.filter(device=source).update(device=target),
-            'call_logs': CallLog.objects.filter(device=source).update(device=target),
-            'reminders': Reminder.objects.filter(device=source).update(device=target),
+            # Contact has a unique (device, phone_number) constraint → collision-safe move.
+            'contacts': _move_records(Contact, source, target, ['phone_number']),
+            'locations': _move_records(Location, source, target),
+            'call_logs': _move_records(CallLog, source, target),
+            'reminders': _move_records(Reminder, source, target),
         }
         # Keep the old device as an audit record, but disable it.
         source.is_active = False
         source.save(update_fields=['is_active'])
-        # Clean up duplicates the move may have created on the target.
+        # Clean up duplicates the move may have created on the target
+        # (locations by lat/lng, call logs by phone+timestamp).
         _dedup_device_records(target)
 
     messages.success(
