@@ -17,6 +17,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
+from django.contrib.auth.decorators import login_required
 from django.core.serializers.json import DjangoJSONEncoder
 
 from ..models import Device
@@ -150,6 +151,14 @@ def clicksend(request):
 
     encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
     return render(request,"device_access/clicksend.html",{"app_config": encoded})
+
+@login_required
+@require_GET
+def video_player(request):
+    # Paste-and-play only — pure client-side player. Supports YouTube, Vimeo,
+    # direct media files (mp4/webm/ogg…) and HLS (.m3u8). No API key, no search,
+    # no server-side config.
+    return render(request, "device_access/video_player.html")
 
 @require_GET
 def cloud_gallery_api(request):

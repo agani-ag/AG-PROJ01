@@ -1,3 +1,16 @@
+<style>
+  /* Two-column (left/right) Devices mega-menu */
+  .dropdown-devices { min-width: 400px; max-width: 96vw; padding: .5rem .25rem; }
+  .dropdown-devices .dd-cols { display: flex; }
+  .dropdown-devices .dd-col { flex: 1 1 0; min-width: 180px; padding: 0 .5rem; }
+  .dropdown-devices .dd-col + .dd-col { border-left: 1px solid #e9ecef; }
+  @media (max-width: 991.98px) {
+    /* Inside the collapsed mobile navbar: stack the two columns */
+    .dropdown-devices { min-width: 0; }
+    .dropdown-devices .dd-cols { flex-direction: column; }
+    .dropdown-devices .dd-col + .dd-col { border-left: 0; border-top: 1px solid #e9ecef; margin-top: .25rem; padding-top: .25rem; }
+  }
+</style>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
         <a class="navbar-brand" 
@@ -70,22 +83,29 @@
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Devices
                     </a>
-                    <ul class="dropdown-menu" aria-labelledby="devicesDropdown">
-                        <h6 class="dropdown-header">Access Control</h6>
-                        <li><a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a></li>
-                        <!-- <li><a class="dropdown-item protected-link" href="{% url 'public_users' %}">Public Users</a></li> -->
-                        <li><a class="dropdown-item" href="{% url 'public_users' %}">Public Users</a></li>
-                        <li><a class="dropdown-item" href="{% url 'instance_info' %}">Instance Info</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Device Access</h6>
-                        <li><a class="dropdown-item" href="{% url 'device_list' %}">Device List</a></li>
-                        <li><a class="dropdown-item" href="{% url 'reminders' %}">Reminders</a></li>
-                        <li><a class="dropdown-item" href="{% url 'audit_errors_list' %}">Audit Errors</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Services</h6>
-                        <li><a class="dropdown-item" href="{% url 'clicksend' %}">Click Send</a></li>
-                        <li><a class="dropdown-item" href="{% url 'cloudinary' %}">Cloudinary</a></li>
-                    </ul>
+                    <div class="dropdown-menu dropdown-menu-end dropdown-devices" aria-labelledby="devicesDropdown">
+                        <div class="dd-cols">
+                            <!-- Left column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Access Control</h6>
+                                <a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a>
+                                <a class="dropdown-item" href="{% url 'public_users' %}">Public Users</a>
+                                <a class="dropdown-item" href="{% url 'instance_info' %}">Instance Info</a>
+                                <div class="dropdown-divider"></div>
+                                <h6 class="dropdown-header">Device Access</h6>
+                                <a class="dropdown-item" href="{% url 'device_list' %}">Device List</a>
+                                <a class="dropdown-item" href="{% url 'reminders' %}">Reminders</a>
+                                <a class="dropdown-item" href="{% url 'audit_errors_list' %}">Audit Errors</a>
+                            </div>
+                            <!-- Right column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Services</h6>
+                                <a class="dropdown-item" href="{% url 'clicksend' %}">Click Send</a>
+                                <a class="dropdown-item" href="{% url 'cloudinary' %}">Cloudinary</a>
+                                <a class="dropdown-item" href="{% url 'video_player' %}">Video Player</a>
+                            </div>
+                        </div>
+                    </div>
                 </li>
                 {% endif %}
                 

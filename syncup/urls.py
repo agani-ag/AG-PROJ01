@@ -136,6 +136,7 @@ urlpatterns = [
 
     # Media Cloud Config & Gallery
     path('device/media/clicksend', media.clicksend, name='clicksend'),
+    path('device/media/video-player', media.video_player, name='video_player'),
     path('device/media/cloudinary', media.cloudinary, name='cloudinary'),
     path('device/api/cloud-config', media.cloud_config, name='cloud_config'),
     path('device/media/cloud-status', media.cloud_status, name='cloud_status'),
