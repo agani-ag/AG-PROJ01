@@ -21,5 +21,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('app/v1/', include('mobileapi.urls')),          # mobile JSON API
+    path('mobile/', include('mobileapi.admin_urls')),    # mobile HTML admin (superuser)
     path('', include('syncup.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

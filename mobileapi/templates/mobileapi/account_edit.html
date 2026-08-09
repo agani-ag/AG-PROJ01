@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{% if is_edit %}Edit Account{% else %}Add Account{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-9">
+
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">{% if is_edit %}Edit Account{% else %}Add Account{% endif %}</h2>
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Name</label>
+                    {{ form.name }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Email</label>
+                    {{ form.email }}
+                </div>
+            </div>
+            <div class="row align-items-end">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">{% if is_edit %}Reset password{% else %}Password{% endif %}</label>
+                    {{ form.new_password }}
+                    <div class="form-text">{{ form.new_password.help_text }}</div>
+                    {% if form.new_password.errors %}<div class="text-danger small">{{ form.new_password.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <div class="form-check">
+                        {{ form.is_active }}
+                        <label class="form-check-label ms-1">Active</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                    <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Create Account{% endif %}
+                </button>
+                {% if is_edit %}
+                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+                    <i class="fas fa-trash me-2"></i>Delete
+                </button>
+                {% endif %}
+                <a href="{% url 'mobile_accounts' %}" class="btn btn-secondary btn-lg flex-fill">
+                    <i class="fas fa-arrow-left me-2"></i>Back
+                </a>
+            </div>
+        </form>
+
+        {% if is_edit %}
+        <!-- Links for this account -->
+        <div class="card shadow-sm mt-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-link me-1"></i> Links</span>
+                <a href="{% url 'mobile_link_add' %}?account={{ account.id }}" class="btn btn-sm btn-primary">
+                    <i class="fas fa-plus"></i> Add link
+                </a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead><tr><th>#</th><th>Title</th><th>URL</th><th>Active</th><th></th></tr></thead>
+                    <tbody>
+                        {% for link in links %}
+                        <tr>
+                            <td>{{ link.sort_order }}</td>
+                            <td>{{ link.title }}</td>
+                            <td style="max-width:320px;"><span class="d-inline-block text-truncate" style="max-width:300px;">{{ link.url }}</span></td>
+                            <td>{% if link.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
+                            <td class="text-end">
+                                <a href="{% url 'mobile_link_edit' link.id %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i></a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-muted text-center">No links yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Devices (read-only) -->
+        <div class="card shadow-sm mt-4">
+            <div class="card-header"><i class="fas fa-mobile-screen me-1"></i> Devices</div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead><tr><th>Device</th><th>Platform</th><th>Version</th><th>Last seen</th><th>Active</th></tr></thead>
+                    <tbody>
+                        {% for d in devices %}
+                        <tr>
+                            <td><small class="text-muted">{{ d.device_id }}</small></td>
+                            <td>{{ d.platform }}</td>
+                            <td>{{ d.app_version|default:"—" }}</td>
+                            <td>{{ d.last_seen|date:"d M Y, H:i" }}</td>
+                            <td>{% if d.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-muted text-center">No devices registered.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <form method="post" action="{% url 'mobile_account_delete' account.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+function showDeleteAlert() {
+    Swal.fire({
+        title: 'Delete this account?',
+        text: 'This also removes its links, devices and tokens.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
+}
+</script>
+{% endif %}
+{% endblock %}

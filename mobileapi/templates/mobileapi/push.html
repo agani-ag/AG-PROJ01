@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Mobile App — Push{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-10">
+        <div class="text-center mb-4"><h2 class="fw-bold">Push Notifications</h2></div>
+
+        {% if not fcm_configured %}
+        <div class="alert alert-warning">
+            <i class="fas fa-triangle-exclamation me-1"></i>
+            FCM is not configured — messages will be logged but not sent.
+        </div>
+        {% endif %}
+
+        <form method="POST" class="card shadow-sm p-4 mb-4">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label">Send to</label>
+                {{ form.account }}
+                <div class="form-text">Leave as “All devices” to broadcast.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                {{ form.title }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Message</label>
+                {{ form.body }}
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-paper-plane me-2"></i>Send
+            </button>
+        </form>
+
+        <div class="card shadow-sm">
+            <div class="card-header">Recent sends</div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead><tr><th>When</th><th>Target</th><th>Title</th><th>Message</th><th>Result</th></tr></thead>
+                    <tbody>
+                        {% for n in logs %}
+                        <tr>
+                            <td><small>{{ n.sent_at|date:"d M, H:i" }}</small></td>
+                            <td>{{ n.account.email|default:"All devices" }}</td>
+                            <td>{{ n.title }}</td>
+                            <td style="max-width:280px;"><span class="d-inline-block text-truncate" style="max-width:260px;">{{ n.body }}</span></td>
+                            <td><span class="badge text-bg-success">{{ n.success_count }}</span> / <span class="badge text-bg-danger">{{ n.fail_count }}</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-muted text-center">Nothing sent yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

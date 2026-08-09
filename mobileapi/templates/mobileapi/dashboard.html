@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Mobile App — Dashboard{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-4">
+    <div class="col"><h2 class="mb-0">SyncUp Mobile</h2></div>
+    <div class="col-auto">
+        <a href="{% url 'mobile_account_add' %}" class="btn btn-primary btn-sm">
+            <i class="fas fa-plus me-1"></i> New Account
+        </a>
+    </div>
+</div>
+
+{% if not fcm_configured %}
+<div class="alert alert-warning">
+    <i class="fas fa-triangle-exclamation me-1"></i>
+    Push (FCM) is not configured — set <code>FIREBASE_PROJECT_ID</code> and <code>SERVICE_ACCOUNT_FILE</code>.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_accounts' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold">{{ account_count }}</div>
+                <div class="text-muted">Accounts</div>
+                <small class="text-success">{{ active_account_count }} active</small>
+            </div></div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_devices' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold">{{ device_count }}</div>
+                <div class="text-muted">Active devices</div>
+            </div></div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card shadow-sm text-center h-100"><div class="card-body">
+            <div class="display-6 fw-bold">{{ link_count }}</div>
+            <div class="text-muted">Links</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_push' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold"><i class="fas fa-bell"></i></div>
+                <div class="text-muted">Send push</div>
+            </div></div>
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Recent accounts</span>
+                <a href="{% url 'mobile_accounts' %}" class="small">View all</a>
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for a in recent_accounts %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <a href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a>
+                    <small class="text-muted">{{ a.email }}</small>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted">No accounts yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Recent push</span>
+                <a href="{% url 'mobile_push' %}" class="small">Compose</a>
+            </div>
+            <ul class="list-group list-group-flush">
+                {% for n in recent_notifications %}
+                <li class="list-group-item">
+                    <div class="d-flex justify-content-between">
+                        <strong>{{ n.title }}</strong>
+                        <small class="text-muted">{{ n.sent_at|date:"d M, H:i" }}</small>
+                    </div>
+                    <small class="text-muted">{{ n.account.email|default:"All devices" }} · {{ n.success_count }} ok / {{ n.fail_count }} failed</small>
+                </li>
+                {% empty %}
+                <li class="list-group-item text-muted">No notifications sent yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

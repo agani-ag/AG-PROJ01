@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'syncup.apps.SyncupConfig',
+    'mobileapi.apps.MobileapiConfig',
 ]
 
 MIDDLEWARE = [

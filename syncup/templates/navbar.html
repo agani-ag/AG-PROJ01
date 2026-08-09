@@ -109,6 +109,24 @@
                 </li>
                 {% endif %}
                 
+                <!-- SyncUp Mobile App Dropdown -->
+                {% if user.is_superuser %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="mobileAppDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Mobile App
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="mobileAppDropdown">
+                        <li><a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a></li>
+                        <div class="dropdown-divider"></div>
+                        <li><a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a></li>
+                    </ul>
+                </li>
+                {% endif %}
+
                 <!-- Settings Dropdown -->
                 {% if user.is_superuser %}
                 <li class="nav-item dropdown">
