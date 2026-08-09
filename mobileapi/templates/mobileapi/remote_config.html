@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Mobile App — Remote Config{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Firebase Remote Config</h2>
+            <div class="text-muted">Project: <code>{{ project_id }}</code></div>
+        </div>
+
+        {% if not_configured %}
+        <div class="alert alert-warning">
+            <i class="fas fa-triangle-exclamation me-1"></i>
+            Firebase is not configured — set <code>FIREBASE_PROJECT_ID</code> and <code>SERVICE_ACCOUNT_FILE</code>.
+        </div>
+        {% else %}
+
+        {% if error %}
+        <div class="alert alert-danger">
+            <i class="fas fa-circle-exclamation me-1"></i> Couldn't read Remote Config: {{ error }}
+            <div class="small mt-1">The service account may need the <strong>Firebase Remote Config Admin</strong> (or Editor) role.</div>
+        </div>
+        {% endif %}
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+            <div class="mb-2">
+                <label class="form-label fw-semibold">Parameter</label>
+                <input type="text" class="form-control" value="{{ key }}" disabled>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Current published value</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-link"></i></span>
+                    <input type="text" class="form-control" value="{{ current|default:'(not set)' }}" disabled>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">New base URL</label>
+                <input type="url" name="value" class="form-control form-control-lg"
+                       placeholder="https://your-test-host/app/v1/"
+                       value="{{ current|default:'' }}" required>
+                <div class="form-text">
+                    Include the full API prefix and a trailing slash, e.g.
+                    <code>https://abc123.ngrok.io/app/v1/</code> (testing) or
+                    <code>https://api.yourdomain.com/app/v1/</code> (production).
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-2">
+                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                    <i class="fas fa-cloud-arrow-up me-2"></i>Publish to Remote Config
+                </button>
+                <a href="{% url 'mobile_dashboard' %}" class="btn btn-secondary btn-lg flex-fill">
+                    <i class="fas fa-arrow-left me-2"></i>Back
+                </a>
+            </div>
+        </form>
+
+        <div class="alert alert-info mt-4 mb-0">
+            <i class="fas fa-circle-info me-1"></i>
+            Publishing updates the live Remote Config immediately. The app reads it on its next
+            <code>fetchAndActivate()</code>. Change it any time — set a test URL now, production later.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

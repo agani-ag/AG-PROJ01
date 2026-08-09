@@ -21,7 +21,8 @@ urlpatterns = [
     path("devices", v.devices, name="mobile_devices"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),
 
-    # Config + Push
+    # Config + Push + Remote Config
     path("config", v.config, name="mobile_config"),
+    path("remote-config", v.remote_config, name="mobile_remote_config"),
     path("push", v.push, name="mobile_push"),
 ]

@@ -63,11 +63,10 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-striped mb-0 align-middle">
-                    <thead><tr><th>#</th><th>Title</th><th>URL</th><th>Active</th><th></th></tr></thead>
+                    <thead><tr><th>Title</th><th>URL</th><th>Active</th><th></th></tr></thead>
                     <tbody>
                         {% for link in links %}
                         <tr>
-                            <td>{{ link.sort_order }}</td>
                             <td>{{ link.title }}</td>
                             <td style="max-width:320px;"><span class="d-inline-block text-truncate" style="max-width:300px;">{{ link.url }}</span></td>
                             <td>{% if link.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
@@ -76,7 +75,7 @@
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="5" class="text-muted text-center">No links yet.</td></tr>
+                        <tr><td colspan="4" class="text-muted text-center">No links yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

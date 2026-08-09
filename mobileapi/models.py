@@ -74,20 +74,45 @@ class AppAuthToken(models.Model):
         return f"{self.account.email} · {self.key[:8]}…"
 
 
+# Icon names understood by the app (empty = auto-pick from the title).
+APP_ICON_CHOICES = [
+    ("", "Auto (from title)"),
+    ("link", "Link"),
+    ("globe", "Globe / Web"),
+    ("camera", "Camera"),
+    ("location", "Location"),
+    ("upload", "Upload / File"),
+    ("youtube", "Video / YouTube"),
+    ("notification", "Notification / Bell"),
+    ("speed", "Speed / Bolt"),
+    ("newtab", "New tab / Popup"),
+    ("home", "Home"),
+    ("cart", "Cart / Shop"),
+    ("person", "Person / Account"),
+    ("settings", "Settings"),
+    ("document", "Document"),
+    ("phone", "Phone / Call"),
+    ("image", "Image"),
+    ("star", "Star"),
+]
+
+
 # =============== Per-account links (the URL list shown in the app) ===============
 class AppLink(models.Model):
     account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="links")
     title = models.CharField(max_length=100)
     url = models.URLField(max_length=500)
     description = models.CharField(max_length=200, null=True, blank=True)
-    icon = models.CharField(max_length=50, null=True, blank=True)
-    sort_order = models.IntegerField(default=0)
+    icon = models.CharField(max_length=50, null=True, blank=True, choices=APP_ICON_CHOICES)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["sort_order", "title"]
+        ordering = ["title"]  # links always shown ascending by title
+        indexes = [
+            models.Index(fields=["account", "is_active"]),  # speeds the per-account active-link query
+        ]
 
     def save(self, *args, **kwargs):
         if self.title:
@@ -127,6 +152,7 @@ class AppConfig(models.Model):
     min_supported_version = models.IntegerField(default=1)
     latest_version = models.IntegerField(default=1)
     support_email = models.EmailField(null=True, blank=True)
+    support_phone = models.CharField(max_length=30, null=True, blank=True)
     announcement_active = models.BooleanField(default=False)
     announcement_title = models.CharField(max_length=120, null=True, blank=True)
     announcement_message = models.TextField(null=True, blank=True)

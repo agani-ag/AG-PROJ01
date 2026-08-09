@@ -34,8 +34,11 @@ def app_token_required(view):
         token = AppAuthToken.objects.select_related("account").filter(key=key).first()
         if not token or not token.is_valid or not token.account.is_active:
             return JsonResponse({"success": False, "message": "Invalid or expired token"}, status=401)
-        token.last_used_at = timezone.now()
-        token.save(update_fields=["last_used_at"])
+        # Throttle the last_used_at write: at most once/minute to avoid a DB write per request.
+        now = timezone.now()
+        if token.last_used_at is None or (now - token.last_used_at).total_seconds() > 60:
+            token.last_used_at = now
+            token.save(update_fields=["last_used_at"])
         request.account = token.account
         request.auth_token = token
         return view(request, *args, **kwargs)

@@ -52,7 +52,7 @@ class AppAccountForm(forms.ModelForm):
 class AppLinkInline(admin.TabularInline):
     model = AppLink
     extra = 1
-    fields = ["title", "url", "description", "icon", "sort_order", "is_active"]
+    fields = ["title", "url", "description", "icon", "is_active"]
 
 
 @admin.register(AppAccount)
@@ -102,10 +102,10 @@ class AppAccountAdmin(admin.ModelAdmin):
 
 @admin.register(AppLink)
 class AppLinkAdmin(admin.ModelAdmin):
-    list_display = ["title", "account", "url", "sort_order", "is_active"]
+    list_display = ["title", "account", "url", "is_active"]
     list_filter = ["is_active"]
     search_fields = ["title", "url", "account__email"]
-    list_editable = ["sort_order", "is_active"]
+    list_editable = ["is_active"]
 
 
 # ----------------------------- Devices ------------------------------------- #

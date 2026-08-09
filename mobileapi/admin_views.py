@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from . import fcm
+from . import remoteconfig as rc
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm
 from .models import AppAccount, AppConfig, AppDevice, AppLink, AppNotificationLog
 
@@ -165,6 +166,37 @@ def config(request):
     else:
         form = AppConfigForm(instance=cfg)
     return render(request, "mobileapi/config.html", {"form": form})
+
+
+# ------------------------------------------------------------------ Remote Config
+RC_KEY = "api_base_url"
+
+
+@superuser_required
+def remote_config(request):
+    ctx = {"key": RC_KEY, "project_id": getattr(settings, "FIREBASE_PROJECT_ID", "")}
+
+    if not fcm.is_configured():
+        ctx["not_configured"] = True
+        return render(request, "mobileapi/remote_config.html", ctx)
+
+    if request.method == "POST":
+        value = (request.POST.get("value") or "").strip()
+        if not value:
+            messages.error(request, "Enter a base URL.")
+        else:
+            try:
+                rc.set_parameter(RC_KEY, value)
+                messages.success(request, f'Remote Config "{RC_KEY}" published: {value}')
+                return redirect("mobile_remote_config")
+            except rc.RemoteConfigError as e:
+                messages.error(request, f"Update failed: {e}")
+
+    try:
+        ctx["current"] = rc.get_parameter(RC_KEY)
+    except rc.RemoteConfigError as e:
+        ctx["error"] = str(e)
+    return render(request, "mobileapi/remote_config.html", ctx)
 
 
 # ------------------------------------------------------------------ Push

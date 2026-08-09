@@ -157,6 +157,7 @@ def config(request):
         "min_supported_version": cfg.min_supported_version,
         "latest_version": cfg.latest_version,
         "support_email": cfg.support_email or "",
+        "support_phone": cfg.support_phone or "",
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",

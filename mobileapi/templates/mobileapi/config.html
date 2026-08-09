@@ -27,9 +27,17 @@
 
             <hr>
             <h6 class="text-muted text-uppercase small">Support & flags</h6>
-            <div class="mb-3">
-                <label class="form-label">Support email</label>
-                {{ form.support_email }}
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Support email</label>
+                    {{ form.support_email }}
+                    <div class="form-text">Shown in the app's Help for password resets.</div>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Support phone</label>
+                    {{ form.support_phone }}
+                    <div class="form-text">Admin mobile number shown in Help.</div>
+                </div>
             </div>
             <div class="mb-3">
                 <label class="form-label">Feature flags (JSON)</label>
