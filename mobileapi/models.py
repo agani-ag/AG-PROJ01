@@ -162,6 +162,12 @@ class AppConfig(models.Model):
     latest_version = models.IntegerField(default=1)
     support_email = models.EmailField(null=True, blank=True)
     support_phone = models.CharField(max_length=30, null=True, blank=True)
+    # Privacy policy page details (shown on the public /privacy/ page)
+    privacy_company_name = models.CharField(max_length=120, default="SyncUp")
+    privacy_effective_date = models.CharField(max_length=40, default="10 August 2026")
+    privacy_contact_email = models.EmailField(
+        null=True, blank=True, help_text="Privacy contact. Falls back to the support email if blank.",
+    )
     announcement_active = models.BooleanField(default=False)
     announcement_title = models.CharField(max_length=120, null=True, blank=True)
     announcement_message = models.TextField(null=True, blank=True)
@@ -235,7 +241,16 @@ class AppReminder(models.Model):
     body = models.TextField()
     link = models.ForeignKey(
         AppLink, on_delete=models.SET_NULL, null=True, blank=True, related_name="reminders",
-        help_text="Optional — tapping the reminder opens this link in the app.",
+        help_text="Optional — tapping the reminder opens this account link in the app.",
+    )
+    custom_url = models.URLField(
+        max_length=500, null=True, blank=True,
+        help_text="Optional HTTPS URL (campaign/form) to open on tap. Overrides the link above; "
+                  "works for broadcasts too.",
+    )
+    image_url = models.URLField(
+        max_length=500, null=True, blank=True,
+        help_text="Optional HTTPS image shown in the expanded notification.",
     )
     scheduled_at = models.DateTimeField(help_text="When the reminder first fires (server/IST time).")
     recurrence = models.CharField(max_length=20, choices=REMINDER_RECURRENCE_CHOICES, default="once")
@@ -252,3 +267,30 @@ class AppReminder(models.Model):
     def __str__(self):
         target = self.account.email if self.account else "all accounts"
         return f"{self.title} → {target} @ {self.scheduled_at:%Y-%m-%d %H:%M}"
+
+
+class AppReminderReceipt(models.Model):
+    """Per-device delivery receipt for a reminder, reported back by the app.
+
+    `synced_at` = the device downloaded/scheduled the reminder; `fired_at` = the device actually
+    showed the notification. One row per (reminder, account, device), updated in place — so for a
+    recurring reminder `fired_at` holds the LAST time it was shown.
+    """
+
+    reminder = models.ForeignKey(AppReminder, on_delete=models.CASCADE, related_name="receipts")
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, null=True, related_name="reminder_receipts")
+    device_id = models.CharField(max_length=255)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    fired_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["reminder", "account", "device_id"], name="unique_reminder_receipt",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.reminder_id} · {self.device_id[:8]}…"

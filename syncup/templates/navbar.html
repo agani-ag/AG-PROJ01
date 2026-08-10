@@ -122,8 +122,11 @@
                         <li><a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a></li>
                         <div class="dropdown-divider"></div>
                         <li><a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_reminders' %}">Reminders</a></li>
                         <li><a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a></li>
-                        <li><a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config (Base URL)</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config</a></li>
+                        <div class="dropdown-divider"></div>
+                        <li><a class="dropdown-item" href="{% url 'privacy_policy' %}" target="_blank">Privacy Policy <i class="fas fa-external-link-alt small"></i></a></li>
                     </ul>
                 </li>
                 {% endif %}

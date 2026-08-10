@@ -4,20 +4,23 @@ JSON API for the SyncUp Android app (`com.agani.syncup`), namespace /app/v1/.
 Function-based, csrf-exempt (token auth, no cookies), matching the existing
 project's style. Contract: md/syncup-android-backend-plan.md §5.
 """
+from datetime import timedelta
+
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .auth import app_token_required, json_body
-from .models import AppAccount, AppAuthToken, AppConfig, AppDevice
+from .models import AppAccount, AppAuthToken, AppConfig, AppDevice, AppReminder, AppReminderReceipt
 from .serializers import account_dict, links_for, reminders_for
 
-# --- Privacy policy page details (EDIT these for your organization) -----------
-PRIVACY_COMPANY_NAME = "SyncUp"                 # your legal entity name
-PRIVACY_EFFECTIVE_DATE = "10 August 2026"       # update when the policy changes
-PRIVACY_FALLBACK_EMAIL = "support@syncup.app"   # used if no support email is set in config
+# Ultimate fallbacks if the (DB-managed) privacy fields are ever blank.
+PRIVACY_FALLBACK_COMPANY = "SyncUp"
+PRIVACY_FALLBACK_DATE = "10 August 2026"
+PRIVACY_FALLBACK_EMAIL = "support@syncup.app"
 
 
 def _bad(msg, status=400):
@@ -173,10 +176,67 @@ def delete_account(request):
 # --------------------------------------------------------------------------- #
 # 6b. Reminders — synced to the device, then fired locally by the app
 # --------------------------------------------------------------------------- #
+# A completed one-time reminder is swept from the backend this long after its scheduled time,
+# so every device (incl. broadcast recipients) has had a chance to receive & show it first.
+REMINDER_SWEEP_GRACE = timedelta(hours=24)
+
+
+def _sweep_completed_reminders():
+    """Delete one-time reminders whose time has well passed (safety net for broadcasts and for
+    per-account reminders whose device never reported back)."""
+    cutoff = timezone.now() - REMINDER_SWEEP_GRACE
+    AppReminder.objects.filter(recurrence="once", scheduled_at__lt=cutoff).delete()
+
+
 @require_http_methods(["GET"])
 @app_token_required
 def reminders(request):
+    _sweep_completed_reminders()
     return JsonResponse(reminders_for(request.account), safe=False)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@app_token_required
+def reminder_ack(request):
+    """Device reports delivery: event 'synced' (downloaded/scheduled) or 'fired' (shown).
+    Body: { "device_id": "...", "event": "synced|fired", "reminder_ids": ["1","2"] }
+    (single "reminder_id" also accepted)."""
+    data = json_body(request)
+    if data is None:
+        return _bad("Invalid JSON")
+    event = data.get("event")
+    if event not in ("synced", "fired"):
+        return _bad("event must be 'synced' or 'fired'")
+    device_id = data.get("device_id") or ""
+    ids = data.get("reminder_ids")
+    if not ids:
+        single = data.get("reminder_id")
+        ids = [single] if single else []
+    if not ids:
+        return _bad("reminder_ids is required")
+
+    now = timezone.now()
+    updated = 0
+    for rid in ids:
+        reminder = AppReminder.objects.filter(id=rid).first()
+        if not reminder:
+            continue
+        receipt, _ = AppReminderReceipt.objects.get_or_create(
+            reminder=reminder, account=request.account, device_id=device_id,
+        )
+        if event == "synced":
+            receipt.synced_at = now
+            receipt.save()
+        else:
+            receipt.fired_at = now
+            receipt.save()
+            # Smart delete: a per-account one-time reminder is done once its device shows it.
+            # (Broadcast one-time reminders are swept later by _sweep_completed_reminders.)
+            if reminder.recurrence == "once" and reminder.account_id is not None:
+                reminder.delete()
+        updated += 1
+    return JsonResponse({"success": True, "updated": updated})
 
 
 # --------------------------------------------------------------------------- #
@@ -184,12 +244,13 @@ def reminders(request):
 # --------------------------------------------------------------------------- #
 @require_http_methods(["GET"])
 def privacy_policy(request):
-    """Public HTML privacy policy. Use this page's URL in Play Console → App content."""
+    """Public HTML privacy policy. Use this page's URL in Play Console → App content.
+    Content is managed in the DB (AppConfig → /mobile/config)."""
     cfg = AppConfig.load()
     return render(request, "mobileapi/privacy.html", {
-        "company_name": PRIVACY_COMPANY_NAME,
-        "effective_date": PRIVACY_EFFECTIVE_DATE,
-        "contact_email": cfg.support_email or PRIVACY_FALLBACK_EMAIL,
+        "company_name": cfg.privacy_company_name or PRIVACY_FALLBACK_COMPANY,
+        "effective_date": cfg.privacy_effective_date or PRIVACY_FALLBACK_DATE,
+        "contact_email": cfg.privacy_contact_email or cfg.support_email or PRIVACY_FALLBACK_EMAIL,
         "app_id": "com.agani.syncup",
     })
 
@@ -205,6 +266,7 @@ def config(request):
         "latest_version": cfg.latest_version,
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
+        "privacy_policy_url": request.build_absolute_uri(reverse("privacy_policy")),
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",

@@ -7,7 +7,7 @@ Mounted at /mobile/ (see admin_urls.py). Separate from the JSON API (/app/v1/).
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Count
+from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -216,6 +216,9 @@ def push(request):
             account = form.cleaned_data["account"]
             title = form.cleaned_data["title"]
             body = form.cleaned_data["body"]
+            link_url = form.cleaned_data.get("link_url")
+            image_url = form.cleaned_data.get("image_url")
+            data = {"link_url": link_url} if link_url else None  # tap target (opens in-app WebView)
             device_qs = AppDevice.objects.filter(is_active=True)
             if account:
                 device_qs = device_qs.filter(account=account)
@@ -228,13 +231,18 @@ def push(request):
                 messages.warning(request, "No active devices to send to.")
             else:
                 try:
-                    ok, fail = fcm.send(tokens, title, body)
+                    ok, fail = fcm.send(tokens, title, body, data, image_url or None)
                     messages.success(request, f"Push sent: {ok} ok, {fail} failed.")
                 except fcm.FCMError as e:
                     messages.error(request, f"Push failed: {e}")
 
+            log_data = {}
+            if link_url:
+                log_data["link_url"] = link_url
+            if image_url:
+                log_data["image"] = image_url
             AppNotificationLog.objects.create(
-                account=account, title=title, body=body,
+                account=account, title=title, body=body, data=log_data or None,
                 success_count=ok, fail_count=fail,
             )
             return redirect("mobile_push")
@@ -245,18 +253,33 @@ def push(request):
         "form": form,
         "logs": AppNotificationLog.objects.all()[:20],
         "fcm_configured": fcm.is_configured(),
+        "all_urls": _distinct_link_urls(),
     })
+
+
+def _distinct_link_urls():
+    """All links' URLs across every account, de-duplicated by URL (first title wins).
+    Used to populate the 'pick an existing URL' dropdowns on the push + reminder forms."""
+    seen = {}
+    for url, title in AppLink.objects.order_by("title").values_list("url", "title"):
+        if url and url not in seen:
+            seen[url] = title
+    return [{"url": url, "label": f"{title} — {url}"} for url, title in seen.items()]
 
 
 # ------------------------------------------------------------------ Reminders
 # Reminders are pulled by the app on login / app-open / daily background sync and
 # fired on-device via local alarms — no push is sent from here.
 def _reminders_ctx(form, editing=None):
-    return {
-        "form": form,
-        "editing": editing,
-        "reminders": AppReminder.objects.select_related("account", "link").all(),
-    }
+    reminders = (
+        AppReminder.objects.select_related("account", "link")
+        .annotate(
+            synced_count=Count("receipts", filter=Q(receipts__synced_at__isnull=False), distinct=True),
+            fired_count=Count("receipts", filter=Q(receipts__fired_at__isnull=False), distinct=True),
+            last_fired=Max("receipts__fired_at"),
+        )
+    )
+    return {"form": form, "editing": editing, "reminders": reminders, "all_urls": _distinct_link_urls()}
 
 
 _PICKUP_NOTE = "Devices pick it up on next app open or the daily sync."
@@ -308,3 +331,29 @@ def reminder_toggle(request, reminder_id):
     reminder.save(update_fields=["is_active", "updated_at"])
     messages.success(request, "Reminder " + ("activated." if reminder.is_active else "paused."))
     return redirect("mobile_reminders")
+
+
+@superuser_required
+def reminder_receipts(request, reminder_id):
+    """Per-device delivery detail for one reminder — exactly which devices synced/showed it."""
+    reminder = get_object_or_404(AppReminder, id=reminder_id)
+    receipts = list(reminder.receipts.select_related("account").all())
+    # Join device metadata (platform / app version / last seen) by (account, device_id).
+    device_map = {}
+    if receipts:
+        device_ids = [r.device_id for r in receipts]
+        for d in AppDevice.objects.filter(device_id__in=device_ids).select_related("account"):
+            device_map[(d.account_id, d.device_id)] = d
+    rows = []
+    for r in receipts:
+        d = device_map.get((r.account_id, r.device_id))
+        rows.append({
+            "account": r.account.email if r.account else "—",
+            "device_id": r.device_id,
+            "platform": d.platform if d else "",
+            "app_version": d.app_version if d else "",
+            "last_seen": d.last_seen if d else None,
+            "synced_at": r.synced_at,
+            "fired_at": r.fired_at,
+        })
+    return render(request, "mobileapi/reminder_receipts.html", {"reminder": reminder, "rows": rows})

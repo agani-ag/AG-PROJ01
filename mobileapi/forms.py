@@ -69,6 +69,9 @@ class AppConfigForm(forms.ModelForm):
             "latest_version",
             "support_email",
             "support_phone",
+            "privacy_company_name",
+            "privacy_effective_date",
+            "privacy_contact_email",
             "announcement_active",
             "announcement_title",
             "announcement_message",
@@ -92,16 +95,37 @@ class PushForm(forms.Form):
     )
     title = forms.CharField(max_length=200)
     body = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}))
+    link_url = forms.CharField(
+        required=False, max_length=500, label="Open URL on tap",
+        help_text="Optional HTTPS URL (campaign/form) opened in the app on tap.",
+    )
+    image_url = forms.CharField(
+        required=False, max_length=500, label="Image URL",
+        help_text="Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512).",
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _bootstrap(self.fields)
 
+    def _clean_https(self, field):
+        url = (self.cleaned_data.get(field) or "").strip()
+        if url and not url.lower().startswith("https://"):
+            raise forms.ValidationError("URL must be HTTPS (the in-app browser blocks non-secure URLs).")
+        return url
+
+    def clean_link_url(self):
+        return self._clean_https("link_url")
+
+    def clean_image_url(self):
+        return self._clean_https("image_url")
+
 
 class ReminderForm(forms.ModelForm):
     class Meta:
         model = AppReminder
-        fields = ["account", "title", "body", "link", "scheduled_at", "recurrence", "is_active"]
+        fields = ["account", "title", "body", "custom_url",
+                  "image_url", "scheduled_at", "recurrence", "is_active"]
         widgets = {
             "body": forms.Textarea(attrs={"rows": 3}),
             "scheduled_at": forms.DateTimeInput(
@@ -113,8 +137,6 @@ class ReminderForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["account"].required = False
         self.fields["account"].empty_label = "All accounts (broadcast)"
-        self.fields["link"].required = False
-        self.fields["link"].empty_label = "— No link (just opens the app) —"
         # datetime-local sends "YYYY-MM-DDTHH:MM"; accept a couple of extra shapes too.
         self.fields["scheduled_at"].input_formats = [
             "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
@@ -123,7 +145,7 @@ class ReminderForm(forms.ModelForm):
         if self.instance and self.instance.pk and self.instance.scheduled_at:
             self.initial["scheduled_at"] = timezone.localtime(self.instance.scheduled_at)
         _bootstrap(self.fields, checkbox_fields=("is_active",))
-        for name in ("account", "link", "recurrence"):
+        for name in ("account", "recurrence"):
             self.fields[name].widget.attrs["class"] = "form-select"
 
     def clean_scheduled_at(self):
@@ -133,12 +155,8 @@ class ReminderForm(forms.ModelForm):
             dt = timezone.make_aware(dt, timezone.get_current_timezone())
         return dt
 
-    def clean(self):
-        cleaned = super().clean()
-        account = cleaned.get("account")
-        link = cleaned.get("link")
-        if link and not account:
-            self.add_error("link", "Choose an account to attach a link (broadcasts can't use a per-account link).")
-        elif link and account and link.account_id != account.id:
-            self.add_error("link", "This link belongs to a different account.")
-        return cleaned
+    def clean_custom_url(self):
+        url = (self.cleaned_data.get("custom_url") or "").strip()
+        if url and not url.lower().startswith("https://"):
+            raise forms.ValidationError("Custom URL must be HTTPS (the in-app browser blocks non-secure URLs).")
+        return url

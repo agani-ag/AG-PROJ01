@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Reminder delivery{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-10">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+                <h2 class="fw-bold mb-0">Delivery detail</h2>
+                <div class="text-muted">
+                    “{{ reminder.title }}” — {{ reminder.account.email|default:"All accounts (broadcast)" }}
+                </div>
+            </div>
+            <a href="{% url 'mobile_reminders' %}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between">
+                <span>Devices</span>
+                <span class="text-muted small">{{ rows|length }} total</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Account</th><th>Device</th><th>Platform</th>
+                            <th>Synced at</th><th>Shown at</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td>{{ row.account }}</td>
+                            <td>
+                                <span class="d-inline-block text-truncate" style="max-width:200px;"
+                                      title="{{ row.device_id }}"><code>{{ row.device_id }}</code></span>
+                            </td>
+                            <td>
+                                {{ row.platform|default:"—" }}
+                                {% if row.app_version %}<span class="text-muted small">v{{ row.app_version }}</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if row.synced_at %}
+                                <span class="badge text-bg-info">{{ row.synced_at|date:"d M, H:i" }}</span>
+                                {% else %}<span class="text-muted">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if row.fired_at %}
+                                <span class="badge text-bg-success">{{ row.fired_at|date:"d M, H:i" }}</span>
+                                {% else %}<span class="text-muted">not shown</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-muted text-center">No devices have synced this reminder yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

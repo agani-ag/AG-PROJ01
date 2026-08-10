@@ -52,8 +52,12 @@ def _access_token():
     return creds.token
 
 
-def send(tokens, title, body, data=None):
-    """Send a notification to each FCM token. Returns (success_count, fail_count)."""
+def send(tokens, title, body, data=None, image=None):
+    """Send a notification to each FCM token. Returns (success_count, fail_count).
+
+    `image` (an HTTPS URL) is attached to the notification so Android shows a big-picture
+    notification — automatically when the app is backgrounded, and via the app when foregrounded.
+    """
     tokens = [t for t in (tokens or []) if t]
     if not tokens:
         return 0, 0
@@ -71,6 +75,8 @@ def send(tokens, title, body, data=None):
     dead_tokens = []
     for token in tokens:
         message = {"message": {"token": token, "notification": {"title": title, "body": body}}}
+        if image:
+            message["message"]["notification"]["image"] = image
         if data:
             message["message"]["data"] = {str(k): str(v) for k, v in data.items()}
         try:

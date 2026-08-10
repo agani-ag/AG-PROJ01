@@ -29,6 +29,27 @@
                 <label class="form-label">Message</label>
                 {{ form.body }}
             </div>
+            <div class="mb-2">
+                <label class="form-label">Pick from existing user URLs</label>
+                <select class="form-select"
+                        onchange="if(this.value){document.getElementById('id_link_url').value=this.value;}">
+                    <option value="">— choose a URL to fill the box below —</option>
+                    {% for u in all_urls %}
+                    <option value="{{ u.url }}">{{ u.label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Distinct URLs across all users. Selecting one fills the URL box.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Open URL on tap</label>
+                {{ form.link_url }}
+                <div class="form-text">Optional HTTPS campaign/form URL — opens inside the app when tapped.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Image URL</label>
+                {{ form.image_url }}
+                <div class="form-text">Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512).</div>
+            </div>
             <button type="submit" class="btn btn-primary btn-lg">
                 <i class="fas fa-paper-plane me-2"></i>Send
             </button>

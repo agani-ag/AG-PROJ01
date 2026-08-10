@@ -28,14 +28,22 @@ def links_for(account):
 
 
 def reminder_dict(reminder):
-    # Only surface the link if it's still active; otherwise the reminder just opens the app.
-    link = reminder.link if (reminder.link and reminder.link.is_active) else None
+    # Tap target: a custom URL wins (campaign/form, works for broadcasts); otherwise the
+    # account link, if it's still active.
+    if reminder.custom_url:
+        link_url = reminder.custom_url
+        link_title = reminder.title
+    else:
+        link = reminder.link if (reminder.link and reminder.link.is_active) else None
+        link_url = link.url if link else ""
+        link_title = link.title if link else ""
     return {
         "id": str(reminder.id),
         "title": reminder.title,
         "body": reminder.body,
-        "link_url": link.url if link else "",
-        "link_title": link.title if link else "",
+        "link_url": link_url,
+        "link_title": link_title,
+        "image_url": reminder.image_url or "",
         # ISO-8601 instant (human-readable) + epoch millis (what the app schedules against).
         "scheduled_at": reminder.scheduled_at.isoformat(),
         "scheduled_at_ms": int(reminder.scheduled_at.timestamp() * 1000),

@@ -31,4 +31,5 @@ urlpatterns = [
     path("reminders/<int:reminder_id>/edit", v.reminder_edit, name="mobile_reminder_edit"),
     path("reminders/<int:reminder_id>/delete", v.reminder_delete, name="mobile_reminder_delete"),
     path("reminders/<int:reminder_id>/toggle", v.reminder_toggle, name="mobile_reminder_toggle"),
+    path("reminders/<int:reminder_id>/receipts", v.reminder_receipts, name="mobile_reminder_receipts"),
 ]

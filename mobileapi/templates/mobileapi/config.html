@@ -46,6 +46,30 @@
             </div>
 
             <hr>
+            <h6 class="text-muted text-uppercase small">Privacy policy</h6>
+            <div class="text-muted small mb-2">
+                Shown on the public page
+                <a href="{% url 'privacy_policy' %}" target="_blank">/privacy/</a>
+                (the URL to paste into Play Console) and linked in the app's Profile.
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Company / legal name</label>
+                    {{ form.privacy_company_name }}
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Effective date</label>
+                    {{ form.privacy_effective_date }}
+                    <div class="form-text">Free text, e.g. <code>10 August 2026</code>.</div>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Privacy contact email</label>
+                {{ form.privacy_contact_email }}
+                <div class="form-text">Optional — falls back to the support email above if blank.</div>
+            </div>
+
+            <hr>
             <h6 class="text-muted text-uppercase small">Announcement banner</h6>
             <div class="form-check mb-3">
                 {{ form.announcement_active }}

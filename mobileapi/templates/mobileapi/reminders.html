@@ -33,11 +33,29 @@
                 <label class="form-label">Message</label>
                 {{ form.body }}
             </div>
+            <div class="mb-2">
+                <label class="form-label">Pick from existing user URLs</label>
+                <select class="form-select"
+                        onchange="if(this.value){document.getElementById('id_custom_url').value=this.value;}">
+                    <option value="">— choose a URL to fill the box below —</option>
+                    {% for u in all_urls %}
+                    <option value="{{ u.url }}">{{ u.label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Distinct URLs across all users. Selecting one fills the custom URL box.</div>
+            </div>
             <div class="mb-3">
-                <label class="form-label">Open link on tap</label>
-                {{ form.link }}
+                <label class="form-label">…or a custom URL on tap</label>
+                {{ form.custom_url }}
                 <div class="form-text">
-                    Optional. The link must belong to the chosen account (not available for broadcasts).
+                    Any HTTPS URL (campaign, form, page) — works for broadcasts. Opens inside the app.
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Image URL</label>
+                {{ form.image_url }}
+                <div class="form-text">
+                    Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512, under ~1 MB).
                 </div>
             </div>
             <div class="row">
@@ -73,7 +91,7 @@
                     <thead>
                         <tr>
                             <th>Title</th><th>Target</th><th>Link</th>
-                            <th>When (IST)</th><th>Repeat</th><th>Status</th><th></th>
+                            <th>When (IST)</th><th>Repeat</th><th>Delivery</th><th>Status</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -87,6 +105,15 @@
                             <td>{% if r.link %}{{ r.link.title }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                             <td><small>{{ r.scheduled_at|date:"d M Y, H:i" }}</small></td>
                             <td><span class="badge text-bg-secondary">{{ r.get_recurrence_display }}</span></td>
+                            <td>
+                                <a href="{% url 'mobile_reminder_receipts' r.id %}" class="text-decoration-none" title="See which devices">
+                                    <span class="badge text-bg-info">{{ r.synced_count }} synced</span>
+                                    <span class="badge text-bg-success">{{ r.fired_count }} shown</span>
+                                </a>
+                                {% if r.last_fired %}
+                                <div class="text-muted small">last {{ r.last_fired|date:"d M, H:i" }}</div>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if r.is_active %}
                                 <span class="badge text-bg-success">Active</span>
@@ -110,7 +137,7 @@
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="7" class="text-muted text-center">No reminders yet.</td></tr>
+                        <tr><td colspan="8" class="text-muted text-center">No reminders yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

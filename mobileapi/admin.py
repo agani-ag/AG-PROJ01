@@ -16,6 +16,7 @@ from .models import (
     AppLink,
     AppNotificationLog,
     AppReminder,
+    AppReminderReceipt,
 )
 
 
@@ -213,5 +214,16 @@ class AppReminderAdmin(admin.ModelAdmin):
     search_fields = ["title", "body", "account__email"]
     list_editable = ["is_active"]
     readonly_fields = ["created_at", "updated_at"]
-    fields = ["account", "title", "body", "link", "scheduled_at", "recurrence", "is_active",
-              "created_at", "updated_at"]
+    fields = ["account", "title", "body", "custom_url", "image_url",
+              "scheduled_at", "recurrence", "is_active", "created_at", "updated_at"]
+
+
+@admin.register(AppReminderReceipt)
+class AppReminderReceiptAdmin(admin.ModelAdmin):
+    list_display = ["reminder", "account", "device_id", "synced_at", "fired_at", "updated_at"]
+    list_filter = ["fired_at", "synced_at"]
+    search_fields = ["reminder__title", "account__email", "device_id"]
+    readonly_fields = ["reminder", "account", "device_id", "synced_at", "fired_at", "updated_at"]
+
+    def has_add_permission(self, request):
+        return False  # created by the app via the ack endpoint
