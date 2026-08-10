@@ -13,8 +13,15 @@ from django.views.decorators.http import require_POST
 
 from . import fcm
 from . import remoteconfig as rc
-from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm
-from .models import AppAccount, AppConfig, AppDevice, AppLink, AppNotificationLog
+from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm, ReminderForm
+from .models import (
+    AppAccount,
+    AppConfig,
+    AppDevice,
+    AppLink,
+    AppNotificationLog,
+    AppReminder,
+)
 
 superuser_required = user_passes_test(
     lambda u: u.is_authenticated and u.is_superuser, login_url=settings.LOGIN_URL
@@ -29,6 +36,7 @@ def dashboard(request):
         "active_account_count": AppAccount.objects.filter(is_active=True).count(),
         "device_count": AppDevice.objects.filter(is_active=True).count(),
         "link_count": AppLink.objects.count(),
+        "reminder_count": AppReminder.objects.filter(is_active=True).count(),
         "recent_accounts": AppAccount.objects.order_by("-created_at")[:5],
         "recent_notifications": AppNotificationLog.objects.all()[:5],
         "fcm_configured": fcm.is_configured(),
@@ -238,3 +246,65 @@ def push(request):
         "logs": AppNotificationLog.objects.all()[:20],
         "fcm_configured": fcm.is_configured(),
     })
+
+
+# ------------------------------------------------------------------ Reminders
+# Reminders are pulled by the app on login / app-open / daily background sync and
+# fired on-device via local alarms — no push is sent from here.
+def _reminders_ctx(form, editing=None):
+    return {
+        "form": form,
+        "editing": editing,
+        "reminders": AppReminder.objects.select_related("account", "link").all(),
+    }
+
+
+_PICKUP_NOTE = "Devices pick it up on next app open or the daily sync."
+
+
+@superuser_required
+def reminders(request):
+    if request.method == "POST":
+        form = ReminderForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Reminder saved. {_PICKUP_NOTE}")
+            return redirect("mobile_reminders")
+        messages.error(request, form.errors.as_text())
+    else:
+        form = ReminderForm()
+    return render(request, "mobileapi/reminders.html", _reminders_ctx(form))
+
+
+@superuser_required
+def reminder_edit(request, reminder_id):
+    reminder = get_object_or_404(AppReminder, id=reminder_id)
+    if request.method == "POST":
+        form = ReminderForm(request.POST, instance=reminder)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Reminder updated. {_PICKUP_NOTE}")
+            return redirect("mobile_reminders")
+        messages.error(request, form.errors.as_text())
+    else:
+        form = ReminderForm(instance=reminder)
+    return render(request, "mobileapi/reminders.html", _reminders_ctx(form, editing=reminder))
+
+
+@superuser_required
+@require_POST
+def reminder_delete(request, reminder_id):
+    reminder = get_object_or_404(AppReminder, id=reminder_id)
+    reminder.delete()
+    messages.success(request, "Reminder deleted.")
+    return redirect("mobile_reminders")
+
+
+@superuser_required
+@require_POST
+def reminder_toggle(request, reminder_id):
+    reminder = get_object_or_404(AppReminder, id=reminder_id)
+    reminder.is_active = not reminder.is_active
+    reminder.save(update_fields=["is_active", "updated_at"])
+    messages.success(request, "Reminder " + ("activated." if reminder.is_active else "paused."))
+    return redirect("mobile_reminders")

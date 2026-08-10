@@ -25,4 +25,10 @@ urlpatterns = [
     path("config", v.config, name="mobile_config"),
     path("remote-config", v.remote_config, name="mobile_remote_config"),
     path("push", v.push, name="mobile_push"),
+
+    # Reminders (device-fired)
+    path("reminders", v.reminders, name="mobile_reminders"),
+    path("reminders/<int:reminder_id>/edit", v.reminder_edit, name="mobile_reminder_edit"),
+    path("reminders/<int:reminder_id>/delete", v.reminder_delete, name="mobile_reminder_delete"),
+    path("reminders/<int:reminder_id>/toggle", v.reminder_toggle, name="mobile_reminder_toggle"),
 ]

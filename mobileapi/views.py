@@ -5,13 +5,19 @@ Function-based, csrf-exempt (token auth, no cookies), matching the existing
 project's style. Contract: md/syncup-android-backend-plan.md §5.
 """
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .auth import app_token_required, json_body
 from .models import AppAccount, AppAuthToken, AppConfig, AppDevice
-from .serializers import account_dict, links_for
+from .serializers import account_dict, links_for, reminders_for
+
+# --- Privacy policy page details (EDIT these for your organization) -----------
+PRIVACY_COMPANY_NAME = "SyncUp"                 # your legal entity name
+PRIVACY_EFFECTIVE_DATE = "10 August 2026"       # update when the policy changes
+PRIVACY_FALLBACK_EMAIL = "support@syncup.app"   # used if no support email is set in config
 
 
 def _bad(msg, status=400):
@@ -145,6 +151,47 @@ def device_unregister(request):
         return _bad("device_id is required")
     AppDevice.objects.filter(account=request.account, device_id=device_id).update(is_active=False)
     return JsonResponse({"success": True})
+
+
+# --------------------------------------------------------------------------- #
+# 6a. Delete account (Play data-deletion requirement) — soft delete
+# --------------------------------------------------------------------------- #
+@csrf_exempt
+@require_http_methods(["POST"])
+@app_token_required
+def delete_account(request):
+    """User-initiated account deletion. Deactivates the account, revokes all tokens, and
+    turns off all devices. Admin can restore access later if needed."""
+    account = request.account
+    account.is_active = False
+    account.save(update_fields=["is_active", "updated_at"])
+    AppAuthToken.objects.filter(account=account).update(revoked=True)
+    AppDevice.objects.filter(account=account).update(is_active=False)
+    return JsonResponse({"success": True})
+
+
+# --------------------------------------------------------------------------- #
+# 6b. Reminders — synced to the device, then fired locally by the app
+# --------------------------------------------------------------------------- #
+@require_http_methods(["GET"])
+@app_token_required
+def reminders(request):
+    return JsonResponse(reminders_for(request.account), safe=False)
+
+
+# --------------------------------------------------------------------------- #
+# Public privacy policy page (for the Play Store "Privacy policy" URL)
+# --------------------------------------------------------------------------- #
+@require_http_methods(["GET"])
+def privacy_policy(request):
+    """Public HTML privacy policy. Use this page's URL in Play Console → App content."""
+    cfg = AppConfig.load()
+    return render(request, "mobileapi/privacy.html", {
+        "company_name": PRIVACY_COMPANY_NAME,
+        "effective_date": PRIVACY_EFFECTIVE_DATE,
+        "contact_email": cfg.support_email or PRIVACY_FALLBACK_EMAIL,
+        "app_id": "com.agani.syncup",
+    })
 
 
 # --------------------------------------------------------------------------- #

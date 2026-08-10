@@ -53,6 +53,26 @@
     </div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_reminders' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold">{{ reminder_count }}</div>
+                <div class="text-muted">Active reminders</div>
+                <small class="text-primary"><i class="fas fa-clock me-1"></i>Schedule</small>
+            </div></div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_config' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold"><i class="fas fa-gear"></i></div>
+                <div class="text-muted">App config</div>
+            </div></div>
+        </a>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-12 col-lg-6">
         <div class="card shadow-sm h-100">

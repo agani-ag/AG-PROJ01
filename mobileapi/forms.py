@@ -1,7 +1,8 @@
 """Forms for the HTML admin screens (Bootstrap-styled, matching the syncup app)."""
 from django import forms
+from django.utils import timezone
 
-from .models import AppAccount, AppConfig, AppLink
+from .models import AppAccount, AppConfig, AppLink, AppReminder
 
 
 def _bootstrap(fields, checkbox_fields=()):
@@ -95,3 +96,49 @@ class PushForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _bootstrap(self.fields)
+
+
+class ReminderForm(forms.ModelForm):
+    class Meta:
+        model = AppReminder
+        fields = ["account", "title", "body", "link", "scheduled_at", "recurrence", "is_active"]
+        widgets = {
+            "body": forms.Textarea(attrs={"rows": 3}),
+            "scheduled_at": forms.DateTimeInput(
+                attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M",
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["account"].required = False
+        self.fields["account"].empty_label = "All accounts (broadcast)"
+        self.fields["link"].required = False
+        self.fields["link"].empty_label = "— No link (just opens the app) —"
+        # datetime-local sends "YYYY-MM-DDTHH:MM"; accept a couple of extra shapes too.
+        self.fields["scheduled_at"].input_formats = [
+            "%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+        ]
+        # Show the stored (UTC) time as local (IST) in the picker.
+        if self.instance and self.instance.pk and self.instance.scheduled_at:
+            self.initial["scheduled_at"] = timezone.localtime(self.instance.scheduled_at)
+        _bootstrap(self.fields, checkbox_fields=("is_active",))
+        for name in ("account", "link", "recurrence"):
+            self.fields[name].widget.attrs["class"] = "form-select"
+
+    def clean_scheduled_at(self):
+        dt = self.cleaned_data.get("scheduled_at")
+        # The picker is naive; interpret it in the server timezone (IST) before saving.
+        if dt and timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
+
+    def clean(self):
+        cleaned = super().clean()
+        account = cleaned.get("account")
+        link = cleaned.get("link")
+        if link and not account:
+            self.add_error("link", "Choose an account to attach a link (broadcasts can't use a per-account link).")
+        elif link and account and link.account_id != account.id:
+            self.add_error("link", "This link belongs to a different account.")
+        return cleaned

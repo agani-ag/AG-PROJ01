@@ -6,10 +6,15 @@ table, its own account/credential system (not Django `User`), its own token auth
 See md/syncup-android-backend-plan.md.
 """
 import secrets
+from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from django.utils import timezone
+
+# How long an issued bearer token stays valid. After this the app gets a 401 and
+# transparently returns the user to the login screen (see the app's 401 handling).
+TOKEN_TTL_DAYS = 60
 
 
 # =============== App account (mobile-only credentials) ===============
@@ -59,8 +64,12 @@ class AppAuthToken(models.Model):
         ordering = ["-created_at"]
 
     @classmethod
-    def issue(cls, account):
-        return cls.objects.create(key=secrets.token_hex(20), account=account)
+    def issue(cls, account, ttl_days=TOKEN_TTL_DAYS):
+        return cls.objects.create(
+            key=secrets.token_hex(20),
+            account=account,
+            expires_at=timezone.now() + timedelta(days=ttl_days),
+        )
 
     @property
     def is_valid(self):
@@ -200,3 +209,46 @@ class AppNotificationLog(models.Model):
     def __str__(self):
         target = self.account.email if self.account else "all devices"
         return f"{self.title} → {target}"
+
+
+# =============== Scheduled reminders (server-authored, device-fired) ===============
+REMINDER_RECURRENCE_CHOICES = [
+    ("once", "Once"),
+    ("daily", "Everyday"),
+]
+
+
+class AppReminder(models.Model):
+    """A reminder authored in the admin and fired ON-DEVICE via a local alarm.
+
+    `account` blank = broadcast to all accounts. The app syncs these
+    (`GET /app/v1/reminders`) and schedules a local notification for each; tapping it
+    opens `link` in the in-app WebView. FCM is only used to nudge a re-sync.
+    See md/syncup-android-backend-plan.md §12.
+    """
+
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.CASCADE, null=True, blank=True, related_name="reminders",
+        help_text="Leave blank to send this reminder to all accounts.",
+    )
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    link = models.ForeignKey(
+        AppLink, on_delete=models.SET_NULL, null=True, blank=True, related_name="reminders",
+        help_text="Optional — tapping the reminder opens this link in the app.",
+    )
+    scheduled_at = models.DateTimeField(help_text="When the reminder first fires (server/IST time).")
+    recurrence = models.CharField(max_length=20, choices=REMINDER_RECURRENCE_CHOICES, default="once")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-scheduled_at"]
+        indexes = [
+            models.Index(fields=["account", "is_active"]),
+        ]
+
+    def __str__(self):
+        target = self.account.email if self.account else "all accounts"
+        return f"{self.title} → {target} @ {self.scheduled_at:%Y-%m-%d %H:%M}"

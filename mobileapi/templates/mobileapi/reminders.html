@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Mobile App — Reminders{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-10">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Reminders</h2>
+            <div class="text-muted">
+                Scheduled here, fired on the phone. Devices pick up changes on next app open or the daily sync.
+            </div>
+        </div>
+
+        <form method="POST"
+              action="{% if editing %}{% url 'mobile_reminder_edit' editing.id %}{% else %}{% url 'mobile_reminders' %}{% endif %}"
+              class="card shadow-sm p-4 mb-4">
+            {% csrf_token %}
+            <h6 class="text-muted text-uppercase small">
+                {% if editing %}Edit reminder{% else %}New reminder{% endif %}
+            </h6>
+
+            <div class="mb-3">
+                <label class="form-label">Send to</label>
+                {{ form.account }}
+                <div class="form-text">Leave as “All accounts” to broadcast to everyone.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                {{ form.title }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Message</label>
+                {{ form.body }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Open link on tap</label>
+                {{ form.link }}
+                <div class="form-text">
+                    Optional. The link must belong to the chosen account (not available for broadcasts).
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">When (IST)</label>
+                    {{ form.scheduled_at }}
+                    <div class="form-text">First fire time. Times are Indian Standard Time.</div>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Repeat</label>
+                    {{ form.recurrence }}
+                </div>
+            </div>
+            <div class="form-check mb-3">
+                {{ form.is_active }}
+                <label class="form-check-label ms-1">Active</label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-check me-2"></i>{% if editing %}Save changes{% else %}Create reminder{% endif %}
+                </button>
+                {% if editing %}
+                <a href="{% url 'mobile_reminders' %}" class="btn btn-secondary btn-lg">Cancel edit</a>
+                {% endif %}
+            </div>
+        </form>
+
+        <div class="card shadow-sm">
+            <div class="card-header">All reminders</div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>Title</th><th>Target</th><th>Link</th>
+                            <th>When (IST)</th><th>Repeat</th><th>Status</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in reminders %}
+                        <tr>
+                            <td>
+                                <strong>{{ r.title }}</strong>
+                                <div class="text-muted small text-truncate" style="max-width:220px;">{{ r.body }}</div>
+                            </td>
+                            <td>{{ r.account.email|default:"All accounts" }}</td>
+                            <td>{% if r.link %}{{ r.link.title }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                            <td><small>{{ r.scheduled_at|date:"d M Y, H:i" }}</small></td>
+                            <td><span class="badge text-bg-secondary">{{ r.get_recurrence_display }}</span></td>
+                            <td>
+                                {% if r.is_active %}
+                                <span class="badge text-bg-success">Active</span>
+                                {% else %}
+                                <span class="badge text-bg-secondary">Paused</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-nowrap">
+                                <a href="{% url 'mobile_reminder_edit' r.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <form method="POST" action="{% url 'mobile_reminder_toggle' r.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-secondary">
+                                        {% if r.is_active %}Pause{% else %}Resume{% endif %}
+                                    </button>
+                                </form>
+                                <form method="POST" action="{% url 'mobile_reminder_delete' r.id %}" class="d-inline"
+                                      onsubmit="return confirm('Delete this reminder?');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-muted text-center">No reminders yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

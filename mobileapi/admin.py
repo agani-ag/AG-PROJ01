@@ -15,6 +15,7 @@ from .models import (
     AppDevice,
     AppLink,
     AppNotificationLog,
+    AppReminder,
 )
 
 
@@ -200,3 +201,17 @@ class AppNotificationLogAdmin(admin.ModelAdmin):
             obj.fail_count = 0
             super().save_model(request, obj, form, change)
             self.message_user(request, f"Saved, but push failed: {e}", level=messages.ERROR)
+
+
+# ----------------------------- Reminders (device-fired) -------------------- #
+# Reminders are pulled by the app (login / app-open / daily sync) and fired on-device
+# via local alarms — no push is sent when they're created or edited.
+@admin.register(AppReminder)
+class AppReminderAdmin(admin.ModelAdmin):
+    list_display = ["title", "account", "scheduled_at", "recurrence", "is_active"]
+    list_filter = ["is_active", "recurrence"]
+    search_fields = ["title", "body", "account__email"]
+    list_editable = ["is_active"]
+    readonly_fields = ["created_at", "updated_at"]
+    fields = ["account", "title", "body", "link", "scheduled_at", "recurrence", "is_active",
+              "created_at", "updated_at"]

@@ -68,6 +68,7 @@ def send(tokens, title, body, data=None):
 
     success = 0
     fail = 0
+    dead_tokens = []
     for token in tokens:
         message = {"message": {"token": token, "notification": {"title": title, "body": body}}}
         if data:
@@ -78,6 +79,21 @@ def send(tokens, title, body, data=None):
                 success += 1
             else:
                 fail += 1
+                # A stale/unregistered token → stop sending to it in future.
+                if resp.status_code == 404 or "UNREGISTERED" in resp.text or "NOT_FOUND" in resp.text:
+                    dead_tokens.append(token)
         except requests.RequestException:
             fail += 1
+    _deactivate_dead_tokens(dead_tokens)
     return success, fail
+
+
+def _deactivate_dead_tokens(tokens):
+    """Mark devices whose FCM token was rejected as unregistered as inactive (best-effort)."""
+    if not tokens:
+        return
+    try:
+        from .models import AppDevice
+        AppDevice.objects.filter(fcm_token__in=tokens).update(is_active=False)
+    except Exception:
+        pass
