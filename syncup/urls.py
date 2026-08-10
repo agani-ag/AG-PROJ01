@@ -138,13 +138,8 @@ urlpatterns = [
     path('device/media/clicksend', media.clicksend, name='clicksend'),
     path('device/media/video-player', media.video_player, name='video_player'),
     path('device/media/cloudinary', media.cloudinary, name='cloudinary'),
+    path('device/media/cloud-sign', media.cloud_sign, name='cloud_sign'),
     path('device/api/cloud-config', media.cloud_config, name='cloud_config'),
-    path('device/media/cloud-status', media.cloud_status, name='cloud_status'),
-    path('device/media/gallery', media.cloud_gallery, name='cloud_gallery'),
-    path('device/media/gallery-api', media.cloud_gallery_api, name='cloud_gallery_api'),
-    path('device/media/file-info', media.cloud_file_info_api, name='cloud_file_info_api'),
-    path('device/media/cloud-delete', media.cloud_delete_file, name='cloud_delete_file'),
-    path('device/media/cloud-remove-duplicates', media.cloud_remove_duplicates, name='cloud_remove_duplicates'),
     
     # Test URLs
     path('device/test1', test.test1, name='test1'),

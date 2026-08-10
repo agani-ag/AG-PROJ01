@@ -254,7 +254,20 @@ def push(request):
         "logs": AppNotificationLog.objects.all()[:20],
         "fcm_configured": fcm.is_configured(),
         "all_urls": _distinct_link_urls(),
+        "cloud_cfg": _cloudinary_widget_cfg(),
     })
+
+
+def _cloudinary_widget_cfg():
+    """Client-side (unsigned) Cloudinary config for the image widget. NEVER includes the secret.
+    Upload uses the existing unsigned preset; pick-existing lists by the `notifications` tag."""
+    return {
+        "enabled": bool(getattr(settings, "CLOUDINARY_CLOUD_NAME", None)),
+        "cloud_name": getattr(settings, "CLOUDINARY_CLOUD_NAME", "") or "",
+        "upload_preset": getattr(settings, "CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned"),
+        "tag": "notifications",
+        "folder": "notifications",
+    }
 
 
 def _distinct_link_urls():
@@ -279,7 +292,10 @@ def _reminders_ctx(form, editing=None):
             last_fired=Max("receipts__fired_at"),
         )
     )
-    return {"form": form, "editing": editing, "reminders": reminders, "all_urls": _distinct_link_urls()}
+    return {
+        "form": form, "editing": editing, "reminders": reminders,
+        "all_urls": _distinct_link_urls(), "cloud_cfg": _cloudinary_widget_cfg(),
+    }
 
 
 _PICKUP_NOTE = "Devices pick it up on next app open or the daily sync."

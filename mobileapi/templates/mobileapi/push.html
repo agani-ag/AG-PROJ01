@@ -45,11 +45,12 @@
                 {{ form.link_url }}
                 <div class="form-text">Optional HTTPS campaign/form URL — opens inside the app when tapped.</div>
             </div>
-            <div class="mb-3">
+            <div class="mb-2">
                 <label class="form-label">Image URL</label>
                 {{ form.image_url }}
                 <div class="form-text">Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512).</div>
             </div>
+            {% include "mobileapi/_cloudinary_widget.html" %}
             <button type="submit" class="btn btn-primary btn-lg">
                 <i class="fas fa-paper-plane me-2"></i>Send
             </button>

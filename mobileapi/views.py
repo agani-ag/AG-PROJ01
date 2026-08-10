@@ -242,6 +242,20 @@ def reminder_ack(request):
 # --------------------------------------------------------------------------- #
 # Public privacy policy page (for the Play Store "Privacy policy" URL)
 # --------------------------------------------------------------------------- #
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "10.0.2.2")
+
+
+def _public_url(request, name):
+    """Absolute URL for a view, upgraded to https for real hosts. Django behind the
+    Cloudflare tunnel sees the request as http (TLS ends at the tunnel), but the app's
+    WebView is https-only — so force https except on local dev hosts."""
+    url = request.build_absolute_uri(reverse(name))
+    host = request.get_host().split(":")[0]
+    if url.startswith("http://") and host not in _LOCAL_HOSTS:
+        url = "https://" + url[len("http://"):]
+    return url
+
+
 @require_http_methods(["GET"])
 def privacy_policy(request):
     """Public HTML privacy policy. Use this page's URL in Play Console → App content.
@@ -266,7 +280,7 @@ def config(request):
         "latest_version": cfg.latest_version,
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
-        "privacy_policy_url": request.build_absolute_uri(reverse("privacy_policy")),
+        "privacy_policy_url": _public_url(request, "privacy_policy"),
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",

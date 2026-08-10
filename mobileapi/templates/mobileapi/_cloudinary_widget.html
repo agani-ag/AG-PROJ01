@@ -1,0 +1,142 @@
+{% comment %}
+Client-side unsigned Cloudinary image widget for notification/reminder images.
+Fills the #id_image_url field. Requires `cloud_cfg` in context. No API secret is used
+(upload = unsigned preset; pick-existing = public tag-list JSON). Follows the pattern in
+device_access/cloudinary.html.
+{% endcomment %}
+{% if cloud_cfg.enabled %}
+{{ cloud_cfg|json_script:"cld-cfg" }}
+<div class="mb-3">
+    <div class="d-flex gap-2 flex-wrap mb-2">
+        <label class="btn btn-outline-primary btn-sm mb-0">
+            <i class="fas fa-cloud-arrow-up me-1"></i> Upload image
+            <input type="file" id="cldFile" accept="image/*" class="d-none">
+        </label>
+        <button type="button" class="btn btn-outline-secondary btn-sm" id="cldPickBtn">
+            <i class="fas fa-images me-1"></i> Pick existing
+        </button>
+        <button type="button" class="btn btn-outline-danger btn-sm" id="cldClearBtn">Clear</button>
+    </div>
+    <div id="cldStatus" class="small text-muted"></div>
+    <div id="cldPreviewWrap" class="mt-2" style="display:none;">
+        <img id="cldPreview" src="" alt="preview"
+             style="max-height:120px;border-radius:8px;border:1px solid #dee2e6;">
+    </div>
+</div>
+
+<div class="modal fade" id="cldModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Pick a notification image</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="cldGalleryStatus" class="small text-muted mb-2"></div>
+                <div class="row g-2" id="cldGallery"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var cfg = JSON.parse(document.getElementById("cld-cfg").textContent);
+    var CLOUD = cfg.cloud_name, PRESET = cfg.upload_preset, TAG = cfg.tag, FOLDER = cfg.folder;
+    var DELIVER = "c_fill,w_1024,h_512,q_auto,f_auto";   // 2:1 notification format
+    var THUMB = "c_fill,w_200,h_150,q_auto,f_auto";
+
+    var field = document.getElementById("id_image_url");
+    var statusEl = document.getElementById("cldStatus");
+    var previewWrap = document.getElementById("cldPreviewWrap");
+    var preview = document.getElementById("cldPreview");
+
+    function setStatus(msg, kind) {
+        statusEl.className = "small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+        statusEl.textContent = msg;
+    }
+    function deliveryUrl(publicId, version, format, transform) {
+        var t = transform ? (transform + "/") : "";
+        var v = version ? ("v" + version + "/") : "";
+        var ext = format ? ("." + format) : "";
+        return "https://res.cloudinary.com/" + CLOUD + "/image/upload/" + t + v + publicId + ext;
+    }
+    function chooseImage(publicId, version, format) {
+        var url = deliveryUrl(publicId, version, format, DELIVER);
+        field.value = url;
+        preview.src = url;
+        previewWrap.style.display = "";
+    }
+    if (field && field.value) { preview.src = field.value; previewWrap.style.display = ""; }
+
+    // ---- Upload (unsigned) ----
+    var fileInput = document.getElementById("cldFile");
+    fileInput.addEventListener("change", function () {
+        var file = fileInput.files[0];
+        fileInput.value = "";
+        if (!file) return;
+        setStatus("Uploading…");
+        var form = new FormData();
+        form.append("file", file);
+        form.append("upload_preset", PRESET);
+        form.append("folder", FOLDER);
+        form.append("tags", TAG);
+        fetch("https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD) + "/image/upload",
+              { method: "POST", body: form })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.error) { setStatus("Upload failed: " + (d.error.message || ""), "err"); return; }
+                chooseImage(d.public_id, d.version, d.format);
+                setStatus("Uploaded ✓", "ok");
+            })
+            .catch(function (e) { setStatus("Upload error: " + e, "err"); });
+    });
+
+    // ---- Clear ----
+    document.getElementById("cldClearBtn").addEventListener("click", function () {
+        field.value = "";
+        previewWrap.style.display = "none";
+        setStatus("");
+    });
+
+    // ---- Pick existing (public tag-list JSON, no secret) ----
+    var modalEl = document.getElementById("cldModal");
+    var gallery = document.getElementById("cldGallery");
+    var galleryStatus = document.getElementById("cldGalleryStatus");
+    document.getElementById("cldPickBtn").addEventListener("click", function () {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        gallery.innerHTML = "";
+        galleryStatus.textContent = "Loading…";
+        // Cache-bust: the list JSON is CDN-cached for 60s, so a stale 404 (from before the
+        // first upload) can linger. A unique query forces a fresh copy.
+        var listUrl = "https://res.cloudinary.com/" + encodeURIComponent(CLOUD) +
+            "/image/list/" + encodeURIComponent(TAG) + ".json?_=" + Date.now();
+        fetch(listUrl, { cache: "no-store" })
+            .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+            .then(function (d) {
+                var res = d.resources || [];
+                if (!res.length) { galleryStatus.textContent = 'No images tagged "' + TAG + '" yet — upload one, then wait up to a minute.'; return; }
+                res.sort(function (a, b) { return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
+                galleryStatus.textContent = res.length + " image(s)";
+                res.forEach(function (r) {
+                    var col = document.createElement("div");
+                    col.className = "col-4 col-md-3";
+                    var img = document.createElement("img");
+                    img.src = deliveryUrl(r.public_id, r.version, r.format, THUMB);
+                    img.style.cssText = "width:100%;height:90px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #dee2e6;";
+                    img.addEventListener("click", function () {
+                        chooseImage(r.public_id, r.version, r.format);
+                        setStatus("Selected ✓", "ok");
+                        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                    });
+                    col.appendChild(img);
+                    gallery.appendChild(col);
+                });
+            })
+            .catch(function (e) {
+                galleryStatus.textContent = 'Could not load images. Enable "Resource list" in Cloudinary (Settings → Security). [' + e + "]";
+            });
+    });
+});
+</script>
+{% endif %}

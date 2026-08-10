@@ -80,11 +80,19 @@
 
   <!-- Filters -->
   <div class="row g-3 align-items-end mb-3">
+    <div class="col-md-2">
+      <label class="form-label fw-semibold mb-1">Scope</label>
+      <select id="scope" class="form-select">
+        <option value="">— All —</option>
+        <option value="device" selected>Devices</option>
+        <option value="notification">Notifications</option>
+      </select>
+    </div>
     <div class="col-md-3">
       <label class="form-label fw-semibold mb-1">Device</label>
       <select id="deviceFilter" class="form-select"><option value="">— All Devices —</option></select>
     </div>
-    <div class="col-md-3">
+    <div class="col-md-2">
       <label class="form-label fw-semibold mb-1">Type</label>
       <select id="rtype" class="form-select">
         <option value="image">Images</option>
@@ -92,7 +100,7 @@
         <option value="raw">Raw</option>
       </select>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
       <label class="form-label fw-semibold mb-1">Search</label>
       <input id="filter" type="search" class="form-control" placeholder="Filter by filename…" />
     </div>
@@ -180,12 +188,17 @@ const config = JSON.parse(
   const CLOUD_NAME = config.cloud_name || "";
   const TAG = config.tags || "";
   const UPLOAD_PRESET = config.upload_preset || "";
-  const API_KEY = config.api_key || "";
-  const API_SECRET = config.api_secret || "";
+  const SIGN_URL = config.sign_url || "";
+
+  // Notification images are backed up under this tag/folder (separate from the
+  // per-device "devices" namespace). We fetch this list too and mark its assets
+  // as scope "notification" so they can be browsed/managed without polluting the
+  // Device filter.
+  const NOTIF_TAG = "notifications";
 
   const $ = (id) => document.getElementById(id);
   const els = {
-    rtype: $("rtype"),
+    rtype: $("rtype"), scope: $("scope"),
     deviceFilter: $("deviceFilter"), filter: $("filter"),
     gallery: $("gallery"), status: $("status"), upStatus: $("upStatus"),
     countBadge: $("countBadge"), sentinel: $("sentinel"),
@@ -243,9 +256,16 @@ const config = JSON.parse(
   function escapeHtml(s) {
     return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  async function sha1Hex(str) {
-    const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(str));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  // Signatures are computed on the SERVER — the Cloudinary API secret never reaches the browser.
+  // Returns { signature, api_key, timestamp } for the given params (server injects the timestamp).
+  async function signOnServer(params) {
+    const res = await fetch(SIGN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params }),
+    });
+    if (!res.ok) throw new Error("Signing failed — sign in as an admin and retry.");
+    return res.json();
   }
 
   // Cloudinary's client-side "list" endpoint returns at most 1000 assets PER TAG
@@ -301,22 +321,32 @@ const config = JSON.parse(
       // Shard by device tag ("device_<id>") to get past the 1000-per-tag cap.
       const shards = await mapLimit(DEVICE_TAGS, LIST_CONCURRENCY, tag => fetchTagList(rtype, tag));
 
-      // Merge + de-dupe by public_id (base first so its objects win on ties).
+      // Notification images live under a separate tag/folder.
+      const notif = await fetchTagList(rtype, NOTIF_TAG);
+
+      // Merge + de-dupe by public_id; stamp each asset with its scope. Device
+      // lists come first so their objects win on ties (notif won't collide anyway).
       const seen = new Map();
-      [base, ...shards].forEach(s => s.resources.forEach(r => {
-        if (r.public_id && !seen.has(r.public_id)) seen.set(r.public_id, r);
-      }));
+      const addAll = (list, scope) => list.forEach(r => {
+        if (r.public_id && !seen.has(r.public_id)) { r._scope = scope; seen.set(r.public_id, r); }
+      });
+      addAll(base.resources, "device");
+      shards.forEach(s => addAll(s.resources, "device"));
+      addAll(notif.resources, "notification");
+
       resources = Array.from(seen.values());
       resources.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
       buildDeviceFilter();
+      syncScopeUI();
       render();
 
       // Status: explain what sharding did (or why it couldn't help).
       const shardHits = shards.filter(s => s.resources.length > 0).length;
+      const notifCount = notif.resources.length;
       const total = resources.length;
       if (!total) {
-        setStatus('Loaded, but no images carry the tag "' + TAG +
+        setStatus('Loaded, but no images carry the tag "' + TAG + '" / "' + NOTIF_TAG +
           '" and "Resource list" is enabled (Settings → Security).', "err");
       } else if (shardHits === 0 && base.capped) {
         // No per-device tags exist → still capped at 1000. Tell the user how to fix.
@@ -324,7 +354,7 @@ const config = JSON.parse(
           'To show all files, tag each asset with its device_id (no per-device tags were found).', "err");
       } else {
         setStatus('Loaded ' + total + ' image(s) from ' + (shardHits + 1) +
-          ' tag list(s).', "ok");
+          ' device list(s)' + (notifCount ? (' + ' + notifCount + ' notification(s)') : '') + '.', "ok");
       }
     } catch (err) {
       let msg = err.message || String(err);
@@ -335,7 +365,10 @@ const config = JSON.parse(
   }
 
   function buildDeviceFilter() {
-      const devices = Array.from(new Set(resources.map(r => deviceOf(r.public_id)).filter(Boolean))).sort();
+      // Only device-scope assets contribute devices — notifications must not show up.
+      const devices = Array.from(new Set(
+        resources.filter(r => r._scope === "device").map(r => deviceOf(r.public_id)).filter(Boolean)
+      )).sort();
       // device_id -> user_id map
       const deviceMap = {};
       deviceMappings.forEach(d => {deviceMap[d.device_id] = d.user_id;});
@@ -349,10 +382,20 @@ const config = JSON.parse(
       if (devices.includes(cur)) {els.deviceFilter.value = cur;}
   }
 
+  // The Device filter only makes sense for device-scope assets. When the Scope is
+  // "notification", disable it (notifications have no device).
+  function syncScopeUI() {
+    const notifOnly = els.scope.value === "notification";
+    els.deviceFilter.disabled = notifOnly;
+    if (notifOnly) els.deviceFilter.value = "";
+  }
+
   function currentList() {
     const q = els.filter.value.trim().toLowerCase();
     const dev = els.deviceFilter.value;
+    const scope = els.scope.value;
     return resources.filter(r => {
+      if (scope && r._scope !== scope) return false;
       if (dev && deviceOf(r.public_id) !== dev) return false;
       if (q && !(r.public_id || "").toLowerCase().includes(q)) return false;
       return true;
@@ -512,25 +555,21 @@ const config = JSON.parse(
   // Bulk download: one signed Cloudinary ZIP (CORS-enabled Upload API), with an
   // automatic fallback to individual file downloads if archiving fails.
   async function archiveZip(list, rtype) {
-    const ts = Math.round(Date.now() / 1000);
     const publicIds = list.map(r => r.public_id);
-    // Signature = SHA-1 of alphabetically-sorted params (arrays comma-joined) + secret.
-    const signParams = {
+    // Server signs the params (secret stays server-side); it returns the timestamp it used.
+    const signed = await signOnServer({
       mode: "download",
       public_ids: publicIds.join(","),
       target_format: "zip",
-      timestamp: ts,
-    };
-    const toSign = Object.keys(signParams).sort().map(k => k + "=" + signParams[k]).join("&");
-    const signature = await sha1Hex(toSign + API_SECRET);
+    });
 
     const form = new FormData();
     publicIds.forEach(id => form.append("public_ids[]", id));
     form.append("mode", "download");
     form.append("target_format", "zip");
-    form.append("timestamp", ts);
-    form.append("api_key", API_KEY);
-    form.append("signature", signature);
+    form.append("timestamp", signed.timestamp);
+    form.append("api_key", signed.api_key);
+    form.append("signature", signed.signature);
 
     const res = await fetch(
       "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/generate_archive",
@@ -592,7 +631,8 @@ const config = JSON.parse(
     const rows = [
       ["Filename", (r.public_id || "").split("/").pop()],
       ["Public ID", r.public_id],
-      ["Device", deviceOf(r.public_id)],
+      ["Scope", r._scope === "notification" ? "Notification" : "Device"],
+      ["Device", r._scope === "notification" ? "" : deviceOf(r.public_id)],
       ["Type", rtype + (r.format ? (" · " + r.format) : "")],
       ["Version", r.version],
       ["Dimensions", (r.width && r.height) ? (r.width + " × " + r.height) : ""],
@@ -624,15 +664,14 @@ const config = JSON.parse(
   // on success. Throws on failure. Does NOT re-render (caller decides when).
   async function destroyResource(r) {
     const rtype = r.resource_type || "image";
-    const ts = Math.round(Date.now() / 1000);
-    const signature = await sha1Hex(
-      "public_id=" + r.public_id + "&timestamp=" + ts + API_SECRET);
+    // Server signs (secret stays server-side) and returns the timestamp it used.
+    const signed = await signOnServer({ public_id: r.public_id });
 
     const form = new FormData();
     form.append("public_id", r.public_id);
-    form.append("timestamp", ts);
-    form.append("api_key", API_KEY);
-    form.append("signature", signature);
+    form.append("timestamp", signed.timestamp);
+    form.append("api_key", signed.api_key);
+    form.append("signature", signed.signature);
 
     const res = await fetch(
       "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/destroy",
@@ -762,7 +801,7 @@ const config = JSON.parse(
           public_id: data.public_id, format: data.format, version: data.version,
           width: data.width, height: data.height, bytes: data.bytes,
           created_at: data.created_at, tags: data.tags, context: data.context,
-          delete_token: data.delete_token, resource_type: "image",
+          delete_token: data.delete_token, resource_type: "image", _scope: "device",
         });
         done++;
       } catch (e) {
@@ -797,6 +836,7 @@ const config = JSON.parse(
   // Events
   els.rtype.addEventListener("change", loadImages);
   els.filter.addEventListener("input", render);
+  els.scope.addEventListener("change", () => { syncScopeUI(); render(); });
   els.deviceFilter.addEventListener("change", () => { render(); updateUploadTarget(); });
   els.statusBtn.addEventListener("click", cloudStatus);
   els.refreshBtn.addEventListener("click", loadImages);

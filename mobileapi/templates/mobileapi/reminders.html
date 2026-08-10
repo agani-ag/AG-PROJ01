@@ -51,13 +51,14 @@
                     Any HTTPS URL (campaign, form, page) — works for broadcasts. Opens inside the app.
                 </div>
             </div>
-            <div class="mb-3">
+            <div class="mb-2">
                 <label class="form-label">Image URL</label>
                 {{ form.image_url }}
                 <div class="form-text">
                     Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512, under ~1 MB).
                 </div>
             </div>
+            {% include "mobileapi/_cloudinary_widget.html" %}
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
                     <label class="form-label">When (IST)</label>
