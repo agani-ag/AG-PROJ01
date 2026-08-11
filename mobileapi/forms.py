@@ -51,11 +51,11 @@ class AppAccountForm(forms.ModelForm):
 class AppLinkForm(forms.ModelForm):
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "is_active"]
+        fields = ["title", "url", "description", "icon", "is_active", "notify_token_enabled"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("is_active",))
+        _bootstrap(self.fields, checkbox_fields=("is_active", "notify_token_enabled"))
         # Icon is a choice field → use a Bootstrap select.
         self.fields["icon"].widget.attrs["class"] = "form-select"
         self.fields["icon"].required = False

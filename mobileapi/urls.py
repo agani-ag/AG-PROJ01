@@ -9,6 +9,7 @@ urlpatterns = [
     path("account/urls", views.account_urls, name="app_account_urls"),
     path("account/links", views.account_link_add, name="app_account_link_add"),
     path("account/links/<int:link_id>/delete", views.account_link_delete, name="app_account_link_delete"),
+    path("partner/notify", views.partner_notify, name="app_partner_notify"),
     path("account/change-password", views.change_password, name="app_change_password"),
     path("account/delete", views.delete_account, name="app_account_delete"),
     path("devices/register", views.device_register, name="app_device_register"),

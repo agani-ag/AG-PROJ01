@@ -6,6 +6,8 @@ project's style. Contract: md/syncup-android-backend-plan.md §5.
 """
 from datetime import timedelta
 
+from django.core import signing
+from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -13,6 +15,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import fcm
 from .auth import app_token_required, json_body
 from .models import (
     AppAccount,
@@ -24,7 +27,7 @@ from .models import (
     AppReminder,
     AppReminderReceipt,
 )
-from .serializers import account_dict, links_for, reminders_for
+from .serializers import PARTNER_NOTIFY_SALT, account_dict, links_for, reminders_for
 
 # Ultimate fallbacks if the (DB-managed) privacy fields are ever blank.
 PRIVACY_FALLBACK_COMPANY = "SyncUp"
@@ -148,6 +151,64 @@ def account_link_delete(request, link_id):
         return _bad("Link not found or can't be removed", status=404)
     link.delete()
     return JsonResponse(links_for(request.account), safe=False)
+
+
+# --------------------------------------------------------------------------- #
+# 3b. Partner push — a website (opened in the app) pushes to THIS exact user.
+#     Called by the partner's backend with the window.SyncUp.token we injected.
+# --------------------------------------------------------------------------- #
+PARTNER_NOTIFY_RATE = 20  # max notifications per account per minute
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def partner_notify(request):
+    """POST { token, title, body, url? } — token is the window.SyncUp.token from a link that
+    has notifications enabled. Sends an FCM push to that user; tapping opens the link/url.
+    No API key: the signed token IS the credential, and unchecking the link's box revokes it."""
+    data = json_body(request)
+    if data is None:
+        return _bad("Invalid JSON")
+    token = data.get("token") or ""
+    title = (data.get("title") or "").strip()
+    body = (data.get("body") or "").strip()
+    url = (data.get("url") or "").strip()
+    if not token or not title:
+        return _bad("token and title are required")
+    try:
+        payload = signing.loads(token, salt=PARTNER_NOTIFY_SALT)
+    except signing.BadSignature:
+        return _bad("Invalid token", status=403)
+    # The link must still exist, be active, and still have notifications enabled (uncheck = revoke).
+    link = (
+        AppLink.objects.filter(
+            id=payload.get("link_id"), account_id=payload.get("account_id"),
+            is_active=True, notify_token_enabled=True,
+        )
+        .select_related("account").first()
+    )
+    if not link or not link.account.is_active:
+        return _bad("Token revoked or link unavailable", status=403)
+    # Simple per-account rate limit.
+    rk = f"pnotify:{link.account_id}"
+    count = cache.get(rk, 0)
+    if count >= PARTNER_NOTIFY_RATE:
+        return _bad("Rate limit exceeded, try again shortly", status=429)
+    cache.set(rk, count + 1, 60)
+    # Deliver via FCM; tap opens the provided https url (must be) or the link itself.
+    open_url = url if url.lower().startswith("https://") else link.url
+    tokens = list(
+        AppDevice.objects.filter(account=link.account, is_active=True)
+        .exclude(fcm_token="").exclude(fcm_token__isnull=True)
+        .values_list("fcm_token", flat=True)
+    )
+    sent = 0
+    if tokens and fcm.is_configured():
+        try:
+            sent, _ = fcm.send(tokens, title[:100], body[:200], data={"link_url": open_url, "link_title": link.title})
+        except Exception:
+            pass
+    return JsonResponse({"success": True, "delivered": sent})
 
 
 # --------------------------------------------------------------------------- #

@@ -156,6 +156,12 @@ class AppLink(models.Model):
     is_active = models.BooleanField(default=True)
     # True when the end user added it themselves (self-manage) — only these are user-removable.
     created_by_user = models.BooleanField(default=False)
+    # When on, the app injects window.SyncUp={token} into this page so the site can push
+    # notifications to this exact user (via POST /app/v1/partner/notify). Uncheck to revoke.
+    notify_token_enabled = models.BooleanField(
+        default=False,
+        help_text="Inject a SyncUp notification token (window.SyncUp.token) so this site can push to this user.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

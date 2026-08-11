@@ -1,7 +1,15 @@
 """Plain dict builders for JSON responses (no DRF)."""
+from django.core import signing
 from django.db.models import Q
 
 from .models import AppReminder
+
+# Salt for the per-link "partner notify" token injected as window.SyncUp.token.
+PARTNER_NOTIFY_SALT = "syncup-partner-notify"
+
+
+def make_notify_token(link):
+    return signing.dumps({"account_id": link.account_id, "link_id": link.id}, salt=PARTNER_NOTIFY_SALT)
 
 
 def account_dict(account):
@@ -22,6 +30,8 @@ def link_dict(link):
         "icon": link.icon or "",
         # The app shows a remove (✕) only on links the user added themselves.
         "can_remove": link.created_by_user,
+        # Non-empty only when the link opts in — the app injects it as window.SyncUp.token.
+        "notify_token": make_notify_token(link) if link.notify_token_enabled else "",
     }
 
 

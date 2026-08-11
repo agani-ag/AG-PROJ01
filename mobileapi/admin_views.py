@@ -123,7 +123,9 @@ def link_add(request):
         messages.error(request, form.errors.as_text())
     else:
         form = AppLinkForm()
-    return render(request, "mobileapi/link_edit.html", {"form": form, "account": account})
+    return render(request, "mobileapi/link_edit.html", {
+        "form": form, "account": account, "all_urls": _distinct_link_urls(),
+    })
 
 
 @superuser_required
@@ -141,6 +143,7 @@ def link_edit(request, link_id):
         form = AppLinkForm(instance=link)
     return render(request, "mobileapi/link_edit.html", {
         "form": form, "account": account, "link": link, "is_edit": True,
+        "all_urls": _distinct_link_urls(),
     })
 
 
@@ -281,7 +284,7 @@ def _cloudinary_widget_cfg():
 
 def _distinct_link_urls():
     """All links' URLs across every account, de-duplicated by URL (first title wins).
-    Used to populate the 'pick an existing URL' dropdowns on the push + reminder forms."""
+    Used as the broadcast fallback for the 'pick an existing URL' dropdowns."""
     seen = {}
     for url, title in AppLink.objects.order_by("title").values_list("url", "title"):
         if url and url not in seen:

@@ -9,6 +9,15 @@
         <div class="text-center mb-4">
             <h2 class="fw-bold">{% if is_edit %}Edit Link{% else %}Add Link{% endif %}</h2>
             <div class="text-muted">for {{ account.name }} &lt;{{ account.email }}&gt;</div>
+            {% if is_edit %}
+            <div class="mt-2">
+                {% if link.created_by_user %}
+                <span class="badge text-bg-info"><i class="fas fa-user me-1"></i>Added by user</span>
+                {% else %}
+                <span class="badge text-bg-secondary"><i class="fas fa-user-shield me-1"></i>Added by admin</span>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
 
         <form method="POST" class="card shadow-sm p-4">
@@ -22,6 +31,14 @@
             <div class="mb-3">
                 <label class="form-label">URL</label>
                 {{ form.url }}
+                <select class="form-select mt-2"
+                        onchange="if(this.value){document.getElementById('id_url').value=this.value;}">
+                    <option value="">— or pick from existing URLs —</option>
+                    {% for u in all_urls %}
+                    <option value="{{ u.url }}">{{ u.label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Distinct URLs already used across users. Selecting one fills the URL box.</div>
             </div>
             <div class="row">
                 <div class="col-12 col-md-8 mb-3">
@@ -36,6 +53,15 @@
             <div class="form-check mb-2">
                 {{ form.is_active }}
                 <label class="form-check-label ms-1">Active</label>
+            </div>
+            <div class="form-check mb-2">
+                {{ form.notify_token_enabled }}
+                <label class="form-check-label ms-1">Inject SyncUp notification token</label>
+                <div class="form-text">
+                    Lets this site push notifications to this user. The page reads
+                    <code>window.SyncUp.token</code> and its backend POSTs to
+                    <code>/app/v1/partner/notify</code>. Uncheck to revoke.
+                </div>
             </div>
 
             <div class="d-flex gap-2 mt-3">

@@ -73,19 +73,26 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-striped mb-0 align-middle">
-                    <thead><tr><th>Title</th><th>URL</th><th>Active</th><th></th></tr></thead>
+                    <thead><tr><th>Title</th><th>URL</th><th>Added by</th><th>Active</th><th></th></tr></thead>
                     <tbody>
                         {% for link in links %}
                         <tr>
                             <td>{{ link.title }}</td>
                             <td style="max-width:320px;"><span class="d-inline-block text-truncate" style="max-width:300px;">{{ link.url }}</span></td>
+                            <td>
+                                {% if link.created_by_user %}
+                                <span class="badge text-bg-info"><i class="fas fa-user me-1"></i>User</span>
+                                {% else %}
+                                <span class="badge text-bg-secondary"><i class="fas fa-user-shield me-1"></i>Admin</span>
+                                {% endif %}
+                            </td>
                             <td>{% if link.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
                             <td class="text-end">
                                 <a href="{% url 'mobile_link_edit' link.id %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i></a>
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="4" class="text-muted text-center">No links yet.</td></tr>
+                        <tr><td colspan="5" class="text-muted text-center">No links yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
