@@ -66,7 +66,6 @@ class AppConfigForm(forms.ModelForm):
         model = AppConfig
         fields = [
             "min_supported_version",
-            "latest_version",
             "support_email",
             "support_phone",
             "privacy_company_name",
@@ -75,6 +74,8 @@ class AppConfigForm(forms.ModelForm):
             "announcement_active",
             "announcement_title",
             "announcement_message",
+            "announcement_fullscreen",
+            "announcement_blocking",
             "feature_flags",
         ]
         widgets = {
@@ -84,7 +85,10 @@ class AppConfigForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("announcement_active",))
+        _bootstrap(
+            self.fields,
+            checkbox_fields=("announcement_active", "announcement_fullscreen", "announcement_blocking"),
+        )
 
 
 class PushForm(forms.Form):
@@ -121,11 +125,33 @@ class PushForm(forms.Form):
         return self._clean_https("image_url")
 
 
+# "Repeat N times" interval, entered as a value + unit in the admin and stored as seconds.
+# Minimum enforced below (MIN_INTERVAL_SECONDS) — Android throttles anything shorter when idle.
+REMINDER_INTERVAL_UNITS = [
+    ("60", "Minutes"),
+    ("3600", "Hours"),
+    ("86400", "Days"),
+    ("604800", "Weeks"),
+]
+
+# Shortest interval we allow for a real reminder (15 minutes). Below this, Doze delays/bunches fires.
+MIN_INTERVAL_SECONDS = 15 * 60
+
+
 class ReminderForm(forms.ModelForm):
+    # Not model fields — combined into repeat_interval_seconds on save.
+    interval_value = forms.IntegerField(
+        required=False, min_value=1, label="Repeat every",
+    )
+    interval_unit = forms.ChoiceField(
+        required=False, choices=REMINDER_INTERVAL_UNITS, initial="60",
+    )
+
     class Meta:
         model = AppReminder
         fields = ["account", "title", "body", "custom_url",
-                  "image_url", "scheduled_at", "recurrence", "is_active"]
+                  "image_url", "scheduled_at", "recurrence",
+                  "repeat_count", "is_active"]
         widgets = {
             "body": forms.Textarea(attrs={"rows": 3}),
             "scheduled_at": forms.DateTimeInput(
@@ -144,9 +170,54 @@ class ReminderForm(forms.ModelForm):
         # Show the stored (UTC) time as local (IST) in the picker.
         if self.instance and self.instance.pk and self.instance.scheduled_at:
             self.initial["scheduled_at"] = timezone.localtime(self.instance.scheduled_at)
+        # "Repeat N times" fields only apply when recurrence == interval.
+        self.fields["repeat_count"].label = "Number of times"
+        self.fields["repeat_count"].required = False
+        # When editing an interval reminder, show its seconds as the largest whole unit.
+        secs = getattr(self.instance, "repeat_interval_seconds", 0) or 0
+        if secs > 0:
+            for mult, _ in reversed(REMINDER_INTERVAL_UNITS):  # weeks → seconds
+                m = int(mult)
+                if secs % m == 0:
+                    self.initial.setdefault("interval_value", secs // m)
+                    self.initial.setdefault("interval_unit", mult)
+                    break
         _bootstrap(self.fields, checkbox_fields=("is_active",))
-        for name in ("account", "recurrence"):
+        for name in ("account", "recurrence", "interval_unit"):
             self.fields[name].widget.attrs["class"] = "form-select"
+
+    def clean(self):
+        cleaned = super().clean()
+        seconds = 0
+        if cleaned.get("recurrence") == "interval":
+            value = cleaned.get("interval_value")
+            unit = cleaned.get("interval_unit")
+            if not value or value < 1:
+                self.add_error("interval_value", "Enter how often it repeats (1 or more).")
+            if not unit:
+                self.add_error("interval_unit", "Choose a unit.")
+            if not cleaned.get("repeat_count") or cleaned.get("repeat_count") < 1:
+                self.add_error("repeat_count", "Enter how many times it should fire (1 or more).")
+            if value and unit:
+                seconds = int(value) * int(unit)
+                if seconds < MIN_INTERVAL_SECONDS:
+                    self.add_error(
+                        "interval_value",
+                        "Minimum repeat interval is 15 minutes "
+                        "(shorter intervals aren't delivered reliably when the phone is idle).",
+                    )
+        else:
+            # Keep these clean for once/daily so they don't leak into the app payload.
+            cleaned["repeat_count"] = 0
+        self._interval_seconds = seconds
+        return cleaned
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.repeat_interval_seconds = getattr(self, "_interval_seconds", 0)
+        if commit:
+            obj.save()
+        return obj
 
     def clean_scheduled_at(self):
         dt = self.cleaned_data.get("scheduled_at")

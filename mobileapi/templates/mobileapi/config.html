@@ -12,16 +12,15 @@
         <form method="POST" class="card shadow-sm p-4">
             {% csrf_token %}
 
-            <h6 class="text-muted text-uppercase small">Version gates</h6>
+            <h6 class="text-muted text-uppercase small">Version gate</h6>
             <div class="row">
                 <div class="col-12 col-md-6 mb-3">
                     <label class="form-label">Minimum supported version (code)</label>
                     {{ form.min_supported_version }}
-                    <div class="form-text">Below this, the app forces an update.</div>
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Latest version (code)</label>
-                    {{ form.latest_version }}
+                    <div class="form-text">
+                        Devices below this version code are forced to update (blocking screen).
+                        Keep it at or below the lowest live version to force nobody.
+                    </div>
                 </div>
             </div>
 
@@ -82,6 +81,14 @@
             <div class="mb-3">
                 <label class="form-label">Message</label>
                 {{ form.announcement_message }}
+            </div>
+            <div class="form-check mb-2">
+                {{ form.announcement_fullscreen }}
+                <label class="form-check-label ms-1">Show as full screen (like the update screen)</label>
+            </div>
+            <div class="form-check mb-3">
+                {{ form.announcement_blocking }}
+                <label class="form-check-label ms-1">Blocking — no dismiss button, shows every launch (maintenance/outage)</label>
             </div>
 
             <div class="d-flex gap-2 mt-3">

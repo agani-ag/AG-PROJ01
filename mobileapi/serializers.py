@@ -48,6 +48,12 @@ def reminder_dict(reminder):
         "scheduled_at": reminder.scheduled_at.isoformat(),
         "scheduled_at_ms": int(reminder.scheduled_at.timestamp() * 1000),
         "recurrence": reminder.recurrence,
+        # For "Repeat N times": gap between fires (ms) and total fire count (0 = unlimited).
+        # once/daily leave these at 0 — the app schedules those from `recurrence`.
+        "repeat_interval_ms": (
+            reminder.repeat_interval_seconds * 1000 if reminder.recurrence == "interval" else 0
+        ),
+        "repeat_count": reminder.repeat_count if reminder.recurrence == "interval" else 0,
     }
 
 

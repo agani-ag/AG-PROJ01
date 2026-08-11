@@ -70,10 +70,37 @@
                     {{ form.recurrence }}
                 </div>
             </div>
+            <div class="row" id="repeat-n-fields">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">{{ form.interval_value.label }}</label>
+                    <div class="input-group">
+                        {{ form.interval_value }}
+                        {{ form.interval_unit }}
+                    </div>
+                    <div class="form-text">
+                        Time between fires. <strong>Minimum 15 minutes.</strong>
+                        Longer intervals (hourly, daily) are the most reliable.
+                    </div>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">{{ form.repeat_count.label }}</label>
+                    {{ form.repeat_count }}
+                    <div class="form-text">Total number of fires, then it stops.</div>
+                </div>
+            </div>
             <div class="form-check mb-3">
                 {{ form.is_active }}
                 <label class="form-check-label ms-1">Active</label>
             </div>
+
+            <script>
+                (function () {
+                    var rec = document.getElementById("{{ form.recurrence.id_for_label }}");
+                    var box = document.getElementById("repeat-n-fields");
+                    function sync() { box.style.display = (rec && rec.value === "interval") ? "" : "none"; }
+                    if (rec) { rec.addEventListener("change", sync); sync(); }
+                })();
+            </script>
 
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary btn-lg">

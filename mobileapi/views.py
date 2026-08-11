@@ -182,10 +182,16 @@ REMINDER_SWEEP_GRACE = timedelta(hours=24)
 
 
 def _sweep_completed_reminders():
-    """Delete one-time reminders whose time has well passed (safety net for broadcasts and for
-    per-account reminders whose device never reported back)."""
+    """Delete finished reminders whose time has well passed (safety net for broadcasts and for
+    per-account reminders whose device never reported back). Covers one-time reminders and
+    'Repeat N times' reminders past their final occurrence."""
     cutoff = timezone.now() - REMINDER_SWEEP_GRACE
     AppReminder.objects.filter(recurrence="once", scheduled_at__lt=cutoff).delete()
+    # Counted reminders: last fire is scheduled_at + (count-1) * interval; sweep once that's well past.
+    for r in AppReminder.objects.filter(recurrence="interval", repeat_count__gt=0):
+        last = r.scheduled_at + timedelta(seconds=r.repeat_interval_seconds * (r.repeat_count - 1))
+        if last < cutoff:
+            r.delete()
 
 
 @require_http_methods(["GET"])
@@ -277,7 +283,6 @@ def config(request):
     cfg = AppConfig.load()
     return JsonResponse({
         "min_supported_version": cfg.min_supported_version,
-        "latest_version": cfg.latest_version,
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
         "privacy_policy_url": _public_url(request, "privacy_policy"),
@@ -285,6 +290,8 @@ def config(request):
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",
             "message": cfg.announcement_message or "",
+            "fullscreen": cfg.announcement_fullscreen,
+            "blocking": cfg.announcement_blocking,
         },
         "feature_flags": cfg.feature_flags or {},
     })

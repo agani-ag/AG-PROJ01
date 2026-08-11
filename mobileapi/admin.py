@@ -149,7 +149,7 @@ class AppAuthTokenAdmin(admin.ModelAdmin):
 # ----------------------------- Config (singleton) -------------------------- #
 @admin.register(AppConfig)
 class AppConfigAdmin(admin.ModelAdmin):
-    list_display = ["__str__", "min_supported_version", "latest_version", "announcement_active", "updated_at"]
+    list_display = ["__str__", "min_supported_version", "announcement_active", "updated_at"]
 
     def has_add_permission(self, request):
         return not AppConfig.objects.exists()

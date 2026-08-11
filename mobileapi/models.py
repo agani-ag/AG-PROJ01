@@ -159,7 +159,6 @@ class AppConfig(models.Model):
     """Single-row config served by GET /app/v1/config (admin-managed)."""
 
     min_supported_version = models.IntegerField(default=1)
-    latest_version = models.IntegerField(default=1)
     support_email = models.EmailField(null=True, blank=True)
     support_phone = models.CharField(max_length=30, null=True, blank=True)
     # Privacy policy page details (shown on the public /privacy/ page)
@@ -171,6 +170,15 @@ class AppConfig(models.Model):
     announcement_active = models.BooleanField(default=False)
     announcement_title = models.CharField(max_length=120, null=True, blank=True)
     announcement_message = models.TextField(null=True, blank=True)
+    announcement_fullscreen = models.BooleanField(
+        default=False,
+        help_text="Show the announcement as a full screen (like the update screen) instead of a banner.",
+    )
+    announcement_blocking = models.BooleanField(
+        default=False,
+        help_text="Full-screen only: no dismiss button; shows every launch until turned off "
+                  "(use for maintenance/outage notices).",
+    )
     feature_flags = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -221,6 +229,7 @@ class AppNotificationLog(models.Model):
 REMINDER_RECURRENCE_CHOICES = [
     ("once", "Once"),
     ("daily", "Everyday"),
+    ("interval", "Repeat N times"),
 ]
 
 
@@ -254,6 +263,15 @@ class AppReminder(models.Model):
     )
     scheduled_at = models.DateTimeField(help_text="When the reminder first fires (server/IST time).")
     recurrence = models.CharField(max_length=20, choices=REMINDER_RECURRENCE_CHOICES, default="once")
+    repeat_interval_seconds = models.PositiveIntegerField(
+        default=0,
+        help_text="For 'Repeat N times': seconds between fires. Under ~15 min is best-effort "
+                  "(Android may delay it while the phone is idle).",
+    )
+    repeat_count = models.PositiveIntegerField(
+        default=0,
+        help_text="For 'Repeat N times': how many times to fire in total, then stop.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
