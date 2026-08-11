@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Chats{% endblock %}
+
+{% block content %}
+<style>
+    :root { --chat-primary: #2563eb; --chat-primary-2: #1d4ed8; }
+    /* Full-screen chat: reclaim the page chrome so the interface fills the whole viewport. */
+    main.container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    .container.mt-3 { margin-top: 0 !important; }   /* the Django-messages wrapper above main */
+    footer { display: none !important; }
+    .chat-inbox { height: calc(100vh - 56px); min-height: 0; overflow: hidden; border: 0; border-radius: 0; margin: 0; }
+    .chat-inbox .row { height: 100%; }
+    .list-head { background: var(--bs-card-bg,#fff); }
+
+    /* Scrollbars */
+    .conv-list::-webkit-scrollbar, .thread-body::-webkit-scrollbar { width: 8px; }
+    .conv-list::-webkit-scrollbar-thumb, .thread-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 8px; }
+
+    /* ---- Conversation list ---- */
+    .conv-search { background: var(--bs-card-bg,#fff); }
+    .conv-list { overflow-y: auto; flex: 1; }
+    .conv-item { cursor: pointer; border: 0; border-left: 3px solid transparent; background: transparent; transition: background .12s; }
+    .conv-item:hover { background: var(--bs-tertiary-bg,#f1f3f5); }
+    .conv-item.active { background: var(--bs-primary-bg-subtle,#e7f1ff); border-left-color: var(--chat-primary); }
+    .conv-item.unread .conv-name, .conv-item.unread .conv-preview { font-weight: 700; color: var(--bs-body-color); }
+    .conv-name { font-weight: 600; }
+    .conv-preview { font-size: .82rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-time { font-size: .72rem; color: var(--bs-secondary-color); white-space: nowrap; }
+
+    /* ---- Avatars + presence ---- */
+    .avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-weight: 700; color: #fff; flex: 0 0 44px; letter-spacing: .5px; }
+    .avatar-wrap { position: relative; flex: 0 0 44px; }
+    .presence-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%;
+        border: 2.5px solid var(--bs-card-bg,#fff); background: #9ca3af; }
+    .presence-dot.online { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.18); }
+
+    /* ---- Thread ---- */
+    .thread-pane { height: 100%; position: relative; }
+    .thread-header { background: var(--bs-card-bg,#fff); }
+    .thread-presence { font-size: .78rem; color: var(--bs-secondary-color); display: flex; align-items: center; gap: 5px; }
+    .thread-presence.online { color: #16a34a; font-weight: 600; }
+    .thread-presence .pdot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block; }
+    .thread-presence.online .pdot { background: #22c55e; }
+
+    .thread-body { overflow-y: auto; flex: 1; display: flex; flex-direction: column;
+        background: linear-gradient(180deg, var(--bs-tertiary-bg,#f6f8fb), var(--bs-body-bg,#fff)); }
+    #threadMessages { margin-top: auto; padding: 18px 18px 8px; }  /* bottom-anchored */
+
+    .date-sep { text-align: center; margin: 14px 0 10px; }
+    .date-sep span { background: rgba(0,0,0,.06); color: var(--bs-secondary-color); font-size: .72rem;
+        padding: 3px 12px; border-radius: 999px; }
+
+    .msg-row { display: flex; margin-top: 12px; }
+    .msg-row.grouped { margin-top: 3px; }
+    .msg-row.admin { justify-content: flex-end; }
+    .msg-row.user { justify-content: flex-start; }
+    .msg-col { display: flex; flex-direction: column; max-width: 68%; }
+    .msg-row.admin .msg-col { align-items: flex-end; }
+    .msg-row.user .msg-col { align-items: flex-start; }
+    .bubble { padding: 8px 13px; border-radius: 16px; line-height: 1.4; white-space: pre-wrap; word-break: break-word;
+        font-size: .93rem; box-shadow: 0 1px 1px rgba(0,0,0,.05); }
+    .msg-row.admin .bubble { background: var(--chat-primary); color: #fff; border-bottom-right-radius: 5px; }
+    .msg-row.user .bubble { background: #fff; color: var(--bs-body-color); border: 1px solid var(--bs-border-color);
+        border-bottom-left-radius: 5px; }
+    .msg-row.grouped.admin .bubble { border-top-right-radius: 7px; }
+    .msg-row.grouped.user .bubble { border-top-left-radius: 7px; }
+    .msg-meta { font-size: .68rem; color: var(--bs-secondary-color); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
+    .msg-meta .tick { color: #9ca3af; }
+    .msg-meta .tick.read { color: var(--chat-primary); }
+
+    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: var(--bs-secondary-color); text-align: center; gap: 10px; }
+
+    /* Typing indicator (animated dots) */
+    #typingRow { padding: 0 18px 10px; }
+    .typing-bubble { display: inline-flex !important; gap: 5px; align-items: center; padding: 11px 14px !important; }
+    .typing-bubble span { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; display: inline-block;
+        animation: typingBlink 1.2s infinite ease-in-out; }
+    .typing-bubble span:nth-child(2) { animation-delay: .2s; }
+    .typing-bubble span:nth-child(3) { animation-delay: .4s; }
+    @keyframes typingBlink { 0%,60%,100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+    /* Jump-to-latest */
+    .jump-latest { position: absolute; right: 18px; bottom: 92px; z-index: 5; border: 0; border-radius: 999px;
+        background: var(--chat-primary); color: #fff; padding: 7px 14px; box-shadow: 0 4px 12px rgba(0,0,0,.28);
+        display: none; align-items: center; gap: 6px; font-size: .8rem; cursor: pointer; }
+    .jump-latest:hover { background: var(--chat-primary-2); }
+    .jump-latest.show { display: inline-flex; }
+
+    /* ---- Composer ---- */
+    .composer { background: var(--bs-card-bg,#fff); }
+    .composer textarea { resize: none; max-height: 120px; border-radius: 22px; padding: 10px 16px; }
+    .composer .btn-send { width: 44px; height: 44px; border-radius: 50%; flex: 0 0 44px; display: flex;
+        align-items: center; justify-content: center; background: var(--chat-primary); border: 0; }
+    .composer .btn-send:hover { background: var(--chat-primary-2); }
+</style>
+
+<div class="card shadow-sm chat-inbox">
+    <div class="row g-0">
+        <!-- Conversation list -->
+        <div class="col-12 col-md-4 col-lg-3 border-end d-flex flex-column">
+            <div class="list-head p-2 px-3 border-bottom d-flex align-items-center">
+                <i class="fas fa-comments text-primary me-2"></i>
+                <span class="fw-bold">Chats</span>
+                <span id="listStatus" class="text-muted small ms-2"></span>
+                <a href="{% url 'mobile_dashboard' %}" class="btn btn-sm btn-light ms-auto" title="Back to dashboard">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+            </div>
+            <div class="conv-search p-2 border-bottom">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-transparent border-end-0"><i class="fas fa-search text-muted"></i></span>
+                    <input id="chatSearch" class="form-control border-start-0" placeholder="Search name or email…" autocomplete="off">
+                </div>
+            </div>
+            <div id="convList" class="conv-list"></div>
+        </div>
+
+        <!-- Thread -->
+        <div class="col d-flex flex-column thread-pane">
+            <div id="threadHeader" class="border-bottom px-3 py-2 d-none">
+                <div class="d-flex align-items-center">
+                    <div class="avatar-wrap me-2">
+                        <div id="thAvatar" class="avatar"></div>
+                        <span id="thDot" class="presence-dot"></span>
+                    </div>
+                    <div class="flex-grow-1 min-width-0">
+                        <div class="fw-semibold lh-sm" id="thName"></div>
+                        <div id="thPresence" class="thread-presence"><span class="pdot"></span><span></span></div>
+                    </div>
+                    <div class="text-end">
+                        <div class="small text-muted" id="thEmail"></div>
+                        <span id="thInactive" class="badge bg-secondary d-none">Inactive</span>
+                    </div>
+                </div>
+            </div>
+            <div id="threadBody" class="thread-body">
+                <div class="empty-state">
+                    <i class="fas fa-comments fa-2x opacity-25"></i>
+                    <div>Select a conversation to start</div>
+                </div>
+            </div>
+            <button id="jumpLatest" class="jump-latest" type="button">
+                <i class="fas fa-arrow-down"></i><span id="jumpCount"></span>
+            </button>
+            <div id="composer" class="composer border-top p-2 d-none">
+                <form id="replyForm" class="d-flex gap-2 align-items-end">
+                    <textarea id="replyInput" class="form-control" rows="1" placeholder="Type a reply…  (Enter to send, Shift+Enter for a new line)"></textarea>
+                    <button type="submit" class="btn btn-send text-white"><i class="fas fa-paper-plane"></i></button>
+                </form>
+                <div class="form-text ms-2 mt-1">Delivered to the user's devices as a notification (skipped while they're active here).</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var CSRF = "{{ csrf_token }}";
+    var URL_LIST = "{% url 'mobile_chat_list_json' %}";
+    var URL_THREAD = "{% url 'mobile_chat_thread_json' 0 %}";
+    var URL_REPLY = "{% url 'mobile_chat_reply_json' 0 %}";
+    var URL_TYPING = "{% url 'mobile_chat_typing' 0 %}";
+    var lastTypingPing = 0;
+
+    var convList = document.getElementById("convList");
+    var threadBody = document.getElementById("threadBody");
+    var threadHeader = document.getElementById("threadHeader");
+    var composer = document.getElementById("composer");
+    var replyInput = document.getElementById("replyInput");
+    var search = document.getElementById("chatSearch");
+    var listStatus = document.getElementById("listStatus");
+
+    var current = null, lastId = 0, seen = {}, conversations = [], readUptoId = 0;
+    var lastDay = null, lastSender = null;
+    var jump = document.getElementById("jumpLatest"), jumpCount = document.getElementById("jumpCount"), newCount = 0;
+    var COLORS = ["#2563eb", "#0d9488", "#7c3aed", "#db2777", "#ea580c", "#059669", "#4f46e5", "#c026d3"];
+
+    function threadUrl(id) { return URL_THREAD.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
+    function replyUrl(id) { return URL_REPLY.replace(/\/0\/reply$/, "/" + id + "/reply"); }
+    function typingUrl(id) { return URL_TYPING.replace(/\/0\/typing$/, "/" + id + "/typing"); }
+    function initials(n) { return (n || "?").trim().charAt(0).toUpperCase(); }
+    function colorFor(id) { return COLORS[(id || 0) % COLORS.length]; }
+    function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+    function timeOnly(ms) { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+    function relTime(ms) {
+        if (!ms) return "";
+        var diff = Date.now() - ms, d = new Date(ms);
+        if (diff < 60000) return "just now";
+        if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
+        if (diff < 86400000) return Math.floor(diff / 3600000) + "h ago";
+        return d.toLocaleDateString([], { day: "2-digit", month: "short" });
+    }
+    function listTime(ms) {
+        if (!ms) return "";
+        var diff = Date.now() - ms, d = new Date(ms);
+        if (diff < 3600000) return Math.max(1, Math.floor(diff / 60000)) + "m";
+        if (diff < 86400000) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        return d.toLocaleDateString([], { day: "2-digit", month: "short" });
+    }
+    function dayLabel(ms) {
+        var d = new Date(ms), t = new Date();
+        var same = function (a, b) { return a.toDateString() === b.toDateString(); };
+        if (same(d, t)) return "Today";
+        if (same(d, new Date(t.getTime() - 86400000))) return "Yesterday";
+        return d.toLocaleDateString([], { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+    }
+    function atBottom() { return threadBody.scrollHeight - threadBody.scrollTop - threadBody.clientHeight < 90; }
+    function scrollBottom() { threadBody.scrollTop = threadBody.scrollHeight; newCount = 0; }
+    function updateJump() {
+        if (!current) { jump.classList.remove("show"); return; }
+        if (atBottom()) { jump.classList.remove("show"); newCount = 0; jumpCount.textContent = ""; }
+        else { jump.classList.add("show"); jumpCount.textContent = newCount ? newCount : ""; }
+    }
+
+    /* ---------- Conversation list ---------- */
+    function renderList() {
+        var q = (search.value || "").toLowerCase();
+        var items = conversations.filter(function (c) {
+            return !q || (c.name || "").toLowerCase().indexOf(q) >= 0 || (c.email || "").toLowerCase().indexOf(q) >= 0;
+        });
+        if (!items.length) {
+            convList.innerHTML = '<div class="text-muted small text-center p-4">' + (q ? "No matches" : "No chats yet") + "</div>";
+            return;
+        }
+        convList.innerHTML = items.map(function (c) {
+            var preview = (c.last_sender === "admin" ? "You: " : "") + (c.last_body || "");
+            var presTitle = c.online ? "Active now" : (c.last_seen_ms ? "Last seen " + relTime(c.last_seen_ms) : "Offline");
+            return '' +
+              '<button type="button" class="conv-item w-100 text-start p-2 d-flex align-items-center gap-2' +
+                  (c.id === current ? " active" : "") + (c.unread ? " unread" : "") +
+                  '" data-id="' + c.id + '" data-name="' + esc(c.name) + '" data-email="' + esc(c.email) +
+                  '" data-online="' + (c.online ? 1 : 0) + '" data-lastseen="' + (c.last_seen_ms || 0) + '">' +
+                '<div class="avatar-wrap">' +
+                  '<div class="avatar" style="background:' + colorFor(c.id) + '">' + esc(initials(c.name)) + '</div>' +
+                  '<span class="presence-dot' + (c.online ? " online" : "") + '" title="' + presTitle + '"></span>' +
+                '</div>' +
+                '<div class="flex-grow-1" style="min-width:0">' +
+                  '<div class="d-flex justify-content-between align-items-center">' +
+                    '<span class="conv-name text-truncate">' + esc(c.name) + '</span>' +
+                    '<span class="conv-time ms-2">' + listTime(c.last_at_ms) + '</span></div>' +
+                  '<div class="d-flex justify-content-between align-items-center">' +
+                    '<span class="conv-preview">' + esc(preview) + '</span>' +
+                    (c.unread ? '<span class="badge rounded-pill bg-danger ms-2">' + c.unread + '</span>' : '') +
+                  '</div>' +
+                '</div>' +
+              '</button>';
+        }).join("");
+        Array.prototype.forEach.call(convList.querySelectorAll(".conv-item"), function (el) {
+            el.addEventListener("click", function () {
+                openConversation(parseInt(el.dataset.id, 10), el.dataset.name, el.dataset.email,
+                    el.dataset.online === "1", parseInt(el.dataset.lastseen, 10) || 0);
+            });
+        });
+    }
+
+    function loadList() {
+        fetch(URL_LIST, { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                conversations = d.conversations || [];
+                var unread = conversations.reduce(function (n, c) { return n + (c.unread || 0); }, 0);
+                listStatus.textContent = conversations.length + (unread ? " · " + unread + " unread" : "");
+                renderList();
+            }).catch(function () {});
+    }
+
+    /* ---------- Thread ---------- */
+    function setHeader(a) {
+        document.getElementById("thName").textContent = a.name;
+        document.getElementById("thEmail").textContent = a.email;
+        var av = document.getElementById("thAvatar");
+        av.textContent = initials(a.name); av.style.background = colorFor(a.id);
+        document.getElementById("thDot").className = "presence-dot" + (a.online ? " online" : "");
+        var pres = document.getElementById("thPresence");
+        pres.className = "thread-presence" + (a.online ? " online" : "");
+        pres.querySelector("span:last-child").textContent = a.online ? "Active now" : (a.last_seen_ms ? "Last seen " + relTime(a.last_seen_ms) : "Offline");
+        document.getElementById("thInactive").classList.toggle("d-none", a.active !== false);
+        threadHeader.classList.remove("d-none");
+        composer.classList.remove("d-none");
+    }
+
+    function tm() { return document.getElementById("threadMessages"); }
+
+    function renderMessage(m) {
+        if (seen[m.id]) return; seen[m.id] = true;
+        if (m.id > lastId) lastId = m.id;
+        var box = tm(); if (!box) return;
+        var day = new Date(m.created_at_ms).toDateString();
+        if (day !== lastDay) {
+            var sep = document.createElement("div");
+            sep.className = "date-sep"; sep.innerHTML = "<span>" + esc(dayLabel(m.created_at_ms)) + "</span>";
+            box.appendChild(sep); lastDay = day; lastSender = null;
+        }
+        var grouped = (m.sender === lastSender);
+        var row = document.createElement("div");
+        row.className = "msg-row " + (m.sender === "admin" ? "admin" : "user") + (grouped ? " grouped" : "");
+        row.dataset.id = m.id;
+        var meta = '<span class="time">' + timeOnly(m.created_at_ms) + "</span>";
+        if (m.sender === "admin") meta += '<span class="tick"><i class="fas fa-check"></i></span>';
+        row.innerHTML = '<div class="msg-col"><div class="bubble">' + esc(m.body) + "</div><div class=\"msg-meta\">" + meta + "</div></div>";
+        box.appendChild(row);
+        lastSender = m.sender;
+    }
+
+    function updateReadReceipts() {
+        var box = tm(); if (!box) return;
+        // Only the most recent admin message shows a tick (cleaner, WhatsApp-style).
+        var els = box.querySelectorAll(".msg-row.admin");
+        for (var i = 0; i < els.length; i++) {
+            var tick = els[i].querySelector(".tick"); if (!tick) continue;
+            if (i === els.length - 1) {
+                tick.style.display = "";
+                var read = parseInt(els[i].dataset.id, 10) <= readUptoId;
+                tick.className = read ? "tick read" : "tick";
+                tick.innerHTML = read ? '<i class="fas fa-check-double"></i>' : '<i class="fas fa-check"></i>';
+            } else {
+                tick.style.display = "none";
+            }
+        }
+    }
+
+    function openConversation(id, name, email, online, lastSeenMs) {
+        current = id; lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+        threadBody.innerHTML = '<div id="threadMessages"></div>' +
+            '<div id="typingRow" class="msg-row user d-none"><div class="msg-col">' +
+            '<div class="bubble typing-bubble"><span></span><span></span><span></span></div></div></div>';
+        setHeader({ id: id, name: name, email: email, online: online, last_seen_ms: lastSeenMs, active: true });
+        updateJump();
+        renderList();
+        loadThread();
+    }
+
+    function loadThread() {
+        if (!current) return;
+        var stick = atBottom(), firstLoad = lastId === 0;
+        fetch(threadUrl(current) + "?since=" + lastId, { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.account) setHeader(d.account);
+                // Header flips to "typing…" while the user is typing (overrides Active/Last seen).
+                if (d.user_typing) {
+                    var ph = document.getElementById("thPresence");
+                    ph.className = "thread-presence online";
+                    ph.querySelector("span:last-child").textContent = "typing…";
+                }
+                var added = 0;
+                (d.messages || []).forEach(function (m) { if (!seen[m.id]) added++; renderMessage(m); });
+                readUptoId = d.read_upto_id || readUptoId;
+                updateReadReceipts();
+                var tr = document.getElementById("typingRow");
+                if (tr) tr.classList.toggle("d-none", !d.user_typing);
+                if (firstLoad || stick) { scrollBottom(); }
+                else if (added) { newCount += added; }
+                updateJump();
+                if (added && !firstLoad) loadList();
+            }).catch(function () {});
+    }
+
+    function sendReply() {
+        var body = replyInput.value.trim();
+        if (!body || !current) return;
+        replyInput.value = ""; replyInput.style.height = "auto";
+        fetch(replyUrl(current), {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
+            body: JSON.stringify({ body: body })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d && d.message) { renderMessage(d.message); updateReadReceipts(); scrollBottom(); loadList(); } })
+            .catch(function () {});
+    }
+
+    document.getElementById("replyForm").addEventListener("submit", function (e) { e.preventDefault(); sendReply(); });
+    replyInput.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } });
+    replyInput.addEventListener("input", function () {
+        replyInput.style.height = "auto"; replyInput.style.height = Math.min(replyInput.scrollHeight, 120) + "px";
+        var now = Date.now();
+        if (current && replyInput.value.trim() && now - lastTypingPing > 3000) {
+            lastTypingPing = now;
+            fetch(typingUrl(current), { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": CSRF } }).catch(function () {});
+        }
+    });
+    search.addEventListener("input", renderList);
+    threadBody.addEventListener("scroll", updateJump);
+    jump.addEventListener("click", function () { scrollBottom(); updateJump(); });
+
+    loadList();
+    setInterval(loadList, 10000);
+    setInterval(function () { loadThread(); }, 4000);
+})();
+</script>
+{% endblock %}

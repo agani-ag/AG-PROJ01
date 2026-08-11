@@ -9,6 +9,7 @@ def account_dict(account):
         "id": str(account.id),
         "name": account.name,
         "email": account.email,
+        "can_manage_links": account.can_manage_links,
     }
 
 
@@ -19,6 +20,8 @@ def link_dict(link):
         "url": link.url,
         "description": link.description or "",
         "icon": link.icon or "",
+        # The app shows a remove (✕) only on links the user added themselves.
+        "can_remove": link.created_by_user,
     }
 
 
@@ -65,3 +68,13 @@ def reminders_for(account):
         .select_related("link")
     )
     return [reminder_dict(r) for r in qs]
+
+
+def chat_message_dict(m):
+    return {
+        "id": m.id,
+        "sender": m.sender,  # "user" | "admin"
+        "body": m.body,
+        "created_at": m.created_at.isoformat(),
+        "created_at_ms": int(m.created_at.timestamp() * 1000),
+    }

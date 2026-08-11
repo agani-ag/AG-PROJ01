@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Chat with {{ account.name }}{% endblock %}
+
+{% block content %}
+<div class="row align-items-center mb-3">
+    <div class="col">
+        <h2 class="mb-0">{{ account.name }}</h2>
+        <small class="text-muted">{{ account.email }}</small>
+    </div>
+    <div class="col-auto"><a href="{% url 'mobile_chats' %}" class="btn btn-secondary btn-sm">Back to chats</a></div>
+</div>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body" style="max-height:60vh; overflow-y:auto;" id="thread">
+        {% for m in msgs %}
+        <div class="d-flex mb-2 {% if m.sender == 'admin' %}justify-content-end{% else %}justify-content-start{% endif %}">
+            <div class="p-2 rounded-3 {% if m.sender == 'admin' %}bg-primary text-white{% else %}bg-light border{% endif %}" style="max-width:75%;">
+                <div style="white-space:pre-wrap; word-break:break-word;">{{ m.body }}</div>
+                <div class="small {% if m.sender == 'admin' %}text-white-50{% else %}text-muted{% endif %} text-end mt-1">
+                    {{ m.sender|title }} · {{ m.created_at|date:"d M, H:i" }}
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0">No messages yet.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<form method="post" action="{% url 'mobile_chat_detail' account.id %}">
+    {% csrf_token %}
+    <div class="input-group">
+        <textarea name="body" class="form-control" rows="2" placeholder="Type a reply…" required></textarea>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i>Send</button>
+    </div>
+    <div class="form-text">Your reply is sent to {{ account.name }}'s devices as a notification.</div>
+</form>
+
+<script>
+    // Jump to the latest message on load.
+    var t = document.getElementById("thread");
+    if (t) t.scrollTop = t.scrollHeight;
+</script>
+{% endblock %}

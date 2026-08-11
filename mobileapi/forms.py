@@ -24,11 +24,11 @@ class AppAccountForm(forms.ModelForm):
 
     class Meta:
         model = AppAccount
-        fields = ["name", "email", "is_active"]
+        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("is_active",))
+        _bootstrap(self.fields, checkbox_fields=("is_active", "admin_chat_mode", "can_manage_links"))
 
     def clean_new_password(self):
         pw = self.cleaned_data.get("new_password")

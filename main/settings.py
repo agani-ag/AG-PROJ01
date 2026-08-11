@@ -29,6 +29,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+# Standard setting for running behind a TLS-terminating proxy (Cloudflare tunnel in dev,
+# PythonAnywhere in prod): trust X-Forwarded-Proto so request.scheme is "https". Without it,
+# the chat page (loaded over https in the WebView) fails CSRF when POSTing a message, because
+# Django thinks the request is http. Verified on the emulator.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 # Application definition
 

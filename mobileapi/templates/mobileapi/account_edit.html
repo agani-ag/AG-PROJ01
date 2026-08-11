@@ -34,6 +34,16 @@
                         {{ form.is_active }}
                         <label class="form-check-label ms-1">Active</label>
                     </div>
+                    <div class="form-check mt-2">
+                        {{ form.admin_chat_mode }}
+                        <label class="form-check-label ms-1">Admin chat mode (support agent)</label>
+                        <div class="form-text">Their app Chat opens the support inbox (all users) instead of a personal chat.</div>
+                    </div>
+                    <div class="form-check mt-2">
+                        {{ form.can_manage_links }}
+                        <label class="form-check-label ms-1">Can manage links</label>
+                        <div class="form-text">Lets the user add/remove their own links from the app.</div>
+                    </div>
                 </div>
             </div>
 

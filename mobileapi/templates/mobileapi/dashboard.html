@@ -71,6 +71,20 @@
             </div></div>
         </a>
     </div>
+    <div class="col-6 col-md-3">
+        <a href="{% url 'mobile_chats' %}" class="text-decoration-none">
+            <div class="card shadow-sm text-center h-100"><div class="card-body">
+                <div class="display-6 fw-bold position-relative d-inline-block">
+                    <i class="fas fa-comments"></i>
+                    {% if chat_unread_count %}
+                    <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle" style="font-size:.5em;">{{ chat_unread_count }}</span>
+                    {% endif %}
+                </div>
+                <div class="text-muted">Chats</div>
+                {% if chat_unread_count %}<small class="text-danger">{{ chat_unread_count }} unread</small>{% endif %}
+            </div></div>
+        </a>
+    </div>
 </div>
 
 <div class="row g-4">

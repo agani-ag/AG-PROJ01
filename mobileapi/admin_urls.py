@@ -32,4 +32,12 @@ urlpatterns = [
     path("reminders/<int:reminder_id>/delete", v.reminder_delete, name="mobile_reminder_delete"),
     path("reminders/<int:reminder_id>/toggle", v.reminder_toggle, name="mobile_reminder_toggle"),
     path("reminders/<int:reminder_id>/receipts", v.reminder_receipts, name="mobile_reminder_receipts"),
+
+    # Chats (user ↔ admin)
+    path("chats", v.chats, name="mobile_chats"),
+    path("chats/list.json", v.chat_list_json, name="mobile_chat_list_json"),
+    path("chats/<int:account_id>/messages.json", v.chat_thread_json, name="mobile_chat_thread_json"),
+    path("chats/<int:account_id>/reply", v.chat_reply_json, name="mobile_chat_reply_json"),
+    path("chats/<int:account_id>/typing", v.chat_typing_admin, name="mobile_chat_typing"),
+    path("chats/<int:account_id>", v.chat_detail, name="mobile_chat_detail"),
 ]

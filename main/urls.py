@@ -25,6 +25,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('app/v1/', include('mobileapi.urls')),          # mobile JSON API
     path('mobile/', include('mobileapi.admin_urls')),    # mobile HTML admin (superuser)
+    path('chat/', include('mobileapi.chat_urls')),       # user↔admin web chat (opened in the app WebView)
     # Public privacy policy page — use this URL in Play Console → App content.
     path('privacy/', mobile_views.privacy_policy, name='privacy_policy'),
     path('', include('syncup.urls')),

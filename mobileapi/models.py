@@ -25,7 +25,26 @@ class AppAccount(models.Model):
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=128)  # PBKDF2 hash, never plaintext
     is_active = models.BooleanField(default=True)
+    # Support agent: when on, this user's in-app Chat opens the full support inbox (all users'
+    # conversations, excluding their own) and their replies appear to end users as "Admin".
+    admin_chat_mode = models.BooleanField(
+        default=False,
+        help_text="Support agent — their app Chat opens the admin inbox instead of a personal chat.",
+    )
+    can_manage_links = models.BooleanField(
+        default=False,
+        help_text="Lets the user add/remove their own links from the app (only links they added).",
+    )
     last_login = models.DateTimeField(null=True, blank=True)
+    # Last time this user's app polled the chat screen — used to skip the admin-reply push
+    # while they're actively looking at the chat.
+    chat_last_seen_at = models.DateTimeField(null=True, blank=True)
+    # Short-lived "user is typing" signal (set a few seconds ahead while they type).
+    chat_typing_until = models.DateTimeField(null=True, blank=True)
+    # Short-lived "admin is typing" signal (shown to the user in the app chat).
+    chat_admin_typing_until = models.DateTimeField(null=True, blank=True)
+    # Last time the admin had THIS user's chat open in the console (drives the "admin active" dot).
+    admin_last_seen_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,6 +56,27 @@ class AppAccount(models.Model):
 
     def check_password(self, raw_password):
         return check_password(raw_password, self.password)
+
+    def is_active_on_chat(self, window_seconds=15):
+        """True if the user's chat screen polled within the last `window_seconds` (i.e. they're
+        currently looking at the chat), so an admin reply doesn't need a push notification."""
+        if not self.chat_last_seen_at:
+            return False
+        return (timezone.now() - self.chat_last_seen_at).total_seconds() < window_seconds
+
+    def is_typing(self):
+        """True while the user is actively typing (their app pinged within the TTL)."""
+        return bool(self.chat_typing_until and self.chat_typing_until > timezone.now())
+
+    def is_admin_typing(self):
+        """True while the admin is actively typing a reply (shown to the user in the app)."""
+        return bool(self.chat_admin_typing_until and self.chat_admin_typing_until > timezone.now())
+
+    def is_admin_online(self, window_seconds=30):
+        """True if the admin currently has this user's chat open in the console."""
+        if not self.admin_last_seen_at:
+            return False
+        return (timezone.now() - self.admin_last_seen_at).total_seconds() < window_seconds
 
     def save(self, *args, **kwargs):
         if self.email:
@@ -114,6 +154,8 @@ class AppLink(models.Model):
     description = models.CharField(max_length=200, null=True, blank=True)
     icon = models.CharField(max_length=50, null=True, blank=True, choices=APP_ICON_CHOICES)
     is_active = models.BooleanField(default=True)
+    # True when the end user added it themselves (self-manage) — only these are user-removable.
+    created_by_user = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -312,3 +354,35 @@ class AppReminderReceipt(models.Model):
 
     def __str__(self):
         return f"{self.reminder_id} · {self.device_id[:8]}…"
+
+
+CHAT_SENDER_CHOICES = [
+    ("user", "User"),
+    ("admin", "Admin"),
+]
+
+
+class AppChatMessage(models.Model):
+    """One message in the private user↔admin chat thread.
+
+    Each account has a single conversation with "the admin" (support). `sender` says who wrote it.
+    The app polls/sends via a web chat page; the admin reads and replies from /mobile/chats.
+    """
+
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.CASCADE, related_name="chat_messages",
+    )
+    sender = models.CharField(max_length=10, choices=CHAT_SENDER_CHOICES)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_by_user = models.BooleanField(default=False)
+    read_by_admin = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["account", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.account.email} · {self.sender} · {self.body[:24]}"

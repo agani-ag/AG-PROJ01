@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <meta name="csrf" content="{{ csrf_token }}">
+    <title>Support Inbox</title>
+    <style>
+        :root {
+            --bg: #f6f8fb; --surface: #ffffff; --border: #e2e8f0; --text: #0f172a; --muted: #5b6472;
+            --me-bg: #2563eb; --me-text: #fff; --them-bg: #fff; --them-text: #0f172a; --bar: #fff; --sep: rgba(0,0,0,.06);
+        }
+        @media (prefers-color-scheme: dark) {
+            :root { --bg:#0b0f17; --surface:#131a26; --border:#223049; --text:#e6eaf2; --muted:#9aa4b2;
+                --them-bg:#1b2536; --them-text:#e6eaf2; --bar:#0f1622; --sep:rgba(255,255,255,.08); }
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { margin: 0; height: 100%; }
+        body { background: var(--bg); color: var(--text); font-family: -apple-system, Roboto, "Segoe UI", sans-serif; }
+        .view { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+        .view.hidden { display: none; }
+
+        header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bar);
+            border-bottom: 1px solid var(--border); }
+        header .title { font-weight: 700; font-size: 17px; }
+        header small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); min-height: 15px; }
+        header small.on { color: #16a34a; font-weight: 600; }
+        .back-btn { border: 0; background: transparent; color: var(--text); font-size: 22px; padding: 0 6px 0 0; cursor: pointer; }
+
+        .avatar { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; color: #fff; flex: 0 0 42px; }
+        .avatar-wrap { position: relative; flex: 0 0 42px; }
+        .presence-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%;
+            background: #9ca3af; border: 2.5px solid var(--bar); }
+        .presence-dot.online { background: #22c55e; }
+
+        /* List */
+        .search { padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bar); }
+        .search input { width: 100%; border: 1px solid var(--border); border-radius: 20px; padding: 9px 14px; font-size: 15px;
+            background: var(--surface); color: var(--text); }
+        .conv-list { flex: 1; overflow-y: auto; }
+        .conv-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 0; width: 100%;
+            background: transparent; border-bottom: 1px solid var(--sep); text-align: left; cursor: pointer; }
+        .conv-item:active { background: var(--sep); }
+        .conv-main { flex: 1; min-width: 0; }
+        .conv-top { display: flex; justify-content: space-between; }
+        .conv-name { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .conv-time { font-size: 11px; color: var(--muted); flex-shrink: 0; margin-left: 8px; }
+        .conv-prev { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .conv-item.unread .conv-name, .conv-item.unread .conv-prev { font-weight: 700; color: var(--text); }
+        .unread-badge { background: #ef4444; color: #fff; border-radius: 999px; font-size: 11px; min-width: 20px; height: 20px;
+            display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; margin-left: 8px; }
+        .list-empty { color: var(--muted); text-align: center; margin-top: 40px; font-size: 14px; }
+
+        /* Thread */
+        #thread { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; }
+        #messages { margin-top: auto; }
+        .date-sep { text-align: center; margin: 12px 0 8px; }
+        .date-sep span { background: var(--sep); color: var(--muted); font-size: 11.5px; padding: 3px 12px; border-radius: 999px; }
+        .row { display: flex; margin-top: 10px; }
+        .row.grouped { margin-top: 3px; }
+        .row.me { justify-content: flex-end; }
+        .row.them { justify-content: flex-start; }
+        .col { display: flex; flex-direction: column; max-width: 80%; }
+        .row.me .col { align-items: flex-end; }
+        .row.them .col { align-items: flex-start; }
+        .bubble { padding: 8px 13px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; line-height: 1.38; font-size: 15px; }
+        .me .bubble { background: var(--me-bg); color: var(--me-text); border-bottom-right-radius: 5px; }
+        .them .bubble { background: var(--them-bg); color: var(--them-text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+        .meta { font-size: 11px; color: var(--muted); margin-top: 2px; display: flex; gap: 4px; align-items: center; }
+        .meta .tick { font-weight: 700; color: var(--muted); }
+        .meta .tick.read { color: var(--me-bg); }
+        .typing-bubble { display: inline-flex !important; gap: 5px; align-items: center; padding: 11px 14px !important; }
+        .typing-bubble span { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); display: inline-block; animation: tb 1.2s infinite; }
+        .typing-bubble span:nth-child(2) { animation-delay: .2s; }
+        .typing-bubble span:nth-child(3) { animation-delay: .4s; }
+        @keyframes tb { 0%,60%,100% { opacity: .3; transform: translateY(0);} 30% { opacity: 1; transform: translateY(-3px);} }
+        .jump { position: fixed; right: 14px; bottom: 82px; z-index: 5; border: 0; border-radius: 999px; background: var(--me-bg);
+            color: #fff; padding: 8px 14px; box-shadow: 0 4px 12px rgba(0,0,0,.28); display: none; align-items: center; gap: 6px; font-size: 13px; }
+        .jump.show { display: inline-flex; }
+        form.composer { display: flex; gap: 8px; padding: 10px; background: var(--bar); border-top: 1px solid var(--border);
+            padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+        form.composer textarea { flex: 1; resize: none; border: 1px solid var(--border); border-radius: 20px; padding: 10px 14px;
+            font-size: 15px; font-family: inherit; background: var(--surface); color: var(--text); max-height: 120px; }
+        form.composer button { border: 0; background: var(--me-bg); color: #fff; border-radius: 50%; width: 44px; height: 44px;
+            font-size: 18px; flex: 0 0 44px; }
+    </style>
+</head>
+<body>
+    <!-- LIST -->
+    <div id="listView" class="view">
+        <header>
+            <div>
+                <div class="title">Support inbox</div>
+                <small id="listStatus"></small>
+            </div>
+        </header>
+        <div class="search"><input id="search" placeholder="Search name or email…" autocomplete="off"></div>
+        <div id="convList" class="conv-list"></div>
+    </div>
+
+    <!-- THREAD -->
+    <div id="threadView" class="view hidden">
+        <header>
+            <button class="back-btn" id="backBtn" title="Back">&#8592;</button>
+            <div class="avatar-wrap">
+                <div id="thAvatar" class="avatar"></div>
+                <span id="thDot" class="presence-dot"></span>
+            </div>
+            <div class="flex-grow-1" style="min-width:0">
+                <div class="title" id="thName"></div>
+                <small id="thPresence"></small>
+            </div>
+        </header>
+        <div id="thread">
+            <div id="messages"></div>
+            <div id="typingRow" class="row them" style="display:none"><div class="col"><div class="bubble typing-bubble"><span></span><span></span><span></span></div></div></div>
+        </div>
+        <button id="jump" class="jump" type="button">&#8595; <span id="jumpCount"></span></button>
+        <form class="composer" id="composer">
+            <textarea id="input" rows="1" placeholder="Type a reply…" autocomplete="off"></textarea>
+            <button type="submit">&#10148;</button>
+        </form>
+    </div>
+
+    <script>
+        var CSRF = document.querySelector('meta[name="csrf"]').content;
+        var LIST_URL = "{% url 'chat_inbox_list' %}";
+        var THREAD_URL = "{% url 'chat_inbox_thread' 0 %}";
+        var REPLY_URL = "{% url 'chat_inbox_reply' 0 %}";
+        var TYPING_URL = "{% url 'chat_inbox_typing' 0 %}";
+        function threadUrl(id) { return THREAD_URL.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
+        function replyUrl(id) { return REPLY_URL.replace(/\/0\/reply$/, "/" + id + "/reply"); }
+        function typingUrl(id) { return TYPING_URL.replace(/\/0\/typing$/, "/" + id + "/typing"); }
+
+        var COLORS = ["#2563eb","#0d9488","#7c3aed","#db2777","#ea580c","#059669","#4f46e5","#c026d3"];
+        var listView = document.getElementById("listView"), threadView = document.getElementById("threadView");
+        var convList = document.getElementById("convList"), search = document.getElementById("search");
+        var listStatus = document.getElementById("listStatus");
+        var thread = document.getElementById("thread"), messages = document.getElementById("messages");
+        var typingRow = document.getElementById("typingRow"), input = document.getElementById("input");
+        var thName = document.getElementById("thName"), thPresence = document.getElementById("thPresence");
+        var thAvatar = document.getElementById("thAvatar"), thDot = document.getElementById("thDot");
+        var jump = document.getElementById("jump"), jumpCount = document.getElementById("jumpCount");
+
+        var conversations = [], current = null, lastId = 0, seen = {}, readUptoId = 0;
+        var lastDay = null, lastSender = null, lastTyping = 0, newCount = 0;
+
+        function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+        function initials(n) { return (n || "?").trim().charAt(0).toUpperCase(); }
+        function colorFor(id) { return COLORS[(id || 0) % COLORS.length]; }
+        function timeOnly(ms) { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+        function relTime(ms) { if (!ms) return ""; var s = Date.now() - ms, d = new Date(ms);
+            if (s < 60000) return "just now"; if (s < 3600000) return Math.floor(s/60000) + "m ago";
+            if (s < 86400000) return Math.floor(s/3600000) + "h ago"; return d.toLocaleDateString([], {day:"2-digit",month:"short"}); }
+        function listTime(ms) { if (!ms) return ""; var s = Date.now() - ms, d = new Date(ms);
+            if (s < 3600000) return Math.max(1, Math.floor(s/60000)) + "m";
+            if (s < 86400000) return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+            return d.toLocaleDateString([], {day:"2-digit",month:"short"}); }
+        function dayLabel(ms) { var d = new Date(ms), t = new Date(), same = function(a,b){return a.toDateString()===b.toDateString();};
+            if (same(d,t)) return "Today"; if (same(d, new Date(t.getTime()-86400000))) return "Yesterday";
+            return d.toLocaleDateString([], {weekday:"short",day:"2-digit",month:"short",year:"numeric"}); }
+        function atBottom() { return thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80; }
+        function scrollBottom() { thread.scrollTop = thread.scrollHeight; newCount = 0; }
+        function updateJump() { if (atBottom()) { jump.classList.remove("show"); newCount = 0; jumpCount.textContent = ""; }
+            else { jump.classList.add("show"); jumpCount.textContent = newCount ? newCount : ""; } }
+
+        /* ---- list ---- */
+        function renderList() {
+            var q = (search.value || "").toLowerCase();
+            var items = conversations.filter(function (c) { return !q || (c.name||"").toLowerCase().indexOf(q)>=0 || (c.email||"").toLowerCase().indexOf(q)>=0; });
+            if (!items.length) { convList.innerHTML = '<div class="list-empty">' + (q ? "No matches" : "No conversations yet") + "</div>"; return; }
+            convList.innerHTML = items.map(function (c) {
+                var prev = (c.last_sender === "admin" ? "You: " : "") + (c.last_body || "");
+                return '<button class="conv-item' + (c.unread ? " unread" : "") + '" data-id="' + c.id + '" data-name="' + esc(c.name) + '" data-online="' + (c.online?1:0) + '" data-lastseen="' + (c.last_seen_ms||0) + '">' +
+                    '<div class="avatar-wrap"><div class="avatar" style="background:' + colorFor(c.id) + '">' + esc(initials(c.name)) + '</div>' +
+                    '<span class="presence-dot' + (c.online?" online":"") + '"></span></div>' +
+                    '<div class="conv-main"><div class="conv-top"><span class="conv-name">' + esc(c.name) + '</span><span class="conv-time">' + listTime(c.last_at_ms) + '</span></div>' +
+                    '<div class="conv-top"><span class="conv-prev">' + esc(prev) + '</span>' + (c.unread ? '<span class="unread-badge">' + c.unread + '</span>' : '') + '</div></div></button>';
+            }).join("");
+            Array.prototype.forEach.call(convList.querySelectorAll(".conv-item"), function (el) {
+                el.addEventListener("click", function () {
+                    openThread(parseInt(el.dataset.id,10), el.dataset.name, el.dataset.online === "1", parseInt(el.dataset.lastseen,10)||0);
+                });
+            });
+        }
+        function loadList() {
+            fetch(LIST_URL, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (d) {
+                conversations = d.conversations || [];
+                var unread = conversations.reduce(function (n, c) { return n + (c.unread||0); }, 0);
+                listStatus.textContent = conversations.length + " conversation" + (conversations.length===1?"":"s") + (unread ? " · " + unread + " unread" : "");
+                renderList();
+            }).catch(function () {});
+        }
+
+        /* ---- thread ---- */
+        function setPresence(a, userTyping) {
+            thName.textContent = a.name; thAvatar.textContent = initials(a.name); thAvatar.style.background = colorFor(a.id);
+            thDot.className = "presence-dot" + (a.online ? " online" : "");
+            if (userTyping) { thPresence.textContent = "typing…"; thPresence.className = "on"; }
+            else if (a.online) { thPresence.textContent = "Active now"; thPresence.className = "on"; }
+            else { thPresence.textContent = a.last_seen_ms ? "Last seen " + relTime(a.last_seen_ms) : "Offline"; thPresence.className = ""; }
+        }
+        function renderMessage(m) {
+            if (seen[m.id]) return; seen[m.id] = true;
+            if (m.id > lastId) lastId = m.id;
+            var day = new Date(m.created_at_ms).toDateString();
+            if (day !== lastDay) { var sep = document.createElement("div"); sep.className = "date-sep";
+                sep.innerHTML = "<span>" + esc(dayLabel(m.created_at_ms)) + "</span>"; messages.appendChild(sep); lastDay = day; lastSender = null; }
+            var grouped = (m.sender === lastSender);
+            var row = document.createElement("div");
+            // In the inbox, the agent's own ("admin") messages are on the right ("me").
+            row.className = "row " + (m.sender === "admin" ? "me" : "them") + (grouped ? " grouped" : "");
+            row.dataset.id = m.id; row.dataset.sender = m.sender;
+            var meta = '<span class="t">' + timeOnly(m.created_at_ms) + "</span>";
+            if (m.sender === "admin") meta += '<span class="tick">&#10003;</span>';
+            row.innerHTML = '<div class="col"><div class="bubble">' + esc(m.body) + '</div><div class="meta">' + meta + "</div></div>";
+            messages.appendChild(row); lastSender = m.sender;
+        }
+        function updateReceipts() {
+            var els = messages.querySelectorAll('.row.me');
+            for (var i = 0; i < els.length; i++) {
+                var tick = els[i].querySelector(".tick"); if (!tick) continue;
+                if (i === els.length - 1) { tick.style.display = "";
+                    var read = parseInt(els[i].dataset.id,10) <= readUptoId;
+                    tick.className = read ? "tick read" : "tick"; tick.innerHTML = read ? "&#10003;&#10003;" : "&#10003;";
+                } else { tick.style.display = "none"; }
+            }
+        }
+        function openThread(id, name, online, lastSeen) {
+            current = id; lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+            messages.innerHTML = ""; typingRow.style.display = "none";
+            setPresence({ id: id, name: name, online: online, last_seen_ms: lastSeen }, false);
+            listView.classList.add("hidden"); threadView.classList.remove("hidden");
+            updateJump(); loadThread();
+        }
+        function loadThread() {
+            if (!current || threadView.classList.contains("hidden")) return;
+            var stick = atBottom(), firstLoad = lastId === 0;
+            fetch(threadUrl(current) + "?since=" + lastId, { credentials: "same-origin" })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.account) setPresence(d.account, d.user_typing);
+                    var added = 0;
+                    (d.messages || []).forEach(function (m) { if (!seen[m.id]) added++; renderMessage(m); });
+                    readUptoId = d.read_upto_id || readUptoId; updateReceipts();
+                    typingRow.style.display = d.user_typing ? "flex" : "none";
+                    if (firstLoad || stick) scrollBottom(); else if (added) newCount += added;
+                    updateJump();
+                    if (added && !firstLoad) loadList();
+                }).catch(function () {});
+        }
+        function sendReply() {
+            var body = input.value.trim(); if (!body || !current) return;
+            input.value = ""; input.style.height = "auto";
+            fetch(replyUrl(current), { method: "POST", credentials: "same-origin",
+                headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF }, body: JSON.stringify({ body: body }) })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d && d.message) { renderMessage(d.message); updateReceipts(); scrollBottom(); loadList(); } })
+                .catch(function () {});
+        }
+
+        document.getElementById("backBtn").addEventListener("click", function () {
+            threadView.classList.add("hidden"); listView.classList.remove("hidden"); current = null; loadList();
+        });
+        document.getElementById("composer").addEventListener("submit", function (e) { e.preventDefault(); sendReply(); });
+        input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } });
+        input.addEventListener("input", function () {
+            input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px";
+            var now = Date.now();
+            if (current && input.value.trim() && now - lastTyping > 3000) {
+                lastTyping = now;
+                fetch(typingUrl(current), { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": CSRF } }).catch(function () {});
+            }
+        });
+        search.addEventListener("input", renderList);
+        thread.addEventListener("scroll", updateJump);
+        jump.addEventListener("click", function () { scrollBottom(); updateJump(); });
+
+        loadList();
+        setInterval(loadList, 8000);
+        setInterval(loadThread, 4000);
+    </script>
+</body>
+</html>

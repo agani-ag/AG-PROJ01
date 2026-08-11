@@ -118,11 +118,17 @@
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="mobileAppDropdown">
                         <li><a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a></li>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Accounts</h6>
                         <li><a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a></li>
                         <li><a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_chats' %}">Messages</a></li>
                         <div class="dropdown-divider"></div>
-                        <li><a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a></li>
+                        <h6 class="dropdown-header">Notify</h6>
                         <li><a class="dropdown-item" href="{% url 'mobile_reminders' %}">Reminders</a></li>
+                        <li><a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a></li>
+                        <div class="dropdown-divider"></div>
+                        <h6 class="dropdown-header">Config</h6>
                         <li><a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a></li>
                         <li><a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config</a></li>
                         <div class="dropdown-divider"></div>

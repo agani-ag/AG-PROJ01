@@ -4,18 +4,26 @@ Custom HTML admin screens for the SyncUp mobile API (superuser-only).
 Function-based views + Bootstrap templates, matching the existing syncup app.
 Mounted at /mobile/ (see admin_urls.py). Separate from the JSON API (/app/v1/).
 """
+import json
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.db.models import Count, Max, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_POST
+
+from .serializers import chat_message_dict
 
 from . import fcm
 from . import remoteconfig as rc
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm, ReminderForm
 from .models import (
     AppAccount,
+    AppChatMessage,
     AppConfig,
     AppDevice,
     AppLink,
@@ -40,6 +48,7 @@ def dashboard(request):
         "recent_accounts": AppAccount.objects.order_by("-created_at")[:5],
         "recent_notifications": AppNotificationLog.objects.all()[:5],
         "fcm_configured": fcm.is_configured(),
+        "chat_unread_count": AppChatMessage.objects.filter(sender="user", read_by_admin=False).count(),
     }
     return render(request, "mobileapi/dashboard.html", ctx)
 
@@ -373,3 +382,149 @@ def reminder_receipts(request, reminder_id):
             "fired_at": r.fired_at,
         })
     return render(request, "mobileapi/reminder_receipts.html", {"reminder": reminder, "rows": rows})
+
+
+# ------------------------------------------------------------------ Chats (user ↔ admin)
+def _notify_chat_reply(account, body):
+    """Push an admin reply to the user's devices — UNLESS they're currently on the chat screen
+    (their chat polled within the last ~15s), in which case the live poll will show it."""
+    if account.is_active_on_chat():
+        return
+    tokens = list(
+        AppDevice.objects.filter(account=account, is_active=True)
+        .exclude(fcm_token="").exclude(fcm_token__isnull=True)
+        .values_list("fcm_token", flat=True)
+    )
+    if tokens and fcm.is_configured():
+        try:
+            fcm.send(tokens, "New message from Admin", body[:120], data={"type": "chat"})
+        except Exception:
+            pass  # message is saved regardless; the app picks it up on next poll/open
+
+
+@superuser_required
+def chats(request):
+    """List every account that has a chat thread, newest activity first, with unread counts."""
+    accounts = (
+        AppAccount.objects.filter(chat_messages__isnull=False).distinct()
+        .annotate(
+            last_message_at=Max("chat_messages__created_at"),
+            unread=Count(
+                "chat_messages",
+                filter=Q(chat_messages__sender="user", chat_messages__read_by_admin=False),
+            ),
+        )
+        .order_by("-last_message_at")
+    )
+    return render(request, "mobileapi/chats.html", {"accounts": accounts})
+
+
+@superuser_required
+def chat_detail(request, account_id):
+    """View a single account's thread and reply. A reply pushes an FCM nudge to their devices."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    if request.method == "POST":
+        body = (request.POST.get("body") or "").strip()
+        if body:
+            AppChatMessage.objects.create(
+                account=account, sender="admin", body=body[:4000],
+                read_by_admin=True, read_by_user=False,
+            )
+            _notify_chat_reply(account, body)
+            messages.success(request, "Reply sent.")
+        return redirect("mobile_chat_detail", account_id=account.id)
+    # Opening the thread marks the user's messages as read by admin.
+    AppChatMessage.objects.filter(account=account, sender="user", read_by_admin=False).update(read_by_admin=True)
+    return render(request, "mobileapi/chat_detail.html", {
+        "account": account,
+        "msgs": account.chat_messages.all(),
+    })
+
+
+# --- JSON endpoints powering the live inbox (chats.html) ---
+@superuser_required
+def chat_list_json(request):
+    """Conversation list: accounts with a thread, newest first, with unread count + last preview."""
+    accounts = (
+        AppAccount.objects.filter(chat_messages__isnull=False).distinct()
+        .annotate(
+            last_message_at=Max("chat_messages__created_at"),
+            unread=Count(
+                "chat_messages",
+                filter=Q(chat_messages__sender="user", chat_messages__read_by_admin=False),
+            ),
+        )
+        .order_by("-last_message_at")
+    )
+    data = []
+    for a in accounts:
+        last = a.chat_messages.order_by("-created_at").first()
+        data.append({
+            "id": a.id,
+            "name": a.name,
+            "email": a.email,
+            "unread": a.unread,
+            "last_body": (last.body[:90] if last else ""),
+            "last_sender": (last.sender if last else ""),
+            "last_at_ms": int(a.last_message_at.timestamp() * 1000) if a.last_message_at else 0,
+            # Teams-style presence (based on the user's chat polling):
+            "online": a.is_active_on_chat(30),
+            "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
+        })
+    return JsonResponse({"conversations": data})
+
+
+@superuser_required
+def chat_thread_json(request, account_id):
+    """Messages for a thread (optionally since a given id for polling). Marks user msgs read."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    qs = account.chat_messages.all()
+    since = request.GET.get("since")
+    if since and since.isdigit():
+        qs = qs.filter(id__gt=int(since))
+    rows = [chat_message_dict(m) for m in qs]
+    AppChatMessage.objects.filter(account=account, sender="user", read_by_admin=False).update(read_by_admin=True)
+    # The admin is viewing this thread → stamp presence (shows the user an "admin active" dot).
+    AppAccount.objects.filter(pk=account.pk).update(admin_last_seen_at=timezone.now())
+    # Highest admin message the user has already read → drives read receipts (✓ vs ✓✓).
+    read_upto = (
+        AppChatMessage.objects.filter(account=account, sender="admin", read_by_user=True)
+        .aggregate(m=Max("id"))["m"] or 0
+    )
+    return JsonResponse({
+        "account": {
+            "id": account.id, "name": account.name, "email": account.email,
+            "active": account.is_active,
+            "online": account.is_active_on_chat(30),
+            "last_seen_ms": int(account.chat_last_seen_at.timestamp() * 1000) if account.chat_last_seen_at else 0,
+        },
+        "messages": rows,
+        "read_upto_id": read_upto,
+        "user_typing": account.is_typing(),
+    })
+
+
+@superuser_required
+@require_POST
+def chat_reply_json(request, account_id):
+    """AJAX reply: create an admin message, push FCM, return the new message."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    try:
+        body = (json.loads(request.body or b"{}").get("body") or "").strip()
+    except (ValueError, TypeError):
+        body = ""
+    if not body:
+        return JsonResponse({"error": "empty"}, status=400)
+    msg = AppChatMessage.objects.create(
+        account=account, sender="admin", body=body[:4000], read_by_admin=True, read_by_user=False,
+    )
+    _notify_chat_reply(account, body)
+    return JsonResponse({"ok": True, "message": chat_message_dict(msg)})
+
+
+@superuser_required
+@require_POST
+def chat_typing_admin(request, account_id):
+    """Admin is typing a reply — set a short-lived flag the user's app shows as 'typing…'."""
+    AppAccount.objects.filter(id=account_id).update(chat_admin_typing_until=timezone.now() + timedelta(seconds=6))
+    return JsonResponse({"ok": True})

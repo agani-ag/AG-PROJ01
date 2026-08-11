@@ -14,7 +14,16 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .auth import app_token_required, json_body
-from .models import AppAccount, AppAuthToken, AppConfig, AppDevice, AppReminder, AppReminderReceipt
+from .models import (
+    AppAccount,
+    AppAuthToken,
+    AppChatMessage,
+    AppConfig,
+    AppDevice,
+    AppLink,
+    AppReminder,
+    AppReminderReceipt,
+)
 from .serializers import account_dict, links_for, reminders_for
 
 # Ultimate fallbacks if the (DB-managed) privacy fields are ever blank.
@@ -97,6 +106,47 @@ def logout(request):
 @require_http_methods(["GET"])
 @app_token_required
 def account_urls(request):
+    return JsonResponse(links_for(request.account), safe=False)
+
+
+# --------------------------------------------------------------------------- #
+# 3a. Self-managed links (only when the account has can_manage_links)
+# --------------------------------------------------------------------------- #
+@csrf_exempt
+@require_http_methods(["POST"])
+@app_token_required
+def account_link_add(request):
+    """Add a link the user created themselves. Returns the refreshed link list."""
+    if not request.account.can_manage_links:
+        return _bad("You don't have permission to manage links", status=403)
+    data = json_body(request)
+    if data is None:
+        return _bad("Invalid JSON")
+    title = (data.get("title") or "").strip()
+    url = (data.get("url") or "").strip()
+    description = (data.get("description") or "").strip()
+    if not title or not url:
+        return _bad("Title and URL are required")
+    if not url.lower().startswith("https://"):
+        return _bad("URL must start with https:// (the in-app browser blocks non-secure links)")
+    AppLink.objects.create(
+        account=request.account, title=title[:100], url=url[:500],
+        description=(description[:200] or None), created_by_user=True, is_active=True,
+    )
+    return JsonResponse(links_for(request.account), safe=False)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@app_token_required
+def account_link_delete(request, link_id):
+    """Remove a link — only one the caller added themselves. Returns the refreshed list."""
+    if not request.account.can_manage_links:
+        return _bad("You don't have permission to manage links", status=403)
+    link = AppLink.objects.filter(id=link_id, account=request.account, created_by_user=True).first()
+    if not link:
+        return _bad("Link not found or can't be removed", status=404)
+    link.delete()
     return JsonResponse(links_for(request.account), safe=False)
 
 
@@ -243,6 +293,36 @@ def reminder_ack(request):
                 reminder.delete()
         updated += 1
     return JsonResponse({"success": True, "updated": updated})
+
+
+# --------------------------------------------------------------------------- #
+# 6c. Chat (user ↔ admin) — the app opens a web chat page in its WebView
+# --------------------------------------------------------------------------- #
+@require_http_methods(["GET"])
+@app_token_required
+def chat_session(request):
+    """Mint a short-lived signed link the app opens in its WebView to start a chat session.
+    The bearer token stays in the app; the WebView gets only this one-time token."""
+    from .chat_views import make_open_token
+    token = make_open_token(request.account)
+    url = f"{_public_url(request, 'chat_open')}?t={token}"
+    return JsonResponse({"url": url})
+
+
+@require_http_methods(["GET"])
+@app_token_required
+def chat_unread(request):
+    """Chat button badge. For a support agent: messages awaiting reply across all users.
+    For a normal user: their own unread admin messages."""
+    if request.account.admin_chat_mode:
+        count = AppChatMessage.objects.filter(
+            sender="user", read_by_admin=False,
+        ).exclude(account=request.account).count()
+    else:
+        count = AppChatMessage.objects.filter(
+            account=request.account, sender="admin", read_by_user=False,
+        ).count()
+    return JsonResponse({"count": count})
 
 
 # --------------------------------------------------------------------------- #
