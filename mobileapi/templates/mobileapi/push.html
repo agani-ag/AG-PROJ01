@@ -51,6 +51,121 @@
                 <div class="form-text">Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512).</div>
             </div>
             {% include "mobileapi/_cloudinary_widget.html" %}
+
+            <div class="mt-2 mb-3">
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#fcm-advanced">
+                    <i class="fas fa-sliders me-1"></i> Advanced FCM options
+                </button>
+                <div class="collapse mt-3" id="fcm-advanced">
+                    <div class="border rounded p-3 bg-light">
+                        <div class="text-muted small mb-3">
+                            These map to FCM's Android options and apply when the app is
+                            <strong>backgrounded</strong> (the system draws the notification). On Android 8+,
+                            sound &amp; importance are ultimately governed by the app's notification channel.
+                            Fields below are pre-filled from your master defaults.
+                        </div>
+                        <div class="row">
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_priority.label }}</label>
+                                {{ form.fcm_priority }}
+                            </div>
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_sound.label }}</label>
+                                {{ form.fcm_sound }}
+                            </div>
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_color.label }}</label>
+                                {{ form.fcm_color }}
+                            </div>
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_notification_priority.label }}</label>
+                                {{ form.fcm_notification_priority }}
+                            </div>
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_visibility.label }}</label>
+                                {{ form.fcm_visibility }}
+                            </div>
+                            <div class="col-12 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_ttl_hours.label }}</label>
+                                {{ form.fcm_ttl_hours }}
+                                <div class="form-text">{{ form.fcm_ttl_hours.help_text }}</div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.fcm_collapse_tag.label }}</label>
+                            {{ form.fcm_collapse_tag }}
+                            <div class="form-text">{{ form.fcm_collapse_tag.help_text }}</div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-6 col-md-3 mb-3">
+                                <label class="form-label">{{ form.fcm_notification_count.label }}</label>
+                                {{ form.fcm_notification_count }}
+                            </div>
+                            <div class="col-6 col-md-4 mb-3">
+                                <label class="form-label">{{ form.fcm_analytics_label.label }}</label>
+                                {{ form.fcm_analytics_label }}
+                            </div>
+                            <div class="col-12 col-md-5 mb-3">
+                                <label class="form-label">{{ form.fcm_event_time.label }}</label>
+                                {{ form.fcm_event_time }}
+                                <div class="form-text">{{ form.fcm_event_time.help_text }}</div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.fcm_ticker.label }}</label>
+                            {{ form.fcm_ticker }}
+                        </div>
+                        <div class="form-check mb-2">
+                            {{ form.fcm_sticky }}
+                            <label class="form-check-label ms-1">{{ form.fcm_sticky.label }}</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            {{ form.fcm_local_only }}
+                            <label class="form-check-label ms-1">{{ form.fcm_local_only.label }}</label>
+                        </div>
+                        <div class="form-check mb-3">
+                            {{ form.fcm_restrict_package }}
+                            <label class="form-check-label ms-1">{{ form.fcm_restrict_package.label }}</label>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label">{{ form.fcm_vibrate.label }}</label>
+                            {{ form.fcm_vibrate }}
+                            <div class="form-text">{{ form.fcm_vibrate.help_text }}</div>
+                        </div>
+                        <div class="row align-items-end">
+                            <div class="col-4 col-md-3 mb-3">
+                                <label class="form-label">{{ form.fcm_led_color.label }}</label>
+                                {{ form.fcm_led_color }}
+                            </div>
+                            <div class="col-4 col-md-3 mb-3">
+                                <label class="form-label">{{ form.fcm_led_on_ms.label }}</label>
+                                {{ form.fcm_led_on_ms }}
+                            </div>
+                            <div class="col-4 col-md-3 mb-3">
+                                <label class="form-label">{{ form.fcm_led_off_ms.label }}</label>
+                                {{ form.fcm_led_off_ms }}
+                            </div>
+                            <div class="col-12 mb-3">
+                                <div class="form-text">LED color + blink timing (channel-governed on Android 8+).</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">{{ form.fcm_raw_json.label }}</label>
+                            {{ form.fcm_raw_json }}
+                            <div class="form-text">{{ form.fcm_raw_json.help_text }}</div>
+                        </div>
+                        <div class="form-check">
+                            {{ form.fcm_save_defaults }}
+                            <label class="form-check-label ms-1">{{ form.fcm_save_defaults.label }}</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-lg">
                 <i class="fas fa-paper-plane me-2"></i>Send
             </button>

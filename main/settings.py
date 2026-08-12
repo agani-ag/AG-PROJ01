@@ -142,6 +142,13 @@ TELEGRAM_GROUPS = [
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 
+# Shared secret for the /cron/ endpoints called by the external cron service. Sent as an
+# X-Cron-Key header (or ?key= for services that can't set headers). Unset = endpoints closed.
+CRON_KEY = os.getenv("CRON_KEY")
+# How often that service calls /cron/push/dispatch. Bounds how late a server-sent push can be,
+# and is the floor for a "Repeat N times" push. Change the service's schedule and this together.
+CRON_DISPATCH_INTERVAL_MINUTES = int(os.getenv("CRON_DISPATCH_INTERVAL_MINUTES", "15"))
+
 # Media files (Uploads)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

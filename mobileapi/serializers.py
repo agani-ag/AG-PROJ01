@@ -40,16 +40,21 @@ def links_for(account):
     return [link_dict(link) for link in account.links.filter(is_active=True)]
 
 
-def reminder_dict(reminder):
-    # Tap target: a custom URL wins (campaign/form, works for broadcasts); otherwise the
-    # account link, if it's still active.
+def reminder_tap_target(reminder):
+    """(url, title) opened when the notification is tapped.
+
+    A custom URL wins (campaign/form, works for broadcasts); otherwise the account link, if it's
+    still active. Shared by the device payload and the server-side cron push so both open the
+    same place.
+    """
     if reminder.custom_url:
-        link_url = reminder.custom_url
-        link_title = reminder.title
-    else:
-        link = reminder.link if (reminder.link and reminder.link.is_active) else None
-        link_url = link.url if link else ""
-        link_title = link.title if link else ""
+        return reminder.custom_url, reminder.title
+    link = reminder.link if (reminder.link and reminder.link.is_active) else None
+    return (link.url, link.title) if link else ("", "")
+
+
+def reminder_dict(reminder):
+    link_url, link_title = reminder_tap_target(reminder)
     return {
         "id": str(reminder.id),
         "title": reminder.title,
@@ -71,9 +76,15 @@ def reminder_dict(reminder):
 
 
 def reminders_for(account):
-    """Active reminders targeted at this account, plus broadcasts (account is null)."""
+    """Active DEVICE-fired reminders for this account, plus broadcasts (account is null).
+
+    delivery="cron" rows are excluded on purpose: the server pushes those itself, so syncing them
+    would make the phone set a local alarm as well and the user would get the notification twice.
+    Filtering here (rather than in the app) means every already-shipped APK is covered — old
+    clients simply receive fewer rows.
+    """
     qs = (
-        AppReminder.objects.filter(is_active=True)
+        AppReminder.objects.filter(is_active=True, delivery="device")
         .filter(Q(account=account) | Q(account__isnull=True))
         .select_related("link")
     )

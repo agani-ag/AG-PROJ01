@@ -18,6 +18,7 @@ from django.views.decorators.http import require_POST
 
 from .serializers import chat_message_dict
 
+from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm, ReminderForm
@@ -29,6 +30,7 @@ from .models import (
     AppLink,
     AppNotificationLog,
     AppReminder,
+    CronLock,
 )
 
 superuser_required = user_passes_test(
@@ -236,6 +238,16 @@ def push(request):
                 device_qs = device_qs.filter(account=account)
             tokens = list(device_qs.values_list("fcm_token", flat=True))
 
+            # Advanced FCM (AndroidConfig) options, optionally persisted as master defaults.
+            fcm_opts = form.fcm_options()
+            if form.cleaned_data.get("fcm_save_defaults"):
+                # event_time is a one-off timestamp — never keep it as a default.
+                defaults = {k: v for k, v in fcm_opts.items() if k != "event_time"}
+                cfg = AppConfig.load()
+                cfg.fcm_push_defaults = defaults
+                cfg.save()
+            android = fcm.build_android_config(fcm_opts)
+
             ok = fail = 0
             if not fcm.is_configured():
                 messages.warning(request, "Saved, but NOT sent — FCM is not configured.")
@@ -243,7 +255,7 @@ def push(request):
                 messages.warning(request, "No active devices to send to.")
             else:
                 try:
-                    ok, fail = fcm.send(tokens, title, body, data, image_url or None)
+                    ok, fail = fcm.send(tokens, title, body, data, image_url or None, android=android)
                     messages.success(request, f"Push sent: {ok} ok, {fail} failed.")
                 except fcm.FCMError as e:
                     messages.error(request, f"Push failed: {e}")
@@ -304,9 +316,18 @@ def _reminders_ctx(form, editing=None):
             last_fired=Max("receipts__fired_at"),
         )
     )
+    # Cron delivery depends on an external service calling /cron/push/dispatch — if that schedule
+    # dies, queued pushes silently stop going out. Surface the last run so it's visible from here.
+    lock = CronLock.objects.filter(name=cron_views.PUSH_JOB).first()
     return {
         "form": form, "editing": editing, "reminders": reminders,
         "all_urls": _distinct_link_urls(), "cloud_cfg": _cloudinary_widget_cfg(),
+        "cron_last_run": lock.updated_at if lock else None,
+        "cron_interval_minutes": AppConfig.load().cron_dispatch_interval_minutes,
+        "cron_configured": bool(getattr(settings, "CRON_KEY", None)),
+        "pending_push_count": AppReminder.objects.filter(
+            delivery="cron", is_active=True, status="pending",
+        ).count(),
     }
 
 

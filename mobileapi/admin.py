@@ -209,13 +209,17 @@ class AppNotificationLogAdmin(admin.ModelAdmin):
 # via local alarms — no push is sent when they're created or edited.
 @admin.register(AppReminder)
 class AppReminderAdmin(admin.ModelAdmin):
-    list_display = ["title", "account", "scheduled_at", "recurrence", "is_active"]
-    list_filter = ["is_active", "recurrence"]
+    list_display = ["title", "delivery", "account", "scheduled_at", "recurrence", "status", "is_active"]
+    list_filter = ["delivery", "status", "is_active", "recurrence"]
     search_fields = ["title", "body", "account__email"]
     list_editable = ["is_active"]
-    readonly_fields = ["created_at", "updated_at"]
-    fields = ["account", "title", "body", "custom_url", "image_url",
-              "scheduled_at", "recurrence", "is_active", "created_at", "updated_at"]
+    # Send state is owned by the cron dispatcher — surfaced here, never hand-edited.
+    readonly_fields = ["created_at", "updated_at", "status", "claimed_at", "sent_at",
+                       "success_count", "fail_count", "attempts", "fires_done", "last_error"]
+    fields = ["account", "delivery", "title", "body", "custom_url", "image_url",
+              "scheduled_at", "recurrence", "is_active",
+              "status", "sent_at", "success_count", "fail_count", "attempts", "fires_done",
+              "claimed_at", "last_error", "created_at", "updated_at"]
 
 
 @admin.register(AppReminderReceipt)

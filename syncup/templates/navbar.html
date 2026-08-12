@@ -1,14 +1,14 @@
 <style>
-  /* Two-column (left/right) Devices mega-menu */
-  .dropdown-devices { min-width: 400px; max-width: 96vw; padding: .5rem .25rem; }
-  .dropdown-devices .dd-cols { display: flex; }
-  .dropdown-devices .dd-col { flex: 1 1 0; min-width: 180px; padding: 0 .5rem; }
-  .dropdown-devices .dd-col + .dd-col { border-left: 1px solid #e9ecef; }
+  /* Two-column (left/right) mega-menu — used by the Devices and Mobile App dropdowns */
+  .dropdown-2col { min-width: 400px; max-width: 96vw; padding: .5rem .25rem; }
+  .dropdown-2col .dd-cols { display: flex; }
+  .dropdown-2col .dd-col { flex: 1 1 0; min-width: 180px; padding: 0 .5rem; }
+  .dropdown-2col .dd-col + .dd-col { border-left: 1px solid #e9ecef; }
   @media (max-width: 991.98px) {
     /* Inside the collapsed mobile navbar: stack the two columns */
-    .dropdown-devices { min-width: 0; }
-    .dropdown-devices .dd-cols { flex-direction: column; }
-    .dropdown-devices .dd-col + .dd-col { border-left: 0; border-top: 1px solid #e9ecef; margin-top: .25rem; padding-top: .25rem; }
+    .dropdown-2col { min-width: 0; }
+    .dropdown-2col .dd-cols { flex-direction: column; }
+    .dropdown-2col .dd-col + .dd-col { border-left: 0; border-top: 1px solid #e9ecef; margin-top: .25rem; padding-top: .25rem; }
   }
 </style>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
@@ -83,7 +83,7 @@
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Devices
                     </a>
-                    <div class="dropdown-menu dropdown-menu-end dropdown-devices" aria-labelledby="devicesDropdown">
+                    <div class="dropdown-menu dropdown-menu-end dropdown-2col" aria-labelledby="devicesDropdown">
                         <div class="dd-cols">
                             <!-- Left column -->
                             <div class="dd-col">
@@ -116,24 +116,31 @@
                        role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         Mobile App
                     </a>
-                    <ul class="dropdown-menu" aria-labelledby="mobileAppDropdown">
-                        <li><a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Accounts</h6>
-                        <li><a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a></li>
-                        <li><a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a></li>
-                        <li><a class="dropdown-item" href="{% url 'mobile_chats' %}">Messages</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Notify</h6>
-                        <li><a class="dropdown-item" href="{% url 'mobile_reminders' %}">Reminders</a></li>
-                        <li><a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Config</h6>
-                        <li><a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a></li>
-                        <li><a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config</a></li>
-                        <div class="dropdown-divider"></div>
-                        <li><a class="dropdown-item" href="{% url 'privacy_policy' %}" target="_blank">Privacy Policy <i class="fas fa-external-link-alt small"></i></a></li>
-                    </ul>
+                    <div class="dropdown-menu dropdown-menu-end dropdown-2col" aria-labelledby="mobileAppDropdown">
+                        <div class="dd-cols">
+                            <!-- Left column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Overview</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a>
+                                <div class="dropdown-divider"></div>
+                                <h6 class="dropdown-header">Accounts</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a>
+                                <a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a>
+                                <a class="dropdown-item" href="{% url 'mobile_chats' %}">Messages</a>
+                            </div>
+                            <!-- Right column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Notify</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_reminders' %}">Reminders</a>
+                                <a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a>
+                                <div class="dropdown-divider"></div>
+                                <h6 class="dropdown-header">Config</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a>
+                                <a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config</a>
+                                <a class="dropdown-item" href="{% url 'privacy_policy' %}" target="_blank">Privacy Policy <i class="fas fa-external-link-alt small"></i></a>
+                            </div>
+                        </div>
+                    </div>
                 </li>
                 {% endif %}
 

@@ -9,7 +9,8 @@ import secrets
 from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
-from django.db import models
+from django.core.validators import MinValueValidator
+from django.db import IntegrityError, models
 from django.utils import timezone
 
 # How long an issued bearer token stays valid. After this the app gets a 401 and
@@ -228,6 +229,34 @@ class AppConfig(models.Model):
                   "(use for maintenance/outage notices).",
     )
     feature_flags = models.JSONField(default=dict, blank=True)
+    # Master defaults for the Android/FCM block applied to every push (the send form can override
+    # per-send). Stored as the friendly option keys the Push form reads/writes — see
+    # fcm.build_android_config. Empty dict = plain notification (current behaviour).
+    fcm_push_defaults = models.JSONField(default=dict, blank=True)
+    # How often the external cron service calls /cron/push/dispatch. The dispatcher works at any
+    # cadence; this only sets the shortest a server (cron) push may repeat and the banner text.
+    # Change it here (no redeploy) to match whatever the cron is actually set to.
+    cron_dispatch_interval_minutes = models.PositiveIntegerField(
+        default=15, validators=[MinValueValidator(1)],
+        help_text="Minutes — match this to your external cron's schedule (any value). Sets the "
+                  "shortest a server push can repeat.",
+    )
+
+    # ---- Data-retention windows (days) for the cleanup job. 0 = never prune that table. ----
+    # Expired auth tokens and expired sessions are always removed regardless of these.
+    cleanup_log_days = models.PositiveIntegerField(
+        default=30, help_text="Delete push/notification logs older than this many days (0 = keep all).",
+    )
+    cleanup_chat_days = models.PositiveIntegerField(
+        default=30, help_text="Delete chat messages older than this (unread messages are always kept; 0 = keep all).",
+    )
+    cleanup_inactive_device_days = models.PositiveIntegerField(
+        default=30, help_text="Delete deactivated devices not seen in this many days (0 = keep all).",
+    )
+    cleanup_done_reminder_days = models.PositiveIntegerField(
+        default=14, help_text="Delete finished server (cron) reminders — sent/expired/failed — older than this (0 = keep all).",
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -280,19 +309,47 @@ REMINDER_RECURRENCE_CHOICES = [
     ("interval", "Repeat N times"),
 ]
 
+# How the notification actually reaches the user.
+#   device — synced to the phone (GET /app/v1/reminders) and fired by a local alarm. Exact,
+#            works offline, but Doze/OEM battery killers can drop it.
+#   cron   — never synced to the phone; the server sends an FCM push when an external cron
+#            service calls POST /cron/push/dispatch. Reliable, but only as punctual as the
+#            cron interval.
+REMINDER_DELIVERY_CHOICES = [
+    ("device", "Reminder — fired by the phone (local alarm)"),
+    ("cron", "Push — sent by the server (cron)"),
+]
+
+# Send state. Only meaningful for delivery="cron"; device rows stay at the default.
+REMINDER_STATUS_CHOICES = [
+    ("pending", "Pending"),
+    ("sending", "Sending"),
+    ("sent", "Sent"),
+    ("failed", "Failed"),
+    ("expired", "Expired"),
+]
+
 
 class AppReminder(models.Model):
-    """A reminder authored in the admin and fired ON-DEVICE via a local alarm.
+    """A notification authored in the admin, delivered one of two ways (see `delivery`).
 
-    `account` blank = broadcast to all accounts. The app syncs these
-    (`GET /app/v1/reminders`) and schedules a local notification for each; tapping it
-    opens `link` in the in-app WebView. FCM is only used to nudge a re-sync.
-    See md/syncup-android-backend-plan.md §12.
+    `account` blank = broadcast to all accounts.
+
+    delivery="device" (default): the app syncs these (`GET /app/v1/reminders`) and schedules a
+    local notification for each; tapping it opens `link` in the in-app WebView. FCM is only used
+    to nudge a re-sync. See md/syncup-android-backend-plan.md §12.
+
+    delivery="cron": excluded from the sync entirely (so the phone never double-fires it) and
+    sent from the server as an FCM push by the cron dispatcher — see cron_views.dispatch_push.
     """
 
     account = models.ForeignKey(
         AppAccount, on_delete=models.CASCADE, null=True, blank=True, related_name="reminders",
         help_text="Leave blank to send this reminder to all accounts.",
+    )
+    delivery = models.CharField(
+        max_length=10, choices=REMINDER_DELIVERY_CHOICES, default="device",
+        help_text="Who fires it: the phone's own alarm, or the server on the next cron run.",
     )
     title = models.CharField(max_length=200)
     body = models.TextField()
@@ -321,6 +378,20 @@ class AppReminder(models.Model):
         help_text="For 'Repeat N times': how many times to fire in total, then stop.",
     )
     is_active = models.BooleanField(default=True)
+
+    # ---- Server-send state (delivery="cron" only; device rows keep the defaults) ----
+    status = models.CharField(max_length=10, choices=REMINDER_STATUS_CHOICES, default="pending")
+    claimed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When a cron run claimed this row — used to reap sends that died mid-flight.",
+    )
+    sent_at = models.DateTimeField(null=True, blank=True, help_text="When the push actually went out.")
+    success_count = models.IntegerField(default=0)
+    fail_count = models.IntegerField(default=0)
+    attempts = models.PositiveIntegerField(default=0, help_text="Dispatch attempts, including retries.")
+    fires_done = models.PositiveIntegerField(default=0, help_text="Sends completed so far (Repeat N times).")
+    last_error = models.TextField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -328,7 +399,28 @@ class AppReminder(models.Model):
         ordering = ["-scheduled_at"]
         indexes = [
             models.Index(fields=["account", "is_active"]),
+            # The cron dispatcher's due-query, run on every tick.
+            models.Index(fields=["delivery", "status", "scheduled_at"]),
         ]
+
+    def next_occurrence(self, after):
+        """The next fire time strictly after `after`, or None if this was the last one.
+
+        Used by the cron dispatcher to re-arm a recurring push once it has been sent, and to
+        skip past occurrences missed while the cron was down.
+        """
+        if self.recurrence == "daily":
+            step = timedelta(days=1)
+        elif self.recurrence == "interval" and self.repeat_interval_seconds > 0:
+            if self.repeat_count and self.fires_done >= self.repeat_count:
+                return None
+            step = timedelta(seconds=self.repeat_interval_seconds)
+        else:  # "once", or an interval row with no usable interval
+            return None
+        nxt = self.scheduled_at
+        while nxt <= after:
+            nxt += step
+        return nxt
 
     def __str__(self):
         target = self.account.email if self.account else "all accounts"
@@ -360,6 +452,44 @@ class AppReminderReceipt(models.Model):
 
     def __str__(self):
         return f"{self.reminder_id} · {self.device_id[:8]}…"
+
+
+# =============== Cron job lock ===============
+class CronLock(models.Model):
+    """A named, self-expiring lock so two overlapping cron calls can't run the same job.
+
+    Deliberately DB-backed rather than cache-backed: there's no shared CACHES backend configured,
+    so Django falls back to per-process LocMemCache — a second worker would see an empty cache and
+    take the lock anyway. `select_for_update()` is no help either (a no-op on SQLite), so the
+    lock is taken with a conditional UPDATE, which *is* atomic on SQLite.
+    """
+
+    name = models.CharField(max_length=64, unique=True)
+    locked_until = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @classmethod
+    def acquire(cls, name, ttl_seconds):
+        """Take the lock, stealing it if the previous holder's TTL has lapsed. True if we got it."""
+        now = timezone.now()
+        until = now + timedelta(seconds=ttl_seconds)
+        # Conditional UPDATE: succeeds only if the row exists AND is free/expired.
+        if cls.objects.filter(name=name, locked_until__lt=now).update(locked_until=until):
+            return True
+        if cls.objects.filter(name=name).exists():
+            return False  # held by a run that's still within its TTL
+        try:
+            cls.objects.create(name=name, locked_until=until)
+            return True
+        except IntegrityError:
+            return False  # another worker created it a moment ago
+
+    @classmethod
+    def release(cls, name):
+        cls.objects.filter(name=name).update(locked_until=timezone.now())
+
+    def __str__(self):
+        return f"{self.name} → {self.locked_until:%Y-%m-%d %H:%M:%S}"
 
 
 CHAT_SENDER_CHOICES = [

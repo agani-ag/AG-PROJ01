@@ -1,4 +1,8 @@
 """Forms for the HTML admin screens (Bootstrap-styled, matching the syncup app)."""
+import json
+import re
+from datetime import timezone as dt_timezone
+
 from django import forms
 from django.utils import timezone
 
@@ -76,6 +80,11 @@ class AppConfigForm(forms.ModelForm):
             "announcement_message",
             "announcement_fullscreen",
             "announcement_blocking",
+            "cron_dispatch_interval_minutes",
+            "cleanup_log_days",
+            "cleanup_chat_days",
+            "cleanup_inactive_device_days",
+            "cleanup_done_reminder_days",
             "feature_flags",
         ]
         widgets = {
@@ -89,6 +98,21 @@ class AppConfigForm(forms.ModelForm):
             self.fields,
             checkbox_fields=("announcement_active", "announcement_fullscreen", "announcement_blocking"),
         )
+
+
+# Advanced FCM (AndroidConfig) options exposed on the Push form. Blank/"—" = leave unset.
+FCM_PRIORITY_CHOICES = [("", "— default —"), ("high", "High (wake / heads-up)"), ("normal", "Normal (battery-friendly)")]
+FCM_SOUND_CHOICES = [("", "— default —"), ("default", "Play default sound"), ("silent", "Silent")]
+FCM_NOTIF_PRIORITY_CHOICES = [("", "— default —"), ("min", "Min"), ("low", "Low"), ("default", "Default"), ("high", "High"), ("max", "Max")]
+FCM_VISIBILITY_CHOICES = [("", "— default —"), ("private", "Private (hide on lock screen)"), ("public", "Public"), ("secret", "Secret")]
+
+# Advanced-option keys whose form field "fcm_<key>" maps straight to the same key in the dict
+# fcm.build_android_config expects. (ttl, raw and event_time are handled specially below.)
+FCM_OPTION_KEYS = (
+    "priority", "sound", "color", "notification_priority", "visibility", "collapse_tag",
+    "sticky", "local_only", "notification_count", "ticker", "analytics_label",
+    "restrict_package", "vibrate", "led_color", "led_on_ms", "led_off_ms",
+)
 
 
 class PushForm(forms.Form):
@@ -108,9 +132,92 @@ class PushForm(forms.Form):
         help_text="Optional HTTPS image shown in the expanded notification (≈2:1, e.g. 1024×512).",
     )
 
+    # ---- Advanced FCM options (apply to backgrounded / system-rendered pushes) ----
+    fcm_priority = forms.ChoiceField(choices=FCM_PRIORITY_CHOICES, required=False, label="Delivery priority")
+    fcm_sound = forms.ChoiceField(choices=FCM_SOUND_CHOICES, required=False, label="Sound")
+    fcm_color = forms.CharField(required=False, max_length=7, label="Accent color", widget=forms.TextInput(attrs={"type": "color"}))
+    fcm_notification_priority = forms.ChoiceField(choices=FCM_NOTIF_PRIORITY_CHOICES, required=False, label="Importance")
+    fcm_visibility = forms.ChoiceField(choices=FCM_VISIBILITY_CHOICES, required=False, label="Lock-screen visibility")
+    fcm_collapse_tag = forms.CharField(
+        required=False, max_length=64, label="Collapse tag",
+        help_text="A newer push with the same tag replaces the older one instead of stacking.",
+    )
+    fcm_ttl_hours = forms.IntegerField(
+        required=False, min_value=0, max_value=672, label="TTL (hours)",
+        help_text="How long FCM keeps trying if the device is offline (max 28 days). Blank = default.",
+    )
+    # ---- Group A extras ----
+    fcm_sticky = forms.BooleanField(required=False, label="Ongoing / sticky (can't be swiped away)")
+    fcm_local_only = forms.BooleanField(required=False, label="Local only (don't mirror to wearables)")
+    fcm_restrict_package = forms.BooleanField(required=False, label="Deliver only to the SyncUp app")
+    fcm_notification_count = forms.IntegerField(
+        required=False, min_value=0, label="Badge count", help_text="Number on the app-icon badge.",
+    )
+    fcm_ticker = forms.CharField(required=False, max_length=200, label="Ticker text")
+    fcm_analytics_label = forms.CharField(
+        required=False, max_length=50, label="Analytics label",
+        help_text="Groups this send in Firebase delivery reports.",
+    )
+    fcm_event_time = forms.DateTimeField(
+        required=False, label="Event time",
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+        input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"],
+        help_text="Optional timestamp shown on the notification (interpreted as IST). Per-send only.",
+    )
+    fcm_vibrate = forms.CharField(
+        required=False, max_length=100, label="Vibration pattern",
+        help_text="Comma-separated seconds, e.g. 0.25, 0.25, 0.5 (channel-governed on Android 8+).",
+    )
+    fcm_led_color = forms.CharField(
+        required=False, max_length=7, label="LED color", widget=forms.TextInput(attrs={"type": "color"}),
+    )
+    fcm_led_on_ms = forms.IntegerField(required=False, min_value=0, label="LED on (ms)")
+    fcm_led_off_ms = forms.IntegerField(required=False, min_value=0, label="LED off (ms)")
+    fcm_raw_json = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 3}), label="Raw android overrides (JSON)",
+        help_text='Any other FCM AndroidConfig field, merged last. e.g. {"notification":{"sticky":true}}',
+    )
+    fcm_save_defaults = forms.BooleanField(
+        required=False, label="Save these as master defaults for future pushes",
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _bootstrap(self.fields)
+        for name in ("account", "fcm_priority", "fcm_sound", "fcm_notification_priority", "fcm_visibility"):
+            self.fields[name].widget.attrs["class"] = "form-select"
+        for name in ("fcm_save_defaults", "fcm_sticky", "fcm_local_only", "fcm_restrict_package"):
+            self.fields[name].widget.attrs["class"] = "form-check-input"
+        # In-place hints (skip color/select/checkbox/datetime widgets — they ignore placeholders).
+        placeholders = {
+            "title": "e.g. Weekend offer is live",
+            "body": "The message users will read…",
+            "link_url": "https://example.com/campaign",
+            "image_url": "https://example.com/banner-1024x512.jpg",
+            "fcm_collapse_tag": "e.g. promo-aug (newer replaces older)",
+            "fcm_ttl_hours": "e.g. 24  (blank = default)",
+            "fcm_notification_count": "e.g. 3",
+            "fcm_ticker": "e.g. New offer available",
+            "fcm_analytics_label": "e.g. aug-campaign",
+            "fcm_vibrate": "e.g. 0.25, 0.25, 0.5",
+            "fcm_led_on_ms": "e.g. 500",
+            "fcm_led_off_ms": "e.g. 800",
+            "fcm_raw_json": '{"notification": {"proxy": "ALLOW"}}',
+        }
+        for name, hint in placeholders.items():
+            if name in self.fields:
+                self.fields[name].widget.attrs.setdefault("placeholder", hint)
+        # Pre-fill the advanced fields from the saved master defaults (unbound forms only).
+        # event_time is per-send only, so it is never persisted or pre-filled.
+        if not self.is_bound:
+            defaults = AppConfig.load().fcm_push_defaults or {}
+            for key in FCM_OPTION_KEYS:
+                if defaults.get(key) not in (None, "", [], False):
+                    self.fields[f"fcm_{key}"].initial = defaults[key]
+            if defaults.get("ttl_seconds"):
+                self.fields["fcm_ttl_hours"].initial = int(defaults["ttl_seconds"]) // 3600
+            if defaults.get("raw"):
+                self.fields["fcm_raw_json"].initial = json.dumps(defaults["raw"])
 
     def _clean_https(self, field):
         url = (self.cleaned_data.get(field) or "").strip()
@@ -123,6 +230,54 @@ class PushForm(forms.Form):
 
     def clean_image_url(self):
         return self._clean_https("image_url")
+
+    def _clean_hex(self, field):
+        color = (self.cleaned_data.get(field) or "").strip()
+        if color and not re.fullmatch(r"#[0-9A-Fa-f]{6}", color):
+            raise forms.ValidationError("Enter a hex color like #RRGGBB.")
+        return color
+
+    def clean_fcm_color(self):
+        return self._clean_hex("fcm_color")
+
+    def clean_fcm_led_color(self):
+        return self._clean_hex("fcm_led_color")
+
+    def clean_fcm_raw_json(self):
+        raw = (self.cleaned_data.get("fcm_raw_json") or "").strip()
+        if not raw:
+            return ""
+        try:
+            parsed = json.loads(raw)
+        except ValueError as e:
+            raise forms.ValidationError(f"Invalid JSON: {e}")
+        if not isinstance(parsed, dict):
+            raise forms.ValidationError("Raw overrides must be a JSON object, e.g. {\"collapse_key\":\"x\"}.")
+        return raw
+
+    def fcm_options(self):
+        """Collected advanced options as the dict fcm.build_android_config expects (post-clean).
+
+        `persistable=False` on the returned nothing — callers persist this same dict as the master
+        defaults; event_time is deliberately excluded from persistence (it's a one-off timestamp).
+        """
+        cd = self.cleaned_data
+        opts = {}
+        for key in FCM_OPTION_KEYS:
+            val = cd.get(f"fcm_{key}")
+            if val not in (None, "", [], False):
+                opts[key] = val
+        if cd.get("fcm_ttl_hours") not in (None, ""):
+            opts["ttl_seconds"] = int(cd["fcm_ttl_hours"]) * 3600
+        if cd.get("fcm_raw_json"):
+            opts["raw"] = json.loads(cd["fcm_raw_json"])
+        # event_time: per-send only. Interpret the naive picker value as server tz → RFC3339 UTC.
+        et = cd.get("fcm_event_time")
+        if et:
+            if timezone.is_naive(et):
+                et = timezone.make_aware(et, timezone.get_current_timezone())
+            opts["event_time"] = et.astimezone(dt_timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return opts
 
 
 # "Repeat N times" interval, entered as a value + unit in the admin and stored as seconds.
@@ -149,7 +304,7 @@ class ReminderForm(forms.ModelForm):
 
     class Meta:
         model = AppReminder
-        fields = ["account", "title", "body", "custom_url",
+        fields = ["account", "delivery", "title", "body", "custom_url",
                   "image_url", "scheduled_at", "recurrence",
                   "repeat_count", "is_active"]
         widgets = {
@@ -183,12 +338,13 @@ class ReminderForm(forms.ModelForm):
                     self.initial.setdefault("interval_unit", mult)
                     break
         _bootstrap(self.fields, checkbox_fields=("is_active",))
-        for name in ("account", "recurrence", "interval_unit"):
+        for name in ("account", "delivery", "recurrence", "interval_unit"):
             self.fields[name].widget.attrs["class"] = "form-select"
 
     def clean(self):
         cleaned = super().clean()
         seconds = 0
+        is_cron = cleaned.get("delivery") == "cron"
         if cleaned.get("recurrence") == "interval":
             value = cleaned.get("interval_value")
             unit = cleaned.get("interval_unit")
@@ -200,11 +356,20 @@ class ReminderForm(forms.ModelForm):
                 self.add_error("repeat_count", "Enter how many times it should fire (1 or more).")
             if value and unit:
                 seconds = int(value) * int(unit)
-                if seconds < MIN_INTERVAL_SECONDS:
+                # A server-sent push can never repeat faster than the cron ticks (read live from
+                # the admin-editable config); a device alarm can, but Doze bunches under ~15 min.
+                cron_minutes = AppConfig.load().cron_dispatch_interval_minutes
+                floor = cron_minutes * 60 if is_cron else MIN_INTERVAL_SECONDS
+                if seconds < floor:
                     self.add_error(
                         "interval_value",
-                        "Minimum repeat interval is 15 minutes "
-                        "(shorter intervals aren't delivered reliably when the phone is idle).",
+                        (
+                            f"With server (cron) delivery the shortest repeat is "
+                            f"{cron_minutes} minutes — the cron only runs that often."
+                            if is_cron else
+                            "Minimum repeat interval is 15 minutes "
+                            "(shorter intervals aren't delivered reliably when the phone is idle)."
+                        ),
                     )
         else:
             # Keep these clean for once/daily so they don't leak into the app payload.
@@ -215,6 +380,14 @@ class ReminderForm(forms.ModelForm):
     def save(self, commit=True):
         obj = super().save(commit=False)
         obj.repeat_interval_seconds = getattr(self, "_interval_seconds", 0)
+        # Re-queue a server push whose time was moved (or that was just switched to cron
+        # delivery) — otherwise an already-"sent" row sits there and never goes out again.
+        if obj.delivery == "cron" and (
+            "scheduled_at" in self.changed_data or "delivery" in self.changed_data
+        ):
+            obj.status = "pending"
+            obj.claimed_at = None
+            obj.last_error = None
         if commit:
             obj.save()
         return obj

@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from django.core import signing
 from django.core.cache import cache
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
@@ -293,13 +294,22 @@ REMINDER_SWEEP_GRACE = timedelta(hours=24)
 
 
 def _sweep_completed_reminders():
-    """Delete finished reminders whose time has well passed (safety net for broadcasts and for
-    per-account reminders whose device never reported back). Covers one-time reminders and
-    'Repeat N times' reminders past their final occurrence."""
+    """Delete finished DEVICE reminders whose time has well passed (safety net for broadcasts and
+    for per-account reminders whose device never reported back). Covers one-time reminders and
+    'Repeat N times' reminders past their final occurrence.
+
+    Scoped to delivery="device" deliberately. A cron row is deleted by nobody: it's the record of
+    a server-side send, and sweeping it on `scheduled_at` alone would destroy a queued push before
+    it ever went out whenever the cron fell behind by more than the grace period.
+    """
     cutoff = timezone.now() - REMINDER_SWEEP_GRACE
-    AppReminder.objects.filter(recurrence="once", scheduled_at__lt=cutoff).delete()
+    AppReminder.objects.filter(
+        delivery="device", recurrence="once", scheduled_at__lt=cutoff,
+    ).delete()
     # Counted reminders: last fire is scheduled_at + (count-1) * interval; sweep once that's well past.
-    for r in AppReminder.objects.filter(recurrence="interval", repeat_count__gt=0):
+    for r in AppReminder.objects.filter(
+        delivery="device", recurrence="interval", repeat_count__gt=0,
+    ):
         last = r.scheduled_at + timedelta(seconds=r.repeat_interval_seconds * (r.repeat_count - 1))
         if last < cutoff:
             r.delete()
@@ -336,7 +346,14 @@ def reminder_ack(request):
     now = timezone.now()
     updated = 0
     for rid in ids:
-        reminder = AppReminder.objects.filter(id=rid).first()
+        # Only rows this account can actually have been sent: its own or a broadcast, and only
+        # device-fired ones (a cron row is never synced, so no device can legitimately ack it).
+        # Without the account filter any logged-in account could ack — and thereby delete —
+        # another account's reminder.
+        reminder = AppReminder.objects.filter(
+            Q(account=request.account) | Q(account__isnull=True),
+            id=rid, delivery="device",
+        ).first()
         if not reminder:
             continue
         receipt, _ = AppReminderReceipt.objects.get_or_create(

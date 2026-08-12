@@ -45,6 +45,44 @@
             </div>
 
             <hr>
+            <h6 class="text-muted text-uppercase small">Notifications (server push)</h6>
+            <div class="mb-3">
+                <label class="form-label">Cron dispatch interval</label>
+                {{ form.cron_dispatch_interval_minutes }}
+                <div class="form-text">
+                    Set this to match how often your external cron service calls
+                    <code>/cron/push/dispatch</code>. It's the shortest a server (cron) push can
+                    repeat. Delivery works at any cadence — this only keeps the limit and banner honest.
+                </div>
+            </div>
+
+            <hr>
+            <h6 class="text-muted text-uppercase small">Data retention (auto-cleanup)</h6>
+            <div class="text-muted small mb-2">
+                Days to keep each kind of data before the cleanup job removes it. <strong>0 = keep
+                forever.</strong> Expired login tokens/sessions are always removed; unread chat is
+                always kept.
+            </div>
+            <div class="row">
+                <div class="col-6 col-md-3 mb-3">
+                    <label class="form-label">Push logs (days)</label>
+                    {{ form.cleanup_log_days }}
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <label class="form-label">Chat messages (days)</label>
+                    {{ form.cleanup_chat_days }}
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <label class="form-label">Inactive devices (days)</label>
+                    {{ form.cleanup_inactive_device_days }}
+                </div>
+                <div class="col-6 col-md-3 mb-3">
+                    <label class="form-label">Finished reminders (days)</label>
+                    {{ form.cleanup_done_reminder_days }}
+                </div>
+            </div>
+
+            <hr>
             <h6 class="text-muted text-uppercase small">Privacy policy</h6>
             <div class="text-muted small mb-2">
                 Shown on the public page

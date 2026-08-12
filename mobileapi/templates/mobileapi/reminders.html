@@ -6,10 +6,26 @@
 <div class="row justify-content-center">
     <div class="col-12 col-lg-10">
         <div class="text-center mb-4">
-            <h2 class="fw-bold">Reminders</h2>
+            <h2 class="fw-bold">Notifications</h2>
             <div class="text-muted">
-                Scheduled here, fired on the phone. Devices pick up changes on next app open or the daily sync.
+                Two ways to deliver: <strong>Reminder</strong> is fired by the phone's own alarm
+                (exact, works offline); <strong>Push</strong> is sent from the server on the next cron run.
             </div>
+        </div>
+
+        <div class="alert {% if cron_configured %}alert-light border{% else %}alert-warning{% endif %} d-flex flex-wrap gap-3 align-items-center small">
+            {% if cron_configured %}
+            <span><i class="fas fa-clock me-1"></i> Cron every <strong>{{ cron_interval_minutes }} min</strong></span>
+            <span>Last run:
+                {% if cron_last_run %}<strong>{{ cron_last_run|date:"d M Y, H:i" }}</strong>
+                {% else %}<span class="text-danger">never</span>{% endif %}
+            </span>
+            <span>Queued pushes: <strong>{{ pending_push_count }}</strong></span>
+            {% else %}
+            <span><i class="fas fa-triangle-exclamation me-1"></i>
+                <strong>CRON_KEY is not set</strong> — the /cron/ endpoints are closed, so no
+                server push will ever be sent. Reminders fired by the phone still work.</span>
+            {% endif %}
         </div>
 
         <form method="POST"
@@ -20,10 +36,17 @@
                 {% if editing %}Edit reminder{% else %}New reminder{% endif %}
             </h6>
 
-            <div class="mb-3">
-                <label class="form-label">Send to</label>
-                {{ form.account }}
-                <div class="form-text">Leave as “All accounts” to broadcast to everyone.</div>
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Send to</label>
+                    {{ form.account }}
+                    <div class="form-text">Leave as “All accounts” to broadcast to everyone.</div>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Delivery</label>
+                    {{ form.delivery }}
+                    <div class="form-text" id="delivery-help"></div>
+                </div>
             </div>
             <div class="mb-3">
                 <label class="form-label">Title</label>
@@ -78,7 +101,7 @@
                         {{ form.interval_unit }}
                     </div>
                     <div class="form-text">
-                        Time between fires. <strong>Minimum 15 minutes.</strong>
+                        Time between fires. <strong id="interval-min-note">Minimum 15 minutes.</strong>
                         Longer intervals (hourly, daily) are the most reliable.
                     </div>
                 </div>
@@ -95,10 +118,30 @@
 
             <script>
                 (function () {
-                    var rec = document.getElementById("{{ form.recurrence.id_for_label }}");
-                    var box = document.getElementById("repeat-n-fields");
-                    function sync() { box.style.display = (rec && rec.value === "interval") ? "" : "none"; }
-                    if (rec) { rec.addEventListener("change", sync); sync(); }
+                    var rec  = document.getElementById("{{ form.recurrence.id_for_label }}");
+                    var del  = document.getElementById("{{ form.delivery.id_for_label }}");
+                    var box  = document.getElementById("repeat-n-fields");
+                    var help = document.getElementById("delivery-help");
+                    var note = document.getElementById("interval-min-note");
+                    var cronMins = {{ cron_interval_minutes|default:15 }};
+                    function sync() {
+                        var isCron = del && del.value === "cron";
+                        if (box) { box.style.display = (rec && rec.value === "interval") ? "" : "none"; }
+                        if (help) {
+                            help.textContent = isCron
+                                ? "Sent from the server on the next cron run — up to " + cronMins +
+                                  " min after the time below. Never synced to the phone, so it can't fire twice."
+                                : "The phone sets a local alarm and fires it exactly on time, even offline.";
+                        }
+                        if (note) {
+                            // A server push can't repeat faster than the cron ticks.
+                            note.textContent = isCron
+                                ? "Minimum " + cronMins + " minutes (the cron interval)."
+                                : "Minimum 15 minutes.";
+                        }
+                    }
+                    [rec, del].forEach(function (el) { if (el) el.addEventListener("change", sync); });
+                    sync();
                 })();
             </script>
 
@@ -113,12 +156,12 @@
         </form>
 
         <div class="card shadow-sm">
-            <div class="card-header">All reminders</div>
+            <div class="card-header">All notifications</div>
             <div class="table-responsive">
                 <table class="table table-striped mb-0 align-middle">
                     <thead>
                         <tr>
-                            <th>Title</th><th>Target</th><th>Link</th>
+                            <th>Title</th><th>Mode</th><th>Target</th><th>Link</th>
                             <th>When (IST)</th><th>Repeat</th><th>Delivery</th><th>Status</th><th></th>
                         </tr>
                     </thead>
@@ -129,11 +172,38 @@
                                 <strong>{{ r.title }}</strong>
                                 <div class="text-muted small text-truncate" style="max-width:220px;">{{ r.body }}</div>
                             </td>
+                            <td>
+                                {% if r.delivery == "cron" %}
+                                <span class="badge text-bg-dark" title="Sent from the server via FCM">
+                                    <i class="fas fa-server me-1"></i>Push
+                                </span>
+                                {% else %}
+                                <span class="badge text-bg-light text-dark border" title="Fired by the phone's local alarm">
+                                    <i class="fas fa-mobile-screen me-1"></i>Reminder
+                                </span>
+                                {% endif %}
+                            </td>
                             <td>{{ r.account.email|default:"All accounts" }}</td>
                             <td>{% if r.link %}{{ r.link.title }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                             <td><small>{{ r.scheduled_at|date:"d M Y, H:i" }}</small></td>
                             <td><span class="badge text-bg-secondary">{{ r.get_recurrence_display }}</span></td>
                             <td>
+                                {# Delivery is tracked differently per mode: device rows get a
+                                   per-device receipt, cron rows get FCM success/fail counts. #}
+                                {% if r.delivery == "cron" %}
+                                    {% if r.sent_at %}
+                                    <span class="badge text-bg-success">{{ r.success_count }} sent</span>
+                                    {% if r.fail_count %}<span class="badge text-bg-danger">{{ r.fail_count }} failed</span>{% endif %}
+                                    <div class="text-muted small">last {{ r.sent_at|date:"d M, H:i" }}</div>
+                                    {% else %}
+                                    <span class="text-muted small">not sent yet</span>
+                                    {% endif %}
+                                    {% if r.last_error %}
+                                    <div class="text-danger small text-truncate" style="max-width:220px;" title="{{ r.last_error }}">
+                                        {{ r.last_error }}
+                                    </div>
+                                    {% endif %}
+                                {% else %}
                                 <a href="{% url 'mobile_reminder_receipts' r.id %}" class="text-decoration-none" title="See which devices">
                                     <span class="badge text-bg-info">{{ r.synced_count }} synced</span>
                                     <span class="badge text-bg-success">{{ r.fired_count }} shown</span>
@@ -141,12 +211,19 @@
                                 {% if r.last_fired %}
                                 <div class="text-muted small">last {{ r.last_fired|date:"d M, H:i" }}</div>
                                 {% endif %}
+                                {% endif %}
                             </td>
                             <td>
-                                {% if r.is_active %}
-                                <span class="badge text-bg-success">Active</span>
-                                {% else %}
+                                {% if not r.is_active %}
                                 <span class="badge text-bg-secondary">Paused</span>
+                                {% elif r.delivery == "cron" %}
+                                    {% if r.status == "sent" %}<span class="badge text-bg-primary">Sent</span>
+                                    {% elif r.status == "sending" %}<span class="badge text-bg-warning text-dark">Sending</span>
+                                    {% elif r.status == "failed" %}<span class="badge text-bg-danger">Failed</span>
+                                    {% elif r.status == "expired" %}<span class="badge text-bg-secondary">Expired</span>
+                                    {% else %}<span class="badge text-bg-success">Queued</span>{% endif %}
+                                {% else %}
+                                <span class="badge text-bg-success">Active</span>
                                 {% endif %}
                             </td>
                             <td class="text-nowrap">
@@ -165,7 +242,7 @@
                             </td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="8" class="text-muted text-center">No reminders yet.</td></tr>
+                        <tr><td colspan="9" class="text-muted text-center">No notifications yet.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
