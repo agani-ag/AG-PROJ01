@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>{{ name }} — Live</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>{% if kind == 'audio' %}📻{% else %}📺{% endif %}</text></svg>" />
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #000; color: #fff; overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #stage { position: fixed; inset: 0; background: #000; }
+    #player, #vid, #embed { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    #vid { object-fit: contain; background: #000; }
+    #player iframe { width: 100%; height: 100%; }
+
+    /* Radio "now playing" card — covers the (still-audible) player */
+    #art { position: absolute; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 26px;
+      background: radial-gradient(1200px 600px at 50% 35%, #1c2333 0%, #05070c 70%); }
+    body.kind-audio #art { display: flex; }
+    .disc { width: 190px; height: 190px; border-radius: 50%;
+      background: conic-gradient(from 0deg, #2a3350, #4a5a8a, #2a3350);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 74px; color: #cdd7f0; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+      animation: spin 6s linear infinite; }
+    body.kind-audio.paused .disc { animation-play-state: paused; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #npTitle { font-size: clamp(18px, 4vw, 30px); font-weight: 700; text-align: center;
+      max-width: 90vw; padding: 0 16px; }
+
+    /* Interaction lock — swallows clicks/taps so nobody can pause/seek */
+    #lock { position: absolute; inset: 0; z-index: 20; background: transparent; cursor: default; }
+
+    /* LIVE badge + channel name */
+    #badge { position: fixed; top: 16px; left: 16px; z-index: 40;
+      display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .04em;
+      background: rgba(0,0,0,.45); padding: 7px 12px; border-radius: 999px; font-size: 13px; }
+    #badge .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff3b30;
+      box-shadow: 0 0 0 0 rgba(255,59,48,.6); animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,59,48,.6);} 70%{box-shadow:0 0 0 10px rgba(255,59,48,0);} 100%{box-shadow:0 0 0 0 rgba(255,59,48,0);} }
+    #chName { opacity: .85; font-weight: 600; }
+
+    /* Tap-for-sound prompt (browsers require one gesture to unmute) */
+    #tap { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px; cursor: pointer;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(2px); text-align: center; }
+    #tap .ico { font-size: 56px; }
+    #tap .lbl { font-size: 18px; font-weight: 700; }
+    #tap .sub { font-size: 13px; opacity: .7; }
+    #tap.hidden { display: none; }
+
+    /* Off-air / status */
+    #offair { position: fixed; inset: 0; z-index: 50; display: none;
+      align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+      background: #05070c; text-align: center; padding: 24px; }
+    #offair.show { display: flex; }
+    #offair .big { font-size: clamp(22px, 5vw, 34px); font-weight: 800; }
+    #offair .sub { opacity: .6; font-size: 14px; }
+
+    /* Per-device audio-sync calibration (the only viewer control) */
+    #syncCtl { position: fixed; bottom: 14px; left: 14px; z-index: 45; }
+    #syncToggle { width: 44px; height: 44px; border-radius: 50%; border: 0; font-size: 19px;
+      background: rgba(0,0,0,.5); color: #fff; cursor: pointer; }
+    #syncPanel { position: absolute; bottom: 54px; left: 0; width: 224px;
+      background: rgba(15,18,26,.97); border: 1px solid #2a3140; border-radius: 12px;
+      padding: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+    #syncPanel.hidden { display: none; }
+    #syncPanel .ttl { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+    #syncPanel .adj { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    #syncPanel .adj button { flex: 1; padding: 8px 0; border-radius: 8px; border: 0;
+      background: #2a3350; color: #fff; cursor: pointer; font-weight: 700; }
+    #syncPanel .adj button:active { background: #3a4670; }
+    #calibVal { font-variant-numeric: tabular-nums; min-width: 62px; text-align: center; font-size: 13px; }
+    #calibReset { margin-top: 8px; width: 100%; padding: 6px; border-radius: 8px;
+      border: 1px solid #394152; background: transparent; color: #aeb6c6; cursor: pointer; font-size: 12px; }
+    #syncPanel .hint { margin-top: 8px; font-size: 11px; opacity: .6; line-height: 1.35; }
+  </style>
+</head>
+<body class="kind-{{ kind }}">
+  <div id="stage">
+    <div id="player"></div>
+    <video id="vid" playsinline preload="auto" style="display:none;"></video>
+    <iframe id="embed" allow="autoplay; encrypted-media; picture-in-picture" style="display:none;"></iframe>
+    <div id="art">
+      <div class="disc">♪</div>
+      <div id="npTitle"></div>
+    </div>
+    <div id="lock"></div>
+  </div>
+
+  <div id="badge"><span class="dot"></span> LIVE <span id="chName">{{ name }}</span></div>
+
+  <div id="offair">
+    <div class="big">📴 {{ name }} is off air</div>
+    <div class="sub">Please check back soon…</div>
+  </div>
+
+  <div id="tap">
+    <div class="ico">{% if kind == 'audio' %}📻{% else %}📺{% endif %}</div>
+    <div class="lbl">Tap for sound</div>
+    <div class="sub">{{ name }} is already playing — tap anywhere to unmute</div>
+  </div>
+
+  <!-- Audio-sync nudge: compensate this device's Bluetooth/speaker delay -->
+  <div id="syncCtl">
+    <button id="syncToggle" title="Audio sync">🎚️</button>
+    <div id="syncPanel" class="hidden">
+      <div class="ttl">🎧 Audio sync</div>
+      <div class="adj">
+        <button data-d="-0.02">−20&nbsp;ms</button>
+        <span id="calibVal">0 ms</span>
+        <button data-d="0.02">+20&nbsp;ms</button>
+      </div>
+      <button id="calibReset">reset</button>
+      <div class="hint">If your speaker sounds <b>behind</b> the group, press <b>+</b>; if <b>ahead</b>, press <b>−</b>, until it lines up.</div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+    const SLUG = "{{ slug }}";
+    const KIND = "{{ kind }}";                 // 'audio' | 'video'
+    const STATE_URL = "{% url 'live_state' slug %}";
+    const POLL_MS = 15000;                      // re-sync clock + pick up admin edits
+    const TICK_MS = 250;                        // correction cadence (tight tracking)
+    // Continuous proportional correction: every device is pinned to the EXACT
+    // schedule offset using tiny playback-rate changes (clamped to ±1%, inaudible),
+    // so devices converge to a few ms instead of coasting inside a deadband.
+    const DEAD = 0.015;       // 15 ms — below this, treat as in-sync (ignore noise)
+    const GAIN = 0.05;        // rate delta per second of drift
+    const MAXRATE = 0.01;     // clamp to ±1% (≈17 cents pitch — imperceptible)
+    const HARD = 1.0;         // above this: hard seek instead of rate-nudge
+    const YT_HARD = 0.5;      // YouTube: hard-seek above this
+    const SEEK_COOLDOWN = 2500; // ms between hard seeks (avoid seek-loops)
+    let lastSeek = 0;
+    // Per-device audio calibration (seconds). +ve = play AHEAD to offset a
+    // Bluetooth speaker's output delay. Saved per channel; tuned by the user.
+    let calib = parseFloat(localStorage.getItem("live_calib_" + SLUG) || "0") || 0;
+
+    const $ = (id) => document.getElementById(id);
+    const els = { player: $("player"), vid: $("vid"), embed: $("embed"),
+                  art: $("art"), np: $("npTitle"), tap: $("tap"), offair: $("offair") };
+
+    let skew = 0;                 // serverNow - clientNow (seconds)
+    let playlist = [], total = 0, loop = true, isLive = false, version = null;
+    let curIndex = -1, curType = null;
+    let muted = true;
+
+    // players
+    let yt = null, ytReady = false, pending = null, hls = null;
+
+    const estServerNow = () => (Date.now() / 1000) + skew;
+
+    // ---- URL classification (matches the video player) ----
+    function ytId(input) {
+      if (!input) return null;
+      input = input.trim();
+      if (/^[\w-]{11}$/.test(input)) return input;
+      try {
+        const u = new URL(input);
+        if (u.hostname.includes("youtu.be")) { const s = u.pathname.slice(1, 12); return /^[\w-]{11}$/.test(s) ? s : null; }
+        if (u.searchParams.get("v")) return u.searchParams.get("v");
+        const m = u.pathname.match(/\/(embed|shorts|v|live|watch)\/([\w-]{11})/);
+        if (m) return m[2];
+      } catch (e) {
+        const m = input.match(/[\w-]{11}/); if (m) return m[0];
+      }
+      return null;
+    }
+    function vimeoId(input) { const m = (input || "").match(/vimeo\.com\/(?:video\/)?(\d+)/i); return m ? m[1] : null; }
+
+    // ---- YouTube IFrame API ----
+    window.onYouTubeIframeAPIReady = function () {
+      yt = new YT.Player("player", {
+        playerVars: { controls: 0, disablekb: 1, modestbranding: 1, rel: 0, fs: 0,
+                      playsinline: 1, iv_load_policy: 3 },
+        events: {
+          onReady: function () {
+            ytReady = true; applyMute();
+            if (pending) { const p = pending; pending = null; loadYouTube(p.id, p.offset); }
+          },
+        },
+      });
+    };
+    (function () { const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(s); })();
+
+    function showOnly(kind) {
+      els.player.style.display = (kind === "youtube") ? "" : "none";
+      els.vid.style.display = (kind === "file" || kind === "hls") ? "" : "none";
+      els.embed.style.display = (kind === "vimeo") ? "" : "none";
+    }
+    function stopVideoEl() {
+      try { els.vid.pause(); } catch (e) {}
+      els.vid.removeAttribute("src"); try { els.vid.load(); } catch (e) {}
+      if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    }
+    function applyMute() {
+      try { if (yt && yt.mute) { muted ? yt.mute() : yt.unMute(); } } catch (e) {}
+      els.vid.muted = muted;
+    }
+
+    function loadYouTube(id, offset) {
+      showOnly("youtube");
+      if (!ytReady || !yt) { pending = { id: id, offset: offset }; return; }
+      yt.loadVideoById({ videoId: id, startSeconds: Math.max(0, offset) });
+      applyMute();
+    }
+    function loadFile(url, offset, isHls) {
+      showOnly(isHls ? "hls" : "file");
+      stopVideoEl();
+      els.vid.muted = muted;
+      const seekAndPlay = () => { els.vid.playbackRate = 1; try { els.vid.currentTime = Math.max(0, offset); } catch (e) {} els.vid.play().catch(() => {}); };
+      els.vid.addEventListener("loadedmetadata", seekAndPlay, { once: true });
+      if (isHls && window.Hls && Hls.isSupported()) { hls = new Hls(); hls.loadSource(url); hls.attachMedia(els.vid); }
+      else { els.vid.src = url; }
+    }
+    function loadVimeo(id, offset) {
+      showOnly("vimeo");
+      els.embed.src = "https://player.vimeo.com/video/" + id +
+        "?autoplay=1&muted=" + (muted ? "1" : "0") + "#t=" + Math.max(0, Math.floor(offset)) + "s";
+    }
+
+    function loadTrack(i, offset) {
+      const item = playlist[i];
+      if (!item) return;
+      curIndex = i; curType = item.type;
+      els.np.textContent = item.title || "";
+      document.getElementById("chName").textContent = "{{ name }}";
+      if (item.type === "youtube") { const id = ytId(item.url); if (id) loadYouTube(id, offset); }
+      else if (item.type === "vimeo") { const id = vimeoId(item.url); if (id) loadVimeo(id, offset); }
+      else if (item.type === "hls") loadFile(item.url, offset, true);
+      else loadFile(item.url, offset, false);
+    }
+
+    // Keep this player locked to the target offset. Small drift → nudge playback
+    // rate so it converges smoothly; big drift (ad/buffer/track change) → hard seek.
+    function driftCheck(offset) {
+      if (curType === "youtube") {
+        if (!yt || !yt.getCurrentTime) return;
+        let st = -1; try { st = yt.getPlayerState(); } catch (e) {}
+        if (!(window.YT && st === YT.PlayerState.PLAYING)) return;   // don't fight ads/buffering
+        let t; try { t = yt.getCurrentTime(); } catch (e) { return; }
+        if (Math.abs(t - offset) > YT_HARD && (Date.now() - lastSeek) > SEEK_COOLDOWN) {
+          try { yt.seekTo(offset + 0.25, true); lastSeek = Date.now(); } catch (e) {}   // +lead for seek latency
+        }
+        return;
+      }
+      if (curType === "file" || curType === "hls") {
+        const v = els.vid;
+        if (v.readyState < 2 || v.paused) return;
+        const drift = v.currentTime - offset;       // + = ahead, − = behind
+        if (Math.abs(drift) > HARD && (Date.now() - lastSeek) > SEEK_COOLDOWN) {
+          try { v.currentTime = offset + 0.1; } catch (e) {}   // snap big gaps
+          v.playbackRate = 1; lastSeek = Date.now();
+          return;
+        }
+        if (Math.abs(drift) < DEAD) { v.playbackRate = 1; return; }   // in sync
+        // Proportional pull: ahead → slow (<1), behind → speed up (>1), clamped ±1%.
+        v.playbackRate = 1 - Math.max(-MAXRATE, Math.min(MAXRATE, drift * GAIN));
+      }
+      // vimeo: not measurable — left as-is
+    }
+
+    // Resolve the current track + offset from the shared clock.
+    function computeNow() {
+      if (!total || !playlist.length) return null;
+      let elapsed = estServerNow() - anchor;
+      if (loop) { elapsed = ((elapsed % total) + total) % total; }
+      else if (elapsed < 0 || elapsed >= total) return null;   // not started / ended
+      let acc = 0;
+      for (let i = 0; i < playlist.length; i++) {
+        const d = playlist[i].duration;
+        if (elapsed < acc + d) return { index: i, offset: elapsed - acc };
+        acc += d;
+      }
+      return { index: playlist.length - 1, offset: 0 };
+    }
+
+    function goOffAir() {
+      els.offair.classList.add("show");
+      showOnly(null);
+      try { if (yt && yt.stopVideo) yt.stopVideo(); } catch (e) {}
+      stopVideoEl(); els.embed.src = "";
+      curIndex = -1; curType = null;
+      document.body.classList.add("paused");
+    }
+    function goOnAir() { els.offair.classList.remove("show"); document.body.classList.remove("paused"); }
+
+    let anchor = 0;
+    function tick() {
+      if (!isLive) { goOffAir(); return; }
+      const pos = computeNow();
+      if (!pos) { goOffAir(); return; }
+      goOnAir();
+      const target = pos.offset + calib;      // shift this device to match the group
+      if (pos.index !== curIndex) loadTrack(pos.index, target);
+      else driftCheck(target);
+    }
+
+    function applyState(data, clientMid) {
+      // clientMid = local wall-clock (ms) at the request midpoint ≈ when the
+      // server stamped server_now. Subtracting it cancels network latency.
+      skew = data.server_now - (clientMid / 1000);
+      anchor = data.anchor;
+      loop = !!data.loop;
+      isLive = !!data.is_live;
+      const changed = (data.version !== version);
+      version = data.version;
+      playlist = data.playlist || [];
+      total = playlist.reduce((s, t) => s + (t.duration || 0), 0);
+      if (changed) curIndex = -1;            // force reload on playlist/anchor change
+      return changed;
+    }
+
+    // One measured fetch → returns {data, rtt, mid} for NTP-style skew estimation.
+    async function measuredFetch() {
+      const d0 = Date.now();
+      const res = await fetch(STATE_URL, { cache: "no-store" });
+      const data = await res.json();
+      const d1 = Date.now();
+      return { data, rtt: d1 - d0, mid: (d0 + d1) / 2 };
+    }
+
+    // Take a few samples, keep the one with the lowest round-trip (most accurate),
+    // like SNTP. Applies its state and returns whether the playlist/anchor changed.
+    async function syncClock(samples) {
+      let best = null;
+      for (let i = 0; i < samples; i++) {
+        try { const m = await measuredFetch(); if (!best || m.rtt < best.rtt) best = m; }
+        catch (e) { /* skip bad sample */ }
+      }
+      if (!best) return false;
+      return applyState(best.data, best.mid);
+    }
+
+    // ---- tap for sound ----
+    els.tap.addEventListener("click", function () {
+      muted = false; applyMute();
+      if (curType === "vimeo" && curIndex >= 0) {  // vimeo can't unmute live — reload unmuted
+        const pos = computeNow(); if (pos) loadTrack(pos.index, pos.offset);
+      }
+      els.tap.classList.add("hidden");
+    });
+
+    // ---- per-device audio-sync calibration ----
+    const calibVal = $("calibVal"), syncPanel = $("syncPanel");
+    const renderCalib = () => { const ms = Math.round(calib * 1000); calibVal.textContent = (ms > 0 ? "+" : "") + ms + " ms"; };
+    function setCalib(v) {
+      calib = Math.max(-1, Math.min(1, Math.round(v * 1000) / 1000));
+      localStorage.setItem("live_calib_" + SLUG, String(calib));
+      renderCalib(); tick();                       // apply immediately
+    }
+    $("syncToggle").addEventListener("click", () => syncPanel.classList.toggle("hidden"));
+    document.querySelectorAll("#syncPanel [data-d]").forEach(b =>
+      b.addEventListener("click", () => setCalib(calib + parseFloat(b.dataset.d))));
+    $("calibReset").addEventListener("click", () => setCalib(0));
+    renderCalib();
+
+    // Boot: establish an accurate clock (5 samples), then tick + periodic re-sync.
+    (async function () {
+      await syncClock(5);
+      tick();
+      setInterval(tick, TICK_MS);
+      setInterval(async function () { const changed = await syncClock(2); if (changed) tick(); }, POLL_MS);
+    })();
+  })();
+  </script>
+</body>
+</html>

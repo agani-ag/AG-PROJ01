@@ -684,3 +684,46 @@ class EmployeeIncentive(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.amount}"
+
+# =============== Live Channels (Radio / TV) ===============
+class LiveChannel(models.Model):
+    """A broadcast channel (Radio = audio, TV = video).
+
+    Sync model = "computed schedule": the server stores only the ordered
+    playlist + a single `anchor_time` (when the broadcast started) + a `version`.
+    Every viewer's browser computes what's playing right now from the clock,
+    so there is no server-side job and nothing streams through the server.
+    """
+    KIND_CHOICES = (('audio', 'Radio (audio)'), ('video', 'TV (video)'))
+
+    slug = models.SlugField(max_length=20, unique=True)      # 'radio' | 'tv'
+    name = models.CharField(max_length=60)
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES)
+    is_live = models.BooleanField(default=False)
+    loop = models.BooleanField(default=True)                 # 24/7 loop
+    anchor_time = models.DateTimeField(default=now)          # broadcast start instant
+    version = models.PositiveIntegerField(default=1)         # bump to force viewers to resync
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.slug})"
+
+class LiveTrack(models.Model):
+    SOURCE_CHOICES = (
+        ('youtube', 'YouTube'), ('vimeo', 'Vimeo'),
+        ('file', 'File'), ('hls', 'HLS'),
+    )
+    channel = models.ForeignKey(LiveChannel, on_delete=models.CASCADE, related_name='tracks')
+    order = models.PositiveIntegerField(default=0)
+    title = models.CharField(max_length=200, blank=True)
+    url = models.URLField(max_length=500)
+    source_type = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='youtube')
+    duration_seconds = models.PositiveIntegerField(default=0)  # required for the schedule
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"{self.channel.slug} #{self.order} {self.title or self.url}"

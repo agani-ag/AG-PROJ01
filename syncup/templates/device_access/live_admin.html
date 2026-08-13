@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ channel.name }} — Live Admin{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<style>
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .url-cell { max-width: 320px; }
+  .live-pill { font-weight: 700; letter-spacing: .03em; }
+  #trackTable td { vertical-align: middle; }
+  .ord-btns .btn { line-height: 1; padding: 2px 7px; }
+  tr.now-playing-row > td { background: #fff8e1 !important; box-shadow: inset 3px 0 0 #fd7e14; }
+  #nowPlayingBar .eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
+  #nowPlayingBar .eq i { width: 3px; background: #198754; animation: eq .9s ease-in-out infinite; }
+  #nowPlayingBar .eq i:nth-child(2){ animation-delay:.2s } #nowPlayingBar .eq i:nth-child(3){ animation-delay:.4s }
+  @keyframes eq { 0%,100%{height:4px} 50%{height:14px} }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-md-4 py-3">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
+      {% if channel.kind == 'audio' %}<i class="bi bi-broadcast-pin text-primary"></i>{% else %}<i class="bi bi-tv-fill text-primary"></i>{% endif %}
+      {{ channel.name }} <span class="text-muted fs-6">live admin</span>
+    </h4>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{% url 'live_admin' other_slug %}">
+        <i class="bi bi-arrow-left-right"></i> Switch to {{ other_slug|capfirst }}
+      </a>
+      <a class="btn btn-outline-primary btn-sm" href="{{ public_url }}" target="_blank" rel="noopener">
+        <i class="bi bi-box-arrow-up-right"></i> Open viewer
+      </a>
+    </div>
+  </div>
+
+  <!-- Status + broadcast controls -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+      <div>
+        <div class="small text-muted">Status</div>
+        <span class="badge live-pill {% if channel.is_live %}text-bg-danger{% else %}text-bg-secondary{% endif %}" id="statusPill">
+          {% if channel.is_live %}● ON AIR{% else %}○ OFF AIR{% endif %}
+        </span>
+      </div>
+      <div>
+        <div class="small text-muted">Total loop</div>
+        <b id="totalDur" data-secs="{{ total }}">—</b>
+      </div>
+      <div class="flex-grow-1">
+        <div class="small text-muted">Public link (share this)</div>
+        <div class="input-group input-group-sm" style="max-width:520px;">
+          <input class="form-control mono" id="publicUrl" value="{{ public_url }}" readonly />
+          <button class="btn btn-outline-secondary" id="copyUrlBtn"><i class="bi bi-clipboard"></i></button>
+        </div>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-danger btn-sm ctrl" data-action="go_live"><i class="bi bi-broadcast"></i> Go Live</button>
+        <button class="btn btn-outline-dark btn-sm ctrl" data-action="restart"><i class="bi bi-skip-backward-fill"></i> Restart</button>
+        <button class="btn btn-outline-dark btn-sm ctrl" data-action="skip"><i class="bi bi-skip-end-fill"></i> Skip</button>
+        <button class="btn btn-outline-secondary btn-sm ctrl" data-action="off_air"><i class="bi bi-power"></i> Off Air</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add a track -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="fw-semibold mb-2"><i class="bi bi-plus-circle"></i> Add a track</div>
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-lg-5">
+          <label class="form-label small mb-1">Media URL</label>
+          <input class="form-control" id="addUrl" placeholder="YouTube / Vimeo / .mp4 / .m3u8 URL" />
+        </div>
+        <div class="col-12 col-lg-4">
+          <label class="form-label small mb-1">Title <span class="text-muted">(auto-filled)</span></label>
+          <input class="form-control" id="addTitle" placeholder="Auto-detected on probe" />
+        </div>
+        <div class="col-6 col-lg-1">
+          <label class="form-label small mb-1">Type</label>
+          <input class="form-control mono" id="addType" readonly placeholder="—" />
+        </div>
+        <div class="col-6 col-lg-2">
+          <label class="form-label small mb-1">Duration <span class="text-muted">(mm:ss)</span></label>
+          <input class="form-control mono" id="addDur" placeholder="0:00" />
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2 mt-2">
+        <button class="btn btn-outline-primary btn-sm" id="probeBtn"><i class="bi bi-magic"></i> Auto-detect</button>
+        <button class="btn btn-success btn-sm" id="addBtn" disabled><i class="bi bi-plus-lg"></i> Add to playlist</button>
+        <span class="small ms-1" id="addStatus"></span>
+      </div>
+      <div class="form-text mt-1">Paste a URL and click <b>Auto-detect</b> — it reads the real duration & title, then <b>Add</b>. If a source won't report its length, type mm:ss manually.</div>
+    </div>
+  </div>
+
+  <!-- Now playing (live, computed from the schedule) -->
+  <div class="alert alert-dark d-none d-flex align-items-center flex-wrap gap-2 py-2" id="nowPlayingBar">
+    <span class="eq"><i></i><i></i><i></i></span>
+    <span class="fw-semibold">Now playing:</span>
+    <b id="npTitle">—</b>
+    <span class="mono ms-1" id="npTime"></span>
+    <span class="ms-auto small text-muted">Up next: <span id="npNext">—</span></span>
+  </div>
+
+  <!-- Playlist -->
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span class="fw-semibold"><i class="bi bi-music-note-list"></i> Playlist <span class="badge text-bg-secondary">{{ tracks|length }}</span></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0" id="trackTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:70px;">Order</th>
+            <th>Title</th>
+            <th class="url-cell">URL</th>
+            <th style="width:80px;">Type</th>
+            <th style="width:90px;">Duration</th>
+            <th style="width:70px;">Active</th>
+            <th style="width:110px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tracks %}
+          <tr data-id="{{ t.id }}" data-dur="{{ t.duration_seconds }}">
+            <td>
+              <span class="ord-btns d-inline-flex flex-column gap-1">
+                <button class="btn btn-outline-secondary btn-sm move" data-dir="up" title="Move up"><i class="bi bi-caret-up-fill"></i></button>
+                <button class="btn btn-outline-secondary btn-sm move" data-dir="down" title="Move down"><i class="bi bi-caret-down-fill"></i></button>
+              </span>
+            </td>
+            <td class="t-title">{{ t.title|default:"—" }}</td>
+            <td class="url-cell text-truncate mono" title="{{ t.url }}">{{ t.url }}</td>
+            <td><span class="badge text-bg-light border">{{ t.source_type }}</span></td>
+            <td class="t-dur mono">{{ t.duration_seconds }}</td>
+            <td>
+              <div class="form-check form-switch">
+                <input class="form-check-input act-toggle" type="checkbox" {% if t.is_active %}checked{% endif %} />
+              </div>
+            </td>
+            <td>
+              <button class="btn btn-outline-info btn-sm edit" title="Edit"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-outline-danger btn-sm del" title="Delete"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>
+          {% empty %}
+          <tr id="emptyRow"><td colspan="7" class="text-center text-muted py-4">No tracks yet — add one above.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+  "use strict";
+  const CSRF = "{{ csrf_token }}";
+  const SLUG = "{{ channel.slug }}";
+  const URLS = {
+    add: "{% url 'live_track_add' channel.slug %}",
+    reorder: "{% url 'live_track_reorder' channel.slug %}",
+    control: "{% url 'live_control' channel.slug %}",
+    state: "{% url 'live_state' channel.slug %}",
+    editTpl: "{% url 'live_track_edit' 0 %}",     // /live/admin/track/0/edit — swap the 0
+    delTpl: "{% url 'live_track_delete' 0 %}",    // /live/admin/track/0/delete
+  };
+  const editUrl = (id) => URLS.editTpl.replace("/0/edit", "/" + id + "/edit");
+  const delUrl = (id) => URLS.delTpl.replace("/0/delete", "/" + id + "/delete");
+  const $ = (id) => document.getElementById(id);
+
+  const fmtDur = (s) => {
+    s = Math.max(0, Math.round(s || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    const p = (n) => String(n).padStart(2, "0");
+    return h ? (h + ":" + p(m) + ":" + p(ss)) : (m + ":" + p(ss));
+  };
+  const parseDur = (str) => {
+    str = (str || "").trim(); if (!str) return 0;
+    if (/^\d+$/.test(str)) return parseInt(str, 10);
+    const parts = str.split(":").map(x => parseInt(x, 10) || 0);
+    return parts.reduce((acc, v) => acc * 60 + v, 0);
+  };
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
+      body: JSON.stringify(body || {}),
+    });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    if (!res.ok || data.success === false) throw new Error(data.error || ("HTTP " + res.status));
+    return data;
+  }
+
+  // ---- total duration display ----
+  (function () { const el = $("totalDur"); el.textContent = fmtDur(parseInt(el.dataset.secs, 10) || 0); })();
+
+  // ---- classification ----
+  function ytId(input) {
+    if (!input) return null; input = input.trim();
+    if (/^[\w-]{11}$/.test(input)) return input;
+    try {
+      const u = new URL(input);
+      if (u.hostname.includes("youtu.be")) { const s = u.pathname.slice(1, 12); return /^[\w-]{11}$/.test(s) ? s : null; }
+      if (u.searchParams.get("v")) return u.searchParams.get("v");
+      const m = u.pathname.match(/\/(embed|shorts|v|live|watch)\/([\w-]{11})/); if (m) return m[2];
+    } catch (e) { const m = input.match(/[\w-]{11}/); if (m) return m[0]; }
+    return null;
+  }
+  const vimeoId = (i) => { const m = (i || "").match(/vimeo\.com\/(?:video\/)?(\d+)/i); return m ? m[1] : null; };
+  function detect(url) {
+    if (ytId(url)) return "youtube";
+    if (vimeoId(url)) return "vimeo";
+    const low = (url || "").toLowerCase();
+    if (/\.m3u8(\?|#|$)/.test(low)) return "hls";
+    if (/\.(mp4|webm|ogg|ogv|mov|m4v|mkv)(\?|#|$)/.test(low)) return "file";
+    if (/^https?:\/\//i.test(url)) return "file";
+    return null;
+  }
+  const fnameOf = (url) => { try { return decodeURIComponent(new URL(url).pathname.split("/").pop()) || url; } catch (e) { return url; } };
+
+  // ---- YouTube API (for probing duration/title) ----
+  let ytReady = false; const ytWaiters = [];
+  window.onYouTubeIframeAPIReady = function () { ytReady = true; ytWaiters.splice(0).forEach(f => f()); };
+  (function () { const s = document.createElement("script"); s.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(s); })();
+  const whenYT = () => new Promise(res => { ytReady ? res() : ytWaiters.push(res); });
+
+  function probeYouTube(id) {
+    return new Promise(async (resolve, reject) => {
+      await whenYT();
+      const holder = document.createElement("div");
+      holder.style.cssText = "position:absolute;left:-9999px;top:-9999px;width:320px;height:180px";
+      document.body.appendChild(holder);
+      let done = false;
+      const cleanup = () => { try { p.destroy(); } catch (e) {} holder.remove(); };
+      const p = new YT.Player(holder, {
+        videoId: id, playerVars: { autoplay: 0 },
+        events: { onReady: () => {
+          try { const d = Math.round(p.getDuration() || 0); const vd = p.getVideoData() || {};
+            done = true; cleanup(); resolve({ duration: d, title: vd.title || "" }); }
+          catch (e) { cleanup(); reject(e); }
+        } },
+      });
+      setTimeout(() => { if (!done) { cleanup(); reject(new Error("timeout")); } }, 12000);
+    });
+  }
+  function probeMedia(url, isHls) {
+    return new Promise((resolve, reject) => {
+      const v = document.createElement("video"); v.preload = "metadata"; v.muted = true;
+      v.style.cssText = "position:absolute;left:-9999px"; document.body.appendChild(v);
+      let done = false, h = null;
+      const cleanup = () => { if (h) { try { h.destroy(); } catch (e) {} } v.remove(); };
+      v.addEventListener("loadedmetadata", () => { done = true; const d = Math.round(v.duration || 0);
+        cleanup(); resolve({ duration: isFinite(d) ? d : 0, title: fnameOf(url) }); });
+      v.addEventListener("error", () => { cleanup(); reject(new Error("cannot load media")); });
+      if (isHls && window.Hls && Hls.isSupported()) { h = new Hls(); h.loadSource(url); h.attachMedia(v); }
+      else { v.src = url; }
+      setTimeout(() => { if (!done) { cleanup(); reject(new Error("timeout")); } }, 12000);
+    });
+  }
+  async function probeVimeo(url) {
+    const r = await fetch("https://vimeo.com/api/oembed.json?url=" + encodeURIComponent(url));
+    if (!r.ok) throw new Error("vimeo lookup failed");
+    const j = await r.json();
+    return { duration: Math.round(j.duration || 0), title: j.title || "" };
+  }
+
+  // ---- add form ----
+  const setAddStatus = (msg, kind) => {
+    $("addStatus").className = "small ms-1 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    $("addStatus").innerHTML = msg || "";
+  };
+  $("addUrl").addEventListener("input", () => { $("addType").value = detect($("addUrl").value) || ""; $("addBtn").disabled = true; });
+
+  $("probeBtn").addEventListener("click", async function () {
+    const url = $("addUrl").value.trim();
+    const type = detect(url);
+    if (!type) { setAddStatus("Unrecognised URL.", "err"); return; }
+    $("addType").value = type;
+    setAddStatus('<span class="spinner-border spinner-border-sm"></span> Detecting…');
+    try {
+      let info;
+      if (type === "youtube") info = await probeYouTube(ytId(url));
+      else if (type === "vimeo") info = await probeVimeo(url);
+      else info = await probeMedia(url, type === "hls");
+      if (info.title && !$("addTitle").value.trim()) $("addTitle").value = info.title;
+      if (info.duration) $("addDur").value = fmtDur(info.duration);
+      $("addBtn").disabled = false;
+      setAddStatus(info.duration ? "Detected " + fmtDur(info.duration) + "." : "Couldn't read duration — enter mm:ss manually.", info.duration ? "ok" : "err");
+      if (!info.duration) $("addBtn").disabled = false;   // allow manual duration
+    } catch (e) {
+      setAddStatus("Probe failed (" + (e.message || e) + "). Enter duration manually to add.", "err");
+      $("addBtn").disabled = false;
+    }
+  });
+
+  $("addBtn").addEventListener("click", async function () {
+    const url = $("addUrl").value.trim();
+    const type = detect(url);
+    if (!url || !type) { setAddStatus("Enter a valid URL.", "err"); return; }
+    const dur = parseDur($("addDur").value);
+    if (!dur) { setAddStatus("Duration is required (mm:ss) — it drives the schedule.", "err"); return; }
+    $("addBtn").disabled = true;
+    try {
+      await post(URLS.add, { url: url, title: $("addTitle").value.trim(), source_type: type, duration_seconds: dur });
+      location.reload();
+    } catch (e) { setAddStatus("Add failed: " + (e.message || e), "err"); $("addBtn").disabled = false; }
+  });
+
+  // ---- controls ----
+  document.querySelectorAll(".ctrl").forEach(btn => btn.addEventListener("click", async function () {
+    const action = btn.dataset.action;
+    if (action === "off_air") {
+      const c = await Swal.fire({ icon: "warning", title: "Take " + SLUG + " off air?", showCancelButton: true, confirmButtonText: "Off Air", confirmButtonColor: "#dc3545" });
+      if (!c.isConfirmed) return;
+    }
+    try { await post(URLS.control, { action: action }); location.reload(); }
+    catch (e) { Swal.fire({ icon: "error", title: "Failed", text: e.message || String(e) }); }
+  }));
+
+  // ---- reorder (up/down) ----
+  function currentIds() { return Array.from(document.querySelectorAll("#trackTable tbody tr[data-id]")).map(tr => parseInt(tr.dataset.id, 10)); }
+  document.querySelectorAll(".move").forEach(btn => btn.addEventListener("click", async function () {
+    const tr = btn.closest("tr"); const ids = currentIds();
+    const id = parseInt(tr.dataset.id, 10); const i = ids.indexOf(id);
+    const j = btn.dataset.dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= ids.length) return;
+    ids.splice(i, 1); ids.splice(j, 0, id);
+    try { await post(URLS.reorder, { order: ids }); location.reload(); }
+    catch (e) { Swal.fire({ icon: "error", title: "Reorder failed", text: e.message || String(e) }); }
+  }));
+
+  // ---- edit ----
+  document.querySelectorAll(".edit").forEach(btn => btn.addEventListener("click", async function () {
+    const tr = btn.closest("tr");
+    const curTitle = tr.querySelector(".t-title").textContent.trim();
+    const curDur = parseInt(tr.dataset.dur, 10) || 0;
+    const { value: form } = await Swal.fire({
+      title: "Edit track",
+      html: '<input id="sw-title" class="swal2-input" placeholder="Title" value="' + curTitle.replace(/"/g, "&quot;") + '">' +
+            '<input id="sw-dur" class="swal2-input" placeholder="Duration mm:ss" value="' + fmtDur(curDur) + '">',
+      showCancelButton: true, confirmButtonText: "Save",
+      preConfirm: () => ({ title: document.getElementById("sw-title").value, dur: document.getElementById("sw-dur").value }),
+    });
+    if (!form) return;
+    try {
+      await post(editUrl(tr.dataset.id), { title: form.title, duration_seconds: parseDur(form.dur) });
+      location.reload();
+    } catch (e) { Swal.fire({ icon: "error", title: "Save failed", text: e.message || String(e) }); }
+  }));
+
+  // ---- active toggle ----
+  document.querySelectorAll(".act-toggle").forEach(cb => cb.addEventListener("change", async function () {
+    const tr = cb.closest("tr");
+    try { await post(editUrl(tr.dataset.id), { is_active: cb.checked }); }
+    catch (e) { cb.checked = !cb.checked; Swal.fire({ icon: "error", title: "Failed", text: e.message || String(e) }); }
+  }));
+
+  // ---- delete ----
+  document.querySelectorAll(".del").forEach(btn => btn.addEventListener("click", async function () {
+    const tr = btn.closest("tr");
+    const c = await Swal.fire({ icon: "warning", title: "Delete this track?", showCancelButton: true, confirmButtonText: "Delete", confirmButtonColor: "#dc3545" });
+    if (!c.isConfirmed) return;
+    try { await post(delUrl(tr.dataset.id), {}); location.reload(); }
+    catch (e) { Swal.fire({ icon: "error", title: "Delete failed", text: e.message || String(e) }); }
+  }));
+
+  // ---- "Now playing" indicator (computed from the same schedule the viewers use) ----
+  // Pull the server clock/anchor from state.json (keeps us in sync with viewers),
+  // but read the track list + durations straight from the table so the highlighted
+  // row always matches what's on screen — even mid-edit.
+  const clock = { skew: 0, anchor: 0, isLive: false, loop: true, ok: false };
+  async function refreshClock() {
+    try {
+      const d = await (await fetch(URLS.state, { cache: "no-store" })).json();
+      clock.skew = d.server_now - (Date.now() / 1000);
+      clock.anchor = d.anchor; clock.isLive = !!d.is_live; clock.loop = !!d.loop; clock.ok = true;
+    } catch (e) { /* keep last known clock */ }
+  }
+  function activeRows() {
+    return Array.from(document.querySelectorAll("#trackTable tbody tr[data-id]")).filter(tr => {
+      const cb = tr.querySelector(".act-toggle");
+      return cb && cb.checked && (parseInt(tr.dataset.dur, 10) || 0) > 0;
+    });
+  }
+  function npTick() {
+    const bar = $("nowPlayingBar");
+    document.querySelectorAll(".now-playing-row").forEach(tr => tr.classList.remove("now-playing-row"));
+    const rows = activeRows();
+    if (!clock.ok || !clock.isLive || !rows.length) { bar.classList.add("d-none"); return; }
+    const durs = rows.map(tr => parseInt(tr.dataset.dur, 10) || 0);
+    const total = durs.reduce((a, b) => a + b, 0);
+    if (!total) { bar.classList.add("d-none"); return; }
+    let elapsed = (Date.now() / 1000 + clock.skew) - clock.anchor;
+    if (clock.loop) elapsed = ((elapsed % total) + total) % total;
+    else if (elapsed < 0 || elapsed >= total) { bar.classList.add("d-none"); return; }
+    let acc = 0, idx = 0, off = 0;
+    for (let i = 0; i < durs.length; i++) { if (elapsed < acc + durs[i]) { idx = i; off = elapsed - acc; break; } acc += durs[i]; }
+    const row = rows[idx];
+    row.classList.add("now-playing-row");
+    const titleOf = (tr) => (tr ? tr.querySelector(".t-title").textContent.trim() : "");
+    bar.classList.remove("d-none");
+    $("npTitle").textContent = titleOf(row) || "(untitled)";
+    $("npTime").textContent = fmtDur(off) + " / " + fmtDur(durs[idx]);
+    $("npNext").textContent = titleOf(rows[(idx + 1) % rows.length]) || "—";
+  }
+  refreshClock().then(npTick);
+  setInterval(npTick, 1000);
+  setInterval(refreshClock, 15000);
+
+  // ---- copy public url ----
+  $("copyUrlBtn").addEventListener("click", function () {
+    const inp = $("publicUrl"); inp.select();
+    try { navigator.clipboard.writeText(inp.value); } catch (e) { document.execCommand("copy"); }
+    $("copyUrlBtn").innerHTML = '<i class="bi bi-check2"></i>';
+    setTimeout(() => { $("copyUrlBtn").innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
+  });
+})();
+</script>
+{% endblock %}

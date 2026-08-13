@@ -3,7 +3,7 @@ from .views import (
     auth, views, link_registry,
     profile, attendance, crm,
     device_access, test, media,
-    employee_invoice
+    employee_invoice, live
 )
 
 urlpatterns = [
@@ -137,6 +137,16 @@ urlpatterns = [
     # Media Cloud Config & Gallery
     path('device/media/clicksend', media.clicksend, name='clicksend'),
     path('device/media/video-player', media.video_player, name='video_player'),
+
+    # Live Channels (Radio / TV) — public viewer + superuser admin
+    path('live/<slug:slug>', live.live_viewer, name='live_viewer'),
+    path('live/<slug:slug>/state.json', live.live_state, name='live_state'),
+    path('live/admin/<slug:slug>', live.live_admin, name='live_admin'),
+    path('live/admin/<slug:slug>/track/add', live.live_track_add, name='live_track_add'),
+    path('live/admin/track/<int:track_id>/edit', live.live_track_edit, name='live_track_edit'),
+    path('live/admin/track/<int:track_id>/delete', live.live_track_delete, name='live_track_delete'),
+    path('live/admin/<slug:slug>/reorder', live.live_track_reorder, name='live_track_reorder'),
+    path('live/admin/<slug:slug>/control', live.live_control, name='live_control'),
     path('device/media/cloudinary', media.cloudinary, name='cloudinary'),
     path('device/media/cloud-sign', media.cloud_sign, name='cloud_sign'),
     path('device/api/cloud-config', media.cloud_config, name='cloud_config'),
