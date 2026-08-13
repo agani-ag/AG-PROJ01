@@ -2,7 +2,7 @@
 from django.core import signing
 from django.db.models import Q
 
-from .models import AppReminder
+from .models import AppLink, AppReminder
 
 # Salt for the per-link "partner notify" token injected as window.SyncUp.token.
 PARTNER_NOTIFY_SALT = "syncup-partner-notify"
@@ -30,14 +30,24 @@ def link_dict(link):
         "icon": link.icon or "",
         # The app shows a remove (✕) only on links the user added themselves.
         "can_remove": link.created_by_user,
-        # Non-empty only when the link opts in — the app injects it as window.SyncUp.token.
-        "notify_token": make_notify_token(link) if link.notify_token_enabled else "",
+        # Non-empty only when the link opts in AND belongs to a user — the partner token is
+        # per-user, so general (account-less) links never carry one.
+        "notify_token": make_notify_token(link) if (link.notify_token_enabled and link.account_id) else "",
     }
 
 
 def links_for(account):
-    """Active links for an account, ordered (matches the app's UrlItem list)."""
-    return [link_dict(link) for link in account.links.filter(is_active=True)]
+    """The app's URL list: this user's own active links, then the shared general links.
+
+    General links (account is null) are appended only when the account opts in
+    (show_general_links) — off for single-link kiosk users so their one link still auto-opens.
+    """
+    own = AppLink.objects.filter(is_active=True, account=account).order_by("title")
+    result = [link_dict(link) for link in own]
+    if account.show_general_links:
+        general = AppLink.objects.filter(is_active=True, account__isnull=True).order_by("title")
+        result += [link_dict(link) for link in general]
+    return result
 
 
 def reminder_tap_target(reminder):

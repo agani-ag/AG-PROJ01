@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Edit General Link{% else %}Add General Link{% endif %}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
+
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">{% if is_edit %}Edit General Link{% else %}Add General Link{% endif %}</h2>
+            <div class="text-muted">Shown to all users (with general links enabled)</div>
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4">
+            {% csrf_token %}
+
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                {{ form.title }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">URL</label>
+                {{ form.url }}
+                <select class="form-select mt-2"
+                        onchange="if(this.value){document.getElementById('id_url').value=this.value;}">
+                    <option value="">— or pick from existing URLs —</option>
+                    {% for u in all_urls %}
+                    <option value="{{ u.url }}">{{ u.label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Distinct URLs already used across users. Selecting one fills the URL box.</div>
+            </div>
+            <div class="row">
+                <div class="col-12 col-md-8 mb-3">
+                    <label class="form-label">Description</label>
+                    {{ form.description }}
+                </div>
+                <div class="col-12 col-md-4 mb-3">
+                    <label class="form-label">Icon (optional)</label>
+                    {{ form.icon }}
+                </div>
+            </div>
+            <div class="form-check mb-2">
+                {{ form.is_active }}
+                <label class="form-check-label ms-1">Active</label>
+            </div>
+
+            <div class="d-flex gap-2 mt-3">
+                <button type="submit" class="btn btn-primary btn-lg flex-fill">
+                    <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Link{% endif %}
+                </button>
+                {% if is_edit %}
+                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
+                    <i class="fas fa-trash me-2"></i>Delete
+                </button>
+                {% endif %}
+                <a href="{% url 'mobile_general_links' %}" class="btn btn-secondary btn-lg flex-fill">
+                    <i class="fas fa-arrow-left me-2"></i>Back
+                </a>
+            </div>
+        </form>
+
+        {% if is_edit %}
+        <form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+{% if is_edit %}
+<script>
+function showDeleteAlert() {
+    Swal.fire({
+        title: 'Delete this general link?', text: 'It will disappear for all users.', icon: 'warning',
+        showCancelButton: true, confirmButtonColor: '#dc3545', confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel'
+    }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
+}
+</script>
+{% endif %}
+{% endblock %}

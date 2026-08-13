@@ -36,6 +36,11 @@ class AppAccount(models.Model):
         default=False,
         help_text="Lets the user add/remove their own links from the app (only links they added).",
     )
+    show_general_links = models.BooleanField(
+        default=True,
+        help_text="Include the shared 'general' links in this user's list. Turn off for single-link "
+                  "(kiosk) users so their one link still auto-opens.",
+    )
     last_login = models.DateTimeField(null=True, blank=True)
     # Last time this user's app polled the chat screen — used to skip the admin-reply push
     # while they're actively looking at the chat.
@@ -149,7 +154,11 @@ APP_ICON_CHOICES = [
 
 # =============== Per-account links (the URL list shown in the app) ===============
 class AppLink(models.Model):
-    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="links")
+    # Null = a GENERAL link, shown to every account whose show_general_links is on. A set account
+    # = a personal link for just that user.
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.CASCADE, related_name="links", null=True, blank=True,
+    )
     title = models.CharField(max_length=100)
     url = models.URLField(max_length=500)
     description = models.CharField(max_length=200, null=True, blank=True)

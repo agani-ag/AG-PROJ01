@@ -17,6 +17,11 @@ urlpatterns = [
     path("links/<int:link_id>/edit", v.link_edit, name="mobile_link_edit"),
     path("links/<int:link_id>/delete", v.link_delete, name="mobile_link_delete"),
 
+    # General links (shown to all users)
+    path("general-links", v.general_links, name="mobile_general_links"),
+    path("general-links/add", v.general_link_add, name="mobile_general_link_add"),
+    path("general-links/<int:link_id>/edit", v.general_link_edit, name="mobile_general_link_edit"),
+
     # Devices
     path("devices", v.devices, name="mobile_devices"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),

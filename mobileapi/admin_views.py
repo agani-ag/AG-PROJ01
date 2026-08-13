@@ -21,7 +21,7 @@ from .serializers import chat_message_dict
 from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
-from .forms import AppAccountForm, AppConfigForm, AppLinkForm, PushForm, ReminderForm
+from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from .models import (
     AppAccount,
     AppChatMessage,
@@ -156,7 +156,52 @@ def link_delete(request, link_id):
     account_id = link.account_id
     link.delete()
     messages.success(request, "Link deleted.")
+    if account_id is None:
+        return redirect("mobile_general_links")
     return redirect("mobile_account_edit", account_id)
+
+
+# ------------------------------------------------------------------ General links
+# Links with no account — shown to every user whose account has show_general_links on.
+@superuser_required
+def general_links(request):
+    links = AppLink.objects.filter(account__isnull=True).order_by("title")
+    return render(request, "mobileapi/general_links.html", {"links": links})
+
+
+@superuser_required
+def general_link_add(request):
+    if request.method == "POST":
+        form = GeneralLinkForm(request.POST)
+        if form.is_valid():
+            link = form.save(commit=False)
+            link.account = None  # general
+            link.save()
+            messages.success(request, "General link added.")
+            return redirect("mobile_general_links")
+        messages.error(request, form.errors.as_text())
+    else:
+        form = GeneralLinkForm()
+    return render(request, "mobileapi/general_link_edit.html", {
+        "form": form, "all_urls": _distinct_link_urls(),
+    })
+
+
+@superuser_required
+def general_link_edit(request, link_id):
+    link = get_object_or_404(AppLink, id=link_id, account__isnull=True)
+    if request.method == "POST":
+        form = GeneralLinkForm(request.POST, instance=link)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "General link saved.")
+            return redirect("mobile_general_links")
+        messages.error(request, form.errors.as_text())
+    else:
+        form = GeneralLinkForm(instance=link)
+    return render(request, "mobileapi/general_link_edit.html", {
+        "form": form, "link": link, "is_edit": True, "all_urls": _distinct_link_urls(),
+    })
 
 
 # ------------------------------------------------------------------ Devices

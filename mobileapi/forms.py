@@ -28,11 +28,13 @@ class AppAccountForm(forms.ModelForm):
 
     class Meta:
         model = AppAccount
-        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links"]
+        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links", "show_general_links"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("is_active", "admin_chat_mode", "can_manage_links"))
+        _bootstrap(self.fields, checkbox_fields=(
+            "is_active", "admin_chat_mode", "can_manage_links", "show_general_links",
+        ))
 
     def clean_new_password(self):
         pw = self.cleaned_data.get("new_password")
@@ -61,6 +63,21 @@ class AppLinkForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         _bootstrap(self.fields, checkbox_fields=("is_active", "notify_token_enabled"))
         # Icon is a choice field → use a Bootstrap select.
+        self.fields["icon"].widget.attrs["class"] = "form-select"
+        self.fields["icon"].required = False
+
+
+class GeneralLinkForm(forms.ModelForm):
+    """A shared link with no account — shown to every user (who has general links enabled).
+    No partner notify-token here: that's per-user and meaningless for a general link."""
+
+    class Meta:
+        model = AppLink
+        fields = ["title", "url", "description", "icon", "is_active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _bootstrap(self.fields, checkbox_fields=("is_active",))
         self.fields["icon"].widget.attrs["class"] = "form-select"
         self.fields["icon"].required = False
 
