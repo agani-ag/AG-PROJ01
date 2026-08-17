@@ -4,7 +4,8 @@ from .models import (
     Holiday, Attendance, SalaryTransaction,
     JobRole, Worker, Leads, Opportunity,
     MaterialRequest, ActivityLog, WorkerCommissions,
-    Reminder, LiveChannel, LiveTrack
+    Reminder, LiveChannel, LiveTrack,
+    BroadcastState, SignalMessage
 )
 
 
@@ -64,3 +65,8 @@ class LiveTrackAdmin(admin.ModelAdmin):
     list_display = ('channel', 'order', 'title', 'source_type', 'duration_seconds', 'is_active')
     list_filter = ('channel', 'source_type', 'is_active')
     ordering = ('channel', 'order')
+
+
+@admin.register(BroadcastState)
+class BroadcastStateAdmin(admin.ModelAdmin):
+    list_display = ('room', 'is_live', 'updated_at')

@@ -19,16 +19,21 @@ Admin (superuser only):
 from __future__ import annotations
 
 import json
+import time
+import logging
+import requests
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import Max
 from django.http import JsonResponse, Http404
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from ..models import LiveChannel, LiveTrack
+from ..models import LiveChannel, LiveTrack, BroadcastState, SignalMessage
 from .device_access import _superuser_page, _superuser_api
 
 
@@ -225,3 +230,154 @@ def live_control(request, slug):
 
     ch.save()
     return JsonResponse({"success": True, "is_live": ch.is_live, "version": ch.version})
+
+
+# ====================================================================
+# Mode 3 — Live Broadcast (WebRTC)
+# ====================================================================
+BROADCAST_ROOM = "live"
+HEARTBEAT_TTL = 15          # seconds — admin heartbeat freshness for "on air"
+SIGNAL_TTL = 60            # seconds — signaling messages purged after this
+MAX_SIGNAL_BYTES = 20000   # cap a single signaling payload
+
+
+# Cache Metered's TURN credential list so we don't hit their API on every request.
+_metered_cache = {"servers": None, "exp": 0.0}
+
+
+def _metered_ice():
+    """Fetch ready-to-use ICE servers from Metered's free TURN tier.
+
+    Needs METERED_DOMAIN (e.g. 'yourapp.metered.live') + METERED_API_KEY. Returns
+    a list of iceServers (their own STUN + TURN over UDP/TCP/TLS-443) or None.
+    Cached for 1 hour; falls back to the last good list on a transient error.
+    """
+    domain = getattr(settings, "METERED_DOMAIN", "")
+    key = getattr(settings, "METERED_API_KEY", "")
+    if not (domain and key):
+        return None
+    now = time.time()
+    if _metered_cache["servers"] and _metered_cache["exp"] > now:
+        return _metered_cache["servers"]
+    try:
+        r = requests.get(
+            f"https://{domain}/api/v1/turn/credentials", params={"apiKey": key}, timeout=5,
+        )
+        r.raise_for_status()
+        servers = r.json()
+        if isinstance(servers, list) and servers:
+            _metered_cache["servers"] = servers
+            _metered_cache["exp"] = now + 3600
+            return servers
+    except Exception:
+        logging.getLogger(__name__).exception("Metered TURN fetch failed")
+    return _metered_cache["servers"]   # stale fallback (may be None)
+
+
+def _ice_servers():
+    """ICE servers for WebRTC. STUN is always included (free). TURN is added when
+    configured — preferring Metered's API-key tier, else static WEBRTC_TURN_URL
+    (comma-separated URLs for UDP + TCP + TLS/443; TCP/443 is what gets through
+    strict/mobile firewalls, essential for the internet case)."""
+    servers = [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]
+
+    metered = _metered_ice()
+    if metered:
+        servers.extend(metered)     # Metered returns its own STUN + TURN entries
+        return servers
+
+    turn_raw = getattr(settings, "WEBRTC_TURN_URL", "")
+    if turn_raw:
+        urls = [u.strip() for u in turn_raw.split(",") if u.strip()]
+        if urls:
+            s = {"urls": urls}
+            if getattr(settings, "WEBRTC_TURN_USER", ""):
+                s["username"] = settings.WEBRTC_TURN_USER
+            if getattr(settings, "WEBRTC_TURN_CRED", ""):
+                s["credential"] = settings.WEBRTC_TURN_CRED
+            servers.append(s)
+    return servers
+
+
+def _broadcast_state():
+    st, _ = BroadcastState.objects.get_or_create(room=BROADCAST_ROOM)
+    return st
+
+
+@require_GET
+def broadcast_viewer(request):
+    return render(request, "device_access/broadcast_viewer.html", {})
+
+
+@_superuser_page
+@require_GET
+def broadcast_admin(request):
+    return render(request, "device_access/broadcast_admin.html", {
+        "public_url": request.build_absolute_uri(reverse("broadcast_viewer")),
+    })
+
+
+@require_GET
+def broadcast_state_api(request):
+    st = _broadcast_state()
+    live = st.is_live and (timezone.now() - st.updated_at).total_seconds() < HEARTBEAT_TTL
+    return JsonResponse({
+        "is_live": live,
+        "iceServers": _ice_servers(),
+        "server_now": timezone.now().timestamp(),
+    })
+
+
+@_superuser_api
+@require_POST
+def broadcast_live_api(request):
+    """Admin sets on-air/off-air + heartbeats (superuser only)."""
+    st = _broadcast_state()
+    st.is_live = bool(_body(request).get("is_live"))
+    st.save()   # auto_now refreshes the heartbeat
+    return JsonResponse({"success": True, "is_live": st.is_live})
+
+
+@csrf_exempt
+@require_POST
+def broadcast_signal_api(request):
+    """Public signaling relay — listeners aren't logged in. Just an SDP/ICE mailbox."""
+    data = _body(request)
+    to_peer = (data.get("to") or "").strip()[:64]
+    from_peer = (data.get("from") or "").strip()[:64]
+    kind = (data.get("kind") or "").strip()[:20]
+    if not (to_peer and from_peer and kind):
+        return JsonResponse({"success": False, "error": "missing fields"}, status=400)
+
+    payload = data.get("data")
+    text = payload if isinstance(payload, str) else json.dumps(payload or {})
+    if len(text) > MAX_SIGNAL_BYTES:
+        return JsonResponse({"success": False, "error": "payload too large"}, status=400)
+
+    SignalMessage.objects.create(
+        room=BROADCAST_ROOM, from_peer=from_peer, to_peer=to_peer, kind=kind, data=text,
+    )
+    # Opportunistic purge of stale messages (keeps the table tiny).
+    SignalMessage.objects.filter(
+        created_at__lt=timezone.now() - timedelta(seconds=SIGNAL_TTL)
+    ).delete()
+    return JsonResponse({"success": True})
+
+
+@require_GET
+def broadcast_poll_api(request):
+    """Return signaling messages addressed to `peer` with id > `after` (cursor)."""
+    peer = (request.GET.get("peer") or "").strip()[:64]
+    try:
+        after = int(request.GET.get("after") or "0")
+    except (ValueError, TypeError):
+        after = 0
+    if not peer:
+        return JsonResponse({"messages": [], "cursor": after})
+
+    qs = SignalMessage.objects.filter(
+        room=BROADCAST_ROOM, to_peer=peer, id__gt=after,
+    ).order_by("id")[:50]
+    msgs = [{"id": m.id, "from": m.from_peer, "kind": m.kind, "data": m.data} for m in qs]
+    cursor = msgs[-1]["id"] if msgs else after
+    return JsonResponse({"messages": msgs, "cursor": cursor})

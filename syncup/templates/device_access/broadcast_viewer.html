@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Live Broadcast</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>📡</text></svg>" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; color: #fff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 50% 30%, #1c2333 0%, #05070c 70%); }
+    #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; text-align: center; padding: 24px; }
+    .disc { width: 170px; height: 170px; border-radius: 50%;
+      background: conic-gradient(from 0deg, #2a3350, #4a5a8a, #2a3350);
+      display: flex; align-items: center; justify-content: center; font-size: 66px; color: #cdd7f0;
+      box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+    body.playing .disc { animation: spin 6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { font-size: clamp(18px, 4vw, 26px); font-weight: 700; }
+    .sub { opacity: .6; font-size: 14px; max-width: 460px; }
+    #badge { position: fixed; top: 16px; left: 16px; display: none; align-items: center; gap: 8px;
+      font-weight: 800; letter-spacing: .04em; background: rgba(0,0,0,.45); padding: 7px 12px; border-radius: 999px; font-size: 13px; }
+    body.playing #badge { display: flex; }
+    #badge .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff3b30; animation: pulse 1.6s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,59,48,.6);} 70%{box-shadow:0 0 0 10px rgba(255,59,48,0);} 100%{box-shadow:0 0 0 0 rgba(255,59,48,0);} }
+    #tapBtn { border: 0; border-radius: 999px; padding: 14px 30px; font-size: 17px; font-weight: 800;
+      background: #ff3b30; color: #fff; cursor: pointer; box-shadow: 0 10px 30px rgba(255,59,48,.35); }
+    #tapBtn:disabled { opacity: .5; }
+    .spinner { width: 26px; height: 26px; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; border-radius: 50%; animation: sp 1s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="badge"><span class="dot"></span> LIVE</div>
+  <div id="wrap">
+    <div class="disc">♪</div>
+    <div class="status" id="status">Connecting…</div>
+    <div class="sub" id="sub">Checking if anyone is broadcasting…</div>
+    <button id="tapBtn" style="display:none;">▶ Tap to listen</button>
+  </div>
+  <audio id="audio" autoplay playsinline></audio>
+
+  <script>
+  (function () {
+    "use strict";
+    const URLS = {
+      state: "{% url 'broadcast_state' %}",
+      signal: "{% url 'broadcast_signal' %}",
+      poll: "{% url 'broadcast_poll' %}",
+    };
+    const PEER = "l-" + Math.random().toString(36).slice(2, 10);
+    const $ = (id) => document.getElementById(id);
+
+    let joined = false, pc = null, iceServers = [], cursor = 0;
+    let pollTimer = null, connecting = false;
+    const pend = [];
+
+    const setStatus = (s, sub) => { $("status").textContent = s; if (sub != null) $("sub").textContent = sub; };
+    function signal(to, kind, data) {
+      return fetch(URLS.signal, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: PEER, to: to, kind: kind, data: data }) });
+    }
+
+    function teardown() {
+      if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      pend.length = 0; connecting = false;
+      document.body.classList.remove("playing");
+    }
+
+    async function connect() {
+      if (pc || connecting) return;
+      connecting = true;
+      setStatus("Connecting…", "Joining the live audio…");
+      pc = new RTCPeerConnection({ iceServers: iceServers });
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      pc.ontrack = (e) => {
+        const a = $("audio"); a.srcObject = e.streams[0]; a.muted = false;
+        a.play().catch(() => {});
+        document.body.classList.add("playing");
+        setStatus("● Live", "You're listening.");
+      };
+      pc.onicecandidate = (e) => { if (e.candidate) signal("admin", "candidate", e.candidate); };
+      pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        if (!document.body.classList.contains("playing")) setStatus("Connecting…", "Link: " + s + "…");
+        if (s === "failed") setStatus("Can't connect", "Your network is blocking the direct link — a TURN server is needed. Tell the admin.");
+      };
+      pc.onconnectionstatechange = () => {
+        if (["failed", "disconnected", "closed"].includes(pc.connectionState)) {
+          teardown(); setStatus("Reconnecting…", "Lost the connection — retrying…");
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await signal("admin", "offer", pc.localDescription);
+      cursor = 0;
+      await poll();
+      pollTimer = setInterval(poll, 1000);
+      connecting = false;
+    }
+
+    async function handle(m) {
+      if (m.kind === "answer") {
+        if (!pc) return;
+        await pc.setRemoteDescription(JSON.parse(m.data));
+        pend.forEach(c => { try { pc.addIceCandidate(c); } catch (e) {} });
+        pend.length = 0;
+      } else if (m.kind === "candidate") {
+        const c = JSON.parse(m.data);
+        if (pc && pc.remoteDescription) { try { await pc.addIceCandidate(c); } catch (e) {} }
+        else pend.push(c);
+      } else if (m.kind === "bye") {
+        teardown(); setStatus("Off air", "The broadcast ended.");
+      }
+    }
+
+    async function poll() {
+      let d; try { d = await (await fetch(URLS.poll + "?peer=" + PEER + "&after=" + cursor, { cache: "no-store" })).json(); } catch (e) { return; }
+      cursor = d.cursor;
+      for (const m of d.messages) { try { await handle(m); } catch (e) {} }
+    }
+
+    async function checkState() {
+      let d; try { d = await (await fetch(URLS.state, { cache: "no-store" })).json(); } catch (e) { return; }
+      iceServers = d.iceServers || [];
+      if (d.is_live) {
+        if (!pc && !connecting) connect();
+      } else {
+        if (pc) { teardown(); }
+        document.body.classList.remove("playing");
+        setStatus("Off air", "No one is broadcasting right now. This will start automatically when they go live.");
+      }
+    }
+
+    // Autoplay with sound needs a user gesture → the Tap button starts everything.
+    $("tapBtn").addEventListener("click", function () {
+      joined = true;
+      $("tapBtn").style.display = "none";
+      $("audio").play().catch(() => {});    // unlock audio within the gesture
+      checkState();
+      setInterval(checkState, 3000);
+    });
+
+    // Show the Tap button once we know the page is reachable.
+    setStatus("Ready", "Tap to join the live broadcast.");
+    $("tapBtn").style.display = "";
+  })();
+  </script>
+</body>
+</html>

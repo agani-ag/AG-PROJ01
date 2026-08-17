@@ -138,6 +138,15 @@ urlpatterns = [
     path('device/media/clicksend', media.clicksend, name='clicksend'),
     path('device/media/video-player', media.video_player, name='video_player'),
 
+    # Live Broadcast (Mode 3 — WebRTC). MUST precede the generic live/<slug> routes
+    # below, or "broadcast" would be captured as a channel slug.
+    path('live/broadcast', live.broadcast_viewer, name='broadcast_viewer'),
+    path('live/broadcast/state', live.broadcast_state_api, name='broadcast_state'),
+    path('live/broadcast/signal', live.broadcast_signal_api, name='broadcast_signal'),
+    path('live/broadcast/poll', live.broadcast_poll_api, name='broadcast_poll'),
+    path('live/broadcast/live', live.broadcast_live_api, name='broadcast_live'),
+    path('live/admin/broadcast', live.broadcast_admin, name='broadcast_admin'),
+
     # Live Channels (Radio / TV) — public viewer + superuser admin
     path('live/<slug:slug>', live.live_viewer, name='live_viewer'),
     path('live/<slug:slug>/state.json', live.live_state, name='live_state'),

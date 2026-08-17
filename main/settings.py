@@ -142,6 +142,16 @@ TELEGRAM_GROUPS = [
 FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
 
+# WebRTC (Live Broadcast). STUN is always used (free). Set TURN only when you need
+# reliable connections across the internet (strict/mobile NATs). Leave unset for LAN.
+# Preferred: Metered free tier — set METERED_DOMAIN + METERED_API_KEY (the server
+# fetches fresh TURN credentials automatically). Otherwise a static WEBRTC_TURN_* set.
+METERED_DOMAIN = os.getenv("METERED_DOMAIN", "")       # e.g. yourapp.metered.live
+METERED_API_KEY = os.getenv("METERED_API_KEY", "")
+WEBRTC_TURN_URL = os.getenv("WEBRTC_TURN_URL", "")     # e.g. turn:turn.example.com:3478
+WEBRTC_TURN_USER = os.getenv("WEBRTC_TURN_USER", "")
+WEBRTC_TURN_CRED = os.getenv("WEBRTC_TURN_CRED", "")
+
 # Shared secret for the /cron/ endpoints called by the external cron service. Sent as an
 # X-Cron-Key header (or ?key= for services that can't set headers). Unset = endpoints closed.
 CRON_KEY = os.getenv("CRON_KEY")

@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Live Broadcast — Admin{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+<style>
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  #vuWrap { height: 14px; background: #e9ecef; border-radius: 999px; overflow: hidden; max-width: 320px; }
+  #vuBar { height: 100%; width: 0%; background: linear-gradient(90deg,#20c997,#ffc107,#dc3545); transition: width .07s linear; }
+  .live-pill { font-weight: 700; letter-spacing: .03em; }
+  .step { font-size: .9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-3 px-md-4 py-3" style="max-width:900px;">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
+      <i class="bi bi-broadcast text-danger"></i> Live Broadcast <span class="text-muted fs-6">admin</span>
+    </h4>
+    <a class="btn btn-outline-primary btn-sm" href="{{ public_url }}" target="_blank" rel="noopener">
+      <i class="bi bi-box-arrow-up-right"></i> Open listener page
+    </a>
+  </div>
+
+  <div class="alert alert-warning py-2 small">
+    <b>Desktop Chrome/Edge only.</b> When you click <b>Start</b>, pick a <b>Tab</b> and tick
+    <b>“Share tab audio”</b> (any OS) — or <b>Entire Screen</b> + <b>“Share system audio”</b> (Windows).
+    This shares your <b>device audio, not your microphone</b>. Keep this tab open while broadcasting.
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+        <div>
+          <div class="small text-muted">Status</div>
+          <span class="badge live-pill text-bg-secondary" id="statusPill">○ OFF AIR</span>
+        </div>
+        <div>
+          <div class="small text-muted">Listeners</div>
+          <b id="listenerCount">0</b>
+        </div>
+        <div class="flex-grow-1">
+          <div class="small text-muted">Audio level</div>
+          <div id="vuWrap"><div id="vuBar"></div></div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-info" id="testBtn"><i class="bi bi-wifi"></i> Test connection</button>
+          <button class="btn btn-danger" id="startBtn"><i class="bi bi-broadcast"></i> Start</button>
+          <button class="btn btn-outline-secondary" id="stopBtn" disabled><i class="bi bi-stop-fill"></i> Stop</button>
+        </div>
+      </div>
+
+      <hr>
+      <div class="small text-muted mb-1">Public link (share this)</div>
+      <div class="input-group input-group-sm" style="max-width:520px;">
+        <input class="form-control mono" id="publicUrl" value="{{ public_url }}" readonly />
+        <button class="btn btn-outline-secondary" id="copyUrlBtn"><i class="bi bi-clipboard"></i></button>
+      </div>
+      <div class="small mt-2" id="msg"></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header fw-semibold"><i class="bi bi-info-circle"></i> How it works</div>
+    <div class="card-body step">
+      <ol class="mb-0">
+        <li>Play your music in a browser tab (YouTube, Spotify web, a local file — anything).</li>
+        <li>Click <b>Start</b> → choose that tab → tick <b>Share tab audio</b>.</li>
+        <li>Send friends the <b>public link</b>. They tap <b>Listen</b> and hear your audio live.</li>
+        <li>Same Wi-Fi works out of the box. Remote friends connect too when routers allow (add a TURN server later for guaranteed remote).</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+  "use strict";
+  const CSRF = "{{ csrf_token }}";
+  const PEER = "admin";
+  const URLS = {
+    state: "{% url 'broadcast_state' %}",
+    live: "{% url 'broadcast_live' %}",
+    signal: "{% url 'broadcast_signal' %}",
+    poll: "{% url 'broadcast_poll' %}",
+  };
+  const $ = (id) => document.getElementById(id);
+  const setMsg = (m, kind) => { $("msg").className = "small mt-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted"); $("msg").innerHTML = m || ""; };
+
+  let stream = null, audioTrack = null, iceServers = [], running = false;
+  let cursor = 0, hb = null, pollTimer = null, audioCtx = null, analyser = null, rafId = null;
+  const pcs = {};         // peerId -> RTCPeerConnection
+  const pending = {};     // peerId -> queued ICE candidates
+
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF }, body: JSON.stringify(body || {}) });
+  }
+  function signal(to, kind, data) {
+    return fetch(URLS.signal, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: PEER, to: to, kind: kind, data: data }) });
+  }
+
+  async function loadIce() { try { const d = await (await fetch(URLS.state, { cache: "no-store" })).json(); iceServers = d.iceServers || []; } catch (e) {} }
+
+  function updateUI() {
+    const n = Object.keys(pcs).length;
+    $("listenerCount").textContent = n;
+    $("statusPill").className = "badge live-pill " + (running ? "text-bg-danger" : "text-bg-secondary");
+    $("statusPill").textContent = running ? "● ON AIR" : "○ OFF AIR";
+    $("startBtn").disabled = running;
+    $("stopBtn").disabled = !running;
+  }
+
+  function makePc(peer) {
+    if (pcs[peer]) closePc(peer);
+    const pc = new RTCPeerConnection({ iceServers: iceServers });
+    // NOTE: the audio track is added in handle() AFTER setRemoteDescription(offer),
+    // so it binds to the offer's audio m-line and the answer is a proper sendonly.
+    pc.onicecandidate = (e) => { if (e.candidate) signal(peer, "candidate", e.candidate); };
+    pc.onconnectionstatechange = () => {
+      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) closePc(peer);
+      updateUI();
+    };
+    pcs[peer] = pc;
+    updateUI();
+    return pc;
+  }
+  function closePc(peer) { if (pcs[peer]) { try { pcs[peer].close(); } catch (e) {} delete pcs[peer]; delete pending[peer]; updateUI(); } }
+
+  async function handle(m) {
+    const from = m.from;
+    if (m.kind === "offer") {
+      const pc = makePc(from);
+      await pc.setRemoteDescription(JSON.parse(m.data));
+      try { pc.addTrack(audioTrack, stream); } catch (e) {}   // bind to the offer's audio m-line
+      const ans = await pc.createAnswer();
+      await pc.setLocalDescription(ans);
+      signal(from, "answer", pc.localDescription);
+      (pending[from] || []).forEach(c => { try { pc.addIceCandidate(c); } catch (e) {} });
+      pending[from] = [];
+    } else if (m.kind === "candidate") {
+      const pc = pcs[from];
+      const cand = JSON.parse(m.data);
+      if (pc && pc.remoteDescription) { try { await pc.addIceCandidate(cand); } catch (e) {} }
+      else { (pending[from] = pending[from] || []).push(cand); }
+    } else if (m.kind === "bye") {
+      closePc(from);
+    }
+  }
+
+  async function poll() {
+    let d; try { d = await (await fetch(URLS.poll + "?peer=" + PEER + "&after=" + cursor, { cache: "no-store" })).json(); } catch (e) { return; }
+    cursor = d.cursor;
+    for (const m of d.messages) { try { await handle(m); } catch (e) {} }
+  }
+
+  function setupVU() {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(stream);   // NOT connected to destination (no echo)
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 256;
+      src.connect(analyser);
+      const arr = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        if (!analyser) return;
+        analyser.getByteFrequencyData(arr);
+        let sum = 0; for (const v of arr) sum += v;
+        $("vuBar").style.width = Math.min(100, (sum / arr.length / 140) * 100) + "%";
+        rafId = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch (e) {}
+  }
+
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch (e) { setMsg("Screen/tab share was cancelled or blocked.", "err"); return; }
+
+    const aTracks = stream.getAudioTracks();
+    if (!aTracks.length) {
+      stream.getTracks().forEach(t => t.stop()); stream = null;
+      Swal.fire({ icon: "warning", title: "No audio was shared",
+        html: 'You must tick <b>“Share tab audio”</b> (or “Share system audio”) in the picker. Please click Start and try again.' });
+      return;
+    }
+    audioTrack = aTracks[0];
+    stream.getVideoTracks().forEach(t => t.stop());     // we only need audio
+    audioTrack.addEventListener("ended", stop);         // user hit browser's "Stop sharing"
+
+    await loadIce();
+    setupVU();
+    running = true;
+    await post(URLS.live, { is_live: true });
+    hb = setInterval(() => post(URLS.live, { is_live: true }), 5000);
+    cursor = 0;
+    await poll();
+    pollTimer = setInterval(poll, 1000);
+    setMsg("You are on air. Share the public link.", "ok");
+    updateUI();
+  }
+
+  async function stop() {
+    running = false;
+    if (hb) clearInterval(hb); if (pollTimer) clearInterval(pollTimer);
+    Object.keys(pcs).forEach(p => { signal(p, "bye", {}); closePc(p); });
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; audioTrack = null;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; analyser = null; }
+    $("vuBar").style.width = "0%";
+    try { await post(URLS.live, { is_live: false }); } catch (e) {}
+    setMsg("Broadcast stopped.", "");
+    updateUI();
+  }
+
+  // Diagnostic: gather ICE candidates and report whether STUN (srflx) and
+  // TURN (relay) actually work. relay = internet mode will connect through TURN.
+  async function testConnection() {
+    $("testBtn").disabled = true;
+    setMsg('<span class="spinner-border spinner-border-sm"></span> Testing STUN/TURN…');
+    let servers = [];
+    try { servers = (await (await fetch(URLS.state, { cache: "no-store" })).json()).iceServers || []; } catch (e) {}
+    const hasTurn = servers.some(s => (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => /^turns?:/.test(u)));
+    const pc = new RTCPeerConnection({ iceServers: servers });
+    let srflx = false, relay = false;
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return finish();
+      const t = e.candidate.candidate || "";
+      if (/ typ srflx /.test(t)) srflx = true;
+      if (/ typ relay /.test(t)) relay = true;
+    };
+    pc.createDataChannel("t");
+    await pc.setLocalDescription(await pc.createOffer());
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      try { pc.close(); } catch (e) {}
+      $("testBtn").disabled = false;
+      const line = (ok, label) => (ok ? "✅ " : "❌ ") + label;
+      let html = line(srflx, "STUN (find my public address)") + "<br>" +
+                 (hasTurn ? line(relay, "TURN relay (works across the internet)")
+                          : "⚠️ No TURN configured — only same-network / lenient routers will connect.");
+      const kind = (hasTurn && !relay) ? "err" : (srflx ? "ok" : "err");
+      Swal.fire({ icon: (hasTurn ? (relay ? "success" : "error") : "warning"),
+        title: "Connection test", html: html, confirmButtonColor: "#0d6efd" });
+      setMsg("", "");
+    };
+    setTimeout(finish, 6000);
+  }
+  $("testBtn").addEventListener("click", testConnection);
+
+  $("startBtn").addEventListener("click", start);
+  $("stopBtn").addEventListener("click", stop);
+  // If the tab is closed without Stop, the heartbeat stops and listeners see
+  // off-air within HEARTBEAT_TTL (~15s) — no explicit unload call needed.
+
+  $("copyUrlBtn").addEventListener("click", function () {
+    const inp = $("publicUrl"); inp.select();
+    try { navigator.clipboard.writeText(inp.value); } catch (e) { document.execCommand("copy"); }
+    $("copyUrlBtn").innerHTML = '<i class="bi bi-check2"></i>';
+    setTimeout(() => { $("copyUrlBtn").innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
+  });
+
+  updateUI();
+})();
+</script>
+{% endblock %}

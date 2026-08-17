@@ -727,3 +727,33 @@ class LiveTrack(models.Model):
 
     def __str__(self):
         return f"{self.channel.slug} #{self.order} {self.title or self.url}"
+
+# =============== Live Broadcast (Mode 3 — WebRTC) ===============
+class BroadcastState(models.Model):
+    """Single-row on-air flag for the live broadcast, with an admin heartbeat.
+
+    `is_live` + a fresh `updated_at` (heartbeat) together mean 'on air'. If the
+    admin tab closes, the heartbeat goes stale and listeners treat it as off-air.
+    """
+    room = models.SlugField(max_length=20, unique=True, default='live')
+    is_live = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Broadcast {self.room} ({'live' if self.is_live else 'off'})"
+
+class SignalMessage(models.Model):
+    """Short-lived WebRTC signaling relay (SDP offers/answers + ICE candidates).
+
+    A tiny mailbox: each side posts messages addressed `to_peer` and polls for
+    messages addressed to itself. Rows are auto-purged after ~60s.
+    """
+    room = models.SlugField(max_length=20, default='live')
+    from_peer = models.CharField(max_length=64)
+    to_peer = models.CharField(max_length=64)
+    kind = models.CharField(max_length=20)      # offer | answer | candidate | bye
+    data = models.TextField(blank=True)         # JSON string
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=['room', 'to_peer', 'id'])]
