@@ -121,9 +121,24 @@
       for (const m of d.messages) { try { await handle(m); } catch (e) {} }
     }
 
+    // If the server passed a Metered config (it couldn't fetch server-side), the
+    // browser fetches the TURN credentials directly.
+    async function resolveIce(state) {
+      const base = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+      const m = state && state.metered;
+      if (m && m.domain && m.apiKey) {
+        try {
+          const r = await fetch("https://" + m.domain + "/api/v1/turn/credentials?apiKey=" + encodeURIComponent(m.apiKey), { cache: "no-store" });
+          const list = await r.json();
+          if (Array.isArray(list) && list.length) return base.concat(list);
+        } catch (e) { /* fall through */ }
+      }
+      return (state && state.iceServers) || base;
+    }
+
     async function checkState() {
       let d; try { d = await (await fetch(URLS.state, { cache: "no-store" })).json(); } catch (e) { return; }
-      iceServers = d.iceServers || [];
+      iceServers = await resolveIce(d);
       if (d.is_live) {
         if (!pc && !connecting) connect();
       } else {

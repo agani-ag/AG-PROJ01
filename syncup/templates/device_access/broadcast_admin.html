@@ -104,7 +104,22 @@
     return fetch(URLS.signal, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: PEER, to: to, kind: kind, data: data }) });
   }
 
-  async function loadIce() { try { const d = await (await fetch(URLS.state, { cache: "no-store" })).json(); iceServers = d.iceServers || []; } catch (e) {} }
+  // Resolve ICE servers from a state payload. If the server passed a Metered
+  // config (because it can't fetch server-side), the browser fetches the TURN
+  // credentials directly (browsers aren't network-restricted like the server).
+  async function resolveIce(state) {
+    const base = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+    const m = state && state.metered;
+    if (m && m.domain && m.apiKey) {
+      try {
+        const r = await fetch("https://" + m.domain + "/api/v1/turn/credentials?apiKey=" + encodeURIComponent(m.apiKey), { cache: "no-store" });
+        const list = await r.json();
+        if (Array.isArray(list) && list.length) return base.concat(list);
+      } catch (e) { /* fall through to server list */ }
+    }
+    return (state && state.iceServers) || base;
+  }
+  async function loadIce() { try { iceServers = await resolveIce(await (await fetch(URLS.state, { cache: "no-store" })).json()); } catch (e) {} }
 
   function updateUI() {
     const n = Object.keys(pcs).length;
@@ -224,7 +239,7 @@
     $("testBtn").disabled = true;
     setMsg('<span class="spinner-border spinner-border-sm"></span> Testing STUN/TURN…');
     let servers = [];
-    try { servers = (await (await fetch(URLS.state, { cache: "no-store" })).json()).iceServers || []; } catch (e) {}
+    try { servers = await resolveIce(await (await fetch(URLS.state, { cache: "no-store" })).json()); } catch (e) {}
     const hasTurn = servers.some(s => (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => /^turns?:/.test(u)));
     const pc = new RTCPeerConnection({ iceServers: servers });
     let srflx = false, relay = false;

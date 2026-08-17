@@ -257,11 +257,11 @@ def _metered_ice():
     if not (domain and key):
         return None
     now = time.time()
-    if _metered_cache["servers"] and _metered_cache["exp"] > now:
-        return _metered_cache["servers"]
+    if _metered_cache["exp"] > now:
+        return _metered_cache["servers"]        # cached (success OR negative)
     try:
         r = requests.get(
-            f"https://{domain}/api/v1/turn/credentials", params={"apiKey": key}, timeout=5,
+            f"https://{domain}/api/v1/turn/credentials", params={"apiKey": key}, timeout=3,
         )
         r.raise_for_status()
         servers = r.json()
@@ -271,7 +271,10 @@ def _metered_ice():
             return servers
     except Exception:
         logging.getLogger(__name__).exception("Metered TURN fetch failed")
-    return _metered_cache["servers"]   # stale fallback (may be None)
+    # Failure: negative-cache for 2 min so we never block state.json on every call
+    # (e.g. hosts like PythonAnywhere free that can't reach Metered — use static TURN there).
+    _metered_cache["exp"] = now + 120
+    return _metered_cache["servers"]            # last good, or None
 
 
 def _ice_servers():
@@ -321,11 +324,20 @@ def broadcast_admin(request):
 def broadcast_state_api(request):
     st = _broadcast_state()
     live = st.is_live and (timezone.now() - st.updated_at).total_seconds() < HEARTBEAT_TTL
-    return JsonResponse({
+    resp = {
         "is_live": live,
         "iceServers": _ice_servers(),
         "server_now": timezone.now().timestamp(),
-    })
+    }
+    # If the server can't reach Metered (e.g. PythonAnywhere free tier blocks
+    # outbound), the browser fetches the TURN credentials itself — pass the config
+    # through. NOTE: this exposes the Metered API key to the client (acceptable for
+    # a private app; the key only grants TURN relay quota, nothing else).
+    dom = getattr(settings, "METERED_DOMAIN", "")
+    key = getattr(settings, "METERED_API_KEY", "")
+    if dom and key:
+        resp["metered"] = {"domain": dom, "apiKey": key}
+    return JsonResponse(resp)
 
 
 @_superuser_api
