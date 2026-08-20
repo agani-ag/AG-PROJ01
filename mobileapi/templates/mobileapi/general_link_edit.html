@@ -43,6 +43,14 @@
                 {{ form.is_active }}
                 <label class="form-check-label ms-1">Active</label>
             </div>
+            <div class="form-check mb-2">
+                {{ form.keep_screen_on }}
+                <label class="form-check-label ms-1">Keep screen on (audio)</label>
+                <div class="form-text">
+                    Keeps the screen awake so this page's audio keeps playing (radio/music). Users can
+                    dim it to a dark, battery-saving “Radio mode” from the floating button.
+                </div>
+            </div>
 
             <div class="d-flex gap-2 mt-3">
                 <button type="submit" class="btn btn-primary btn-lg flex-fill">

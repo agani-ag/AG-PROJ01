@@ -58,7 +58,8 @@ def test1(request):
 
         <div class="section">
             <h3>📄 File Picker</h3>
-            <button onclick="pickFile()">Pick File</button>
+            <input type="file" id="file-input" style="display:none;" />
+            <button onclick="document.getElementById('file-input').click()">Pick File</button>
             <p id="file-result"></p>
         </div>
 
@@ -146,17 +147,6 @@ def test1(request):
                 });
             }
 
-            function pickFile() {
-                window.ReactNativeWebView.postMessage(JSON.stringify({
-                    type: 'OPEN_FILE_PICKER',
-                    accept: '*/*'
-                }));
-
-                document.addEventListener('ms_file_picked', (e) => {
-                    document.getElementById('file-result').innerHTML =
-                        `File: ${e.detail.name}<br>Size: ${e.detail.size} bytes`;
-                }, { once: true });
-            }
 
             // QR Code Functions
             function generateQR() {

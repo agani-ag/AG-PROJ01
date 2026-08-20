@@ -12,9 +12,9 @@
         <tr>
             <th>Account</th>
             <th>Device ID</th>
-            <th>Platform</th>
             <th>Version</th>
             <th>Last seen</th>
+            <th>Last reminder sync</th>
             <th>Active</th>
             <th></th>
         </tr>
@@ -24,9 +24,9 @@
         <tr>
             <td><a href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.email }}</a></td>
             <td><small class="text-muted">{{ d.device_id }}</small></td>
-            <td>{{ d.platform }}</td>
             <td>{{ d.app_version|default:"—" }}</td>
             <td>{{ d.last_seen|date:"d M Y, H:i" }}</td>
+            <td>{% if d.last_reminder_sync_at %}{{ d.last_reminder_sync_at|date:"d M Y, H:i" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{% if d.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
             <td class="text-end">
                 {% if d.is_active %}

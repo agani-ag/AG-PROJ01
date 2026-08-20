@@ -114,6 +114,15 @@ def account_urls(request):
 
 
 # --------------------------------------------------------------------------- #
+# 3b. Current account details (name/email) — lets the app pick up admin edits
+# --------------------------------------------------------------------------- #
+@require_http_methods(["GET"])
+@app_token_required
+def account_me(request):
+    return JsonResponse(account_dict(request.account))
+
+
+# --------------------------------------------------------------------------- #
 # 3a. Self-managed links (only when the account has can_manage_links)
 # --------------------------------------------------------------------------- #
 @csrf_exempt
@@ -319,6 +328,12 @@ def _sweep_completed_reminders():
 @app_token_required
 def reminders(request):
     _sweep_completed_reminders()
+    # Record this device's reminder sync (background/foreground) so the admin can see it.
+    device_id = request.GET.get("device_id")
+    if device_id:
+        AppDevice.objects.filter(account=request.account, device_id=device_id).update(
+            last_reminder_sync_at=timezone.now(),
+        )
     return JsonResponse(reminders_for(request.account), safe=False)
 
 
@@ -387,20 +402,24 @@ def chat_session(request):
     return JsonResponse({"url": url})
 
 
+def _chat_unread_count(account):
+    """Chat-badge count. Support agent: messages awaiting reply across all other users.
+    Normal user: their own unread admin messages."""
+    if account.admin_chat_mode:
+        return AppChatMessage.objects.filter(
+            sender="user", read_by_admin=False,
+        ).exclude(account=account).count()
+    return AppChatMessage.objects.filter(
+        account=account, sender="admin", read_by_user=False,
+    ).count()
+
+
 @require_http_methods(["GET"])
 @app_token_required
 def chat_unread(request):
     """Chat button badge. For a support agent: messages awaiting reply across all users.
     For a normal user: their own unread admin messages."""
-    if request.account.admin_chat_mode:
-        count = AppChatMessage.objects.filter(
-            sender="user", read_by_admin=False,
-        ).exclude(account=request.account).count()
-    else:
-        count = AppChatMessage.objects.filter(
-            account=request.account, sender="admin", read_by_user=False,
-        ).count()
-    return JsonResponse({"count": count})
+    return JsonResponse({"count": _chat_unread_count(request.account)})
 
 
 # --------------------------------------------------------------------------- #
@@ -436,14 +455,14 @@ def privacy_policy(request):
 # --------------------------------------------------------------------------- #
 # 7. Server-driven config (unauthenticated)
 # --------------------------------------------------------------------------- #
-@require_http_methods(["GET"])
-def config(request):
+def _config_dict(request):
     cfg = AppConfig.load()
-    return JsonResponse({
+    return {
         "min_supported_version": cfg.min_supported_version,
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
         "privacy_policy_url": _public_url(request, "privacy_policy"),
+        "chat_enabled": cfg.chat_enabled,
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",
@@ -452,4 +471,26 @@ def config(request):
             "blocking": cfg.announcement_blocking,
         },
         "feature_flags": cfg.feature_flags or {},
+    }
+
+
+@require_http_methods(["GET"])
+def config(request):
+    return JsonResponse(_config_dict(request))
+
+
+# --------------------------------------------------------------------------- #
+# Combined refresh — one call for the app's pull-to-refresh / foreground sync
+# --------------------------------------------------------------------------- #
+@require_http_methods(["GET"])
+@app_token_required
+def sync(request):
+    """Everything the app refreshes at once: the user's own details (name/email — an admin may
+    have edited them), their link list, the chat-badge count, and the server config. Replaces
+    four separate GETs. Reminders stay on their own endpoint (they have a scheduling/ack flow)."""
+    return JsonResponse({
+        "user": account_dict(request.account),
+        "urls": links_for(request.account),
+        "chat_unread": _chat_unread_count(request.account),
+        "config": _config_dict(request),
     })

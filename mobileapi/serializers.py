@@ -33,6 +33,8 @@ def link_dict(link):
         # Non-empty only when the link opts in AND belongs to a user — the partner token is
         # per-user, so general (account-less) links never carry one.
         "notify_token": make_notify_token(link) if (link.notify_token_enabled and link.account_id) else "",
+        # Keep the screen awake on this page so its audio keeps playing (radio/music links).
+        "keep_screen_on": link.keep_screen_on,
     }
 
 

@@ -172,6 +172,12 @@ class AppLink(models.Model):
         default=False,
         help_text="Inject a SyncUp notification token (window.SyncUp.token) so this site can push to this user.",
     )
+    # When on, the app keeps the screen awake on this page so its audio keeps playing (radio/music).
+    # Pairs with the app's dim "Radio mode" (black + low brightness) to limit battery drain.
+    keep_screen_on = models.BooleanField(
+        default=False,
+        help_text="Keep the screen awake on this page so its audio keeps playing (for radio/music links).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -200,6 +206,8 @@ class AppDevice(models.Model):
     platform = models.CharField(max_length=50, default="android")
     app_version = models.CharField(max_length=50, null=True, blank=True)
     last_seen = models.DateTimeField(default=timezone.now)
+    # When this device last pulled the reminder list (its background/foreground reminder sync).
+    last_reminder_sync_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -238,6 +246,12 @@ class AppConfig(models.Model):
                   "(use for maintenance/outage notices).",
     )
     feature_flags = models.JSONField(default=dict, blank=True)
+    # Global on/off for the in-app chat. When off, the chat button is hidden for everyone
+    # (regular users and support-agent/admin-chat-mode accounts alike).
+    chat_enabled = models.BooleanField(
+        default=True,
+        help_text="Show the in-app chat button for everyone. Turn off to hide chat across the app.",
+    )
     # Master defaults for the Android/FCM block applied to every push (the send form can override
     # per-send). Stored as the friendly option keys the Push form reads/writes — see
     # fcm.build_android_config. Empty dict = plain notification (current behaviour).
