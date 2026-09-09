@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Partners{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-10">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Partners</h2>
+            <div class="text-muted">
+                Partners provision their own users &amp; links via the API
+                (<code>/partner/v1/</code>) using an API key. Each partner sees only its own users.
+            </div>
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4 mb-4">
+            {% csrf_token %}
+            <h6 class="text-muted text-uppercase small">New partner</h6>
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Partner name</label>
+                    <input type="text" name="name" class="form-control" required>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Contact email (optional)</label>
+                    <input type="email" name="contact_email" class="form-control">
+                </div>
+            </div>
+            <div class="form-text mb-3">
+                The API key is generated and shown <strong>once</strong> on creation — copy it then.
+                It can't be recovered, only regenerated.
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Create partner
+            </button>
+        </form>
+
+        <div class="card shadow-sm">
+            <div class="card-header">All partners</div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead>
+                        <tr><th>Name</th><th>Contact</th><th>Signing secret</th><th>Users</th><th>Last used</th><th>Active</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in partners %}
+                        <tr>
+                            <td><strong>{{ p.name }}</strong></td>
+                            <td>{{ p.contact_email|default:"—" }}</td>
+                            <td><code class="small">{{ p.signing_secret }}</code></td>
+                            <td>{{ p.user_count }}</td>
+                            <td>{% if p.last_used_at %}<small>{{ p.last_used_at|date:"d M Y, H:i" }}</small>{% else %}<span class="text-muted">never</span>{% endif %}</td>
+                            <td>{% if p.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
+                            <td class="text-end text-nowrap">
+                                <form method="POST" action="{% url 'mobile_partner_regenerate' p.id %}" class="d-inline"
+                                      onsubmit="return confirm('Regenerate the API key? The current key stops working immediately.');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-warning" title="Regenerate key"><i class="fas fa-key"></i></button>
+                                </form>
+                                <form method="POST" action="{% url 'mobile_partner_toggle' p.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm {% if p.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
+                                        {% if p.is_active %}Disable{% else %}Enable{% endif %}
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-muted text-center">No partners yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

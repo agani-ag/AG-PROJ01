@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Test Verify{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-10">
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Test Verify</h2>
+            <div class="text-muted">
+                Send an <strong>OTP</strong>, <strong>code entry</strong> or <strong>select-a-number</strong>
+                prompt to a user's phone to test the flow yourself — before a partner uses the API.
+            </div>
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4 mb-4">
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Send to (user)</label>
+                    <select name="account" class="form-select" required>
+                        <option value="">— choose a user —</option>
+                        {% for a in accounts %}
+                        <option value="{{ a.id }}">{{ a.name }} &lt;{{ a.email }}&gt;</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Type</label>
+                    <select name="type" id="type" class="form-select" required>
+                        <option value="otp">OTP deliver (show a code)</option>
+                        <option value="code">Code entry (user types a code)</option>
+                        <option value="number">Select a number</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row" id="p-otp">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">OTP code to show</label>
+                    <input type="text" name="code" class="form-control" placeholder="e.g. 483920">
+                </div>
+            </div>
+            <div class="row" id="p-code" style="display:none;">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Number of digits</label>
+                    <input type="number" name="length" class="form-control" value="6" min="3" max="10">
+                </div>
+            </div>
+            <div class="row" id="p-number" style="display:none;">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Numbers (comma-separated)</label>
+                    <input type="text" name="numbers" class="form-control" placeholder="e.g. 12, 45, 78">
+                    <div class="form-text">The user taps one — you decide which is "correct" (partner does this normally).</div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Title (optional)</label>
+                    <input type="text" name="title" class="form-control" placeholder="Verification">
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Message (optional)</label>
+                    <input type="text" name="message" class="form-control">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg">
+                <i class="fas fa-paper-plane me-2"></i>Send prompt
+            </button>
+        </form>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between">
+                <span>Recent prompts</span>
+                <a href="{% url 'mobile_action_test' %}" class="small">Refresh</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped mb-0 align-middle">
+                    <thead><tr><th>When</th><th>User</th><th>Type</th><th>Sent</th><th>Status</th><th>Response</th><th>Source</th></tr></thead>
+                    <tbody>
+                        {% for r in recent %}
+                        <tr>
+                            <td><small>{{ r.created_at|date:"d M, H:i:s" }}</small></td>
+                            <td>{{ r.account.email }}</td>
+                            <td><span class="badge text-bg-secondary">{{ r.get_action_type_display }}</span></td>
+                            <td>{{ r.delivered }}</td>
+                            <td>
+                                {% if r.status == "completed" %}<span class="badge text-bg-success">Completed</span>
+                                {% elif r.status == "expired" %}<span class="badge text-bg-secondary">Expired</span>
+                                {% else %}<span class="badge text-bg-warning">Pending</span>{% endif %}
+                            </td>
+                            <td><code>{% if r.response %}{{ r.response.value }}{% else %}—{% endif %}</code></td>
+                            <td>{% if r.partner %}{{ r.partner.name }}{% else %}<span class="text-muted">Test</span>{% endif %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-muted text-center">No prompts yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var t = document.getElementById("type");
+    function sync() {
+        document.getElementById("p-otp").style.display = t.value === "otp" ? "" : "none";
+        document.getElementById("p-code").style.display = t.value === "code" ? "" : "none";
+        document.getElementById("p-number").style.display = t.value === "number" ? "" : "none";
+    }
+    t.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

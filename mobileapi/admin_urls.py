@@ -22,6 +22,14 @@ urlpatterns = [
     path("general-links/add", v.general_link_add, name="mobile_general_link_add"),
     path("general-links/<int:link_id>/edit", v.general_link_edit, name="mobile_general_link_edit"),
 
+    # Verification test tool (send OTP / code / number prompts to a user)
+    path("verify-test", v.action_test, name="mobile_action_test"),
+
+    # Partners (B2B provisioning API)
+    path("partners", v.partners, name="mobile_partners"),
+    path("partners/<int:partner_id>/regenerate", v.partner_regenerate, name="mobile_partner_regenerate"),
+    path("partners/<int:partner_id>/toggle", v.partner_toggle, name="mobile_partner_toggle"),
+
     # Devices
     path("devices", v.devices, name="mobile_devices"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),

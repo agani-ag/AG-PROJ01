@@ -8,6 +8,11 @@
 
         <div class="text-center mb-4">
             <h2 class="fw-bold">{% if is_edit %}Edit Account{% else %}Add Account{% endif %}</h2>
+            {% if account.partner_id %}
+            <div class="mt-2">
+                <span class="badge text-bg-info"><i class="fas fa-handshake me-1"></i>Provisioned by {{ account.partner.name }}</span>
+            </div>
+            {% endif %}
         </div>
 
         <form method="POST" class="card shadow-sm p-4">

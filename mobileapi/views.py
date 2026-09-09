@@ -4,8 +4,12 @@ JSON API for the SyncUp Android app (`com.agani.syncup`), namespace /app/v1/.
 Function-based, csrf-exempt (token auth, no cookies), matching the existing
 project's style. Contract: md/syncup-android-backend-plan.md §5.
 """
+import hashlib
+import hmac
+import json
 from datetime import timedelta
 
+import requests
 from django.core import signing
 from django.core.cache import cache
 from django.db.models import Q
@@ -20,6 +24,7 @@ from . import fcm
 from .auth import app_token_required, json_body
 from .models import (
     AppAccount,
+    AppActionRequest,
     AppAuthToken,
     AppChatMessage,
     AppConfig,
@@ -477,6 +482,98 @@ def _config_dict(request):
 @require_http_methods(["GET"])
 def config(request):
     return JsonResponse(_config_dict(request))
+
+
+# --------------------------------------------------------------------------- #
+# Partner action / verification — the app fetches the prompt and posts the result.
+# --------------------------------------------------------------------------- #
+def _action_dict(a):
+    return {
+        "id": str(a.id),
+        "type": a.action_type,
+        "title": a.title,
+        "message": a.message,
+        "params": a.params,
+        "status": a.status,
+        "expires_at": a.expires_at.isoformat(),
+    }
+
+
+@require_http_methods(["GET"])
+@app_token_required
+def action_get(request, action_id):
+    a = AppActionRequest.objects.filter(id=action_id, account=request.account).first()
+    if not a:
+        return _bad("Action not found", 404)
+    if a.status == "pending" and a.is_expired:
+        a.status = "expired"
+        a.save(update_fields=["status"])
+    return JsonResponse({"success": True, "action": _action_dict(a)})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@app_token_required
+def action_respond(request, action_id):
+    a = (
+        AppActionRequest.objects.select_related("partner", "account")
+        .filter(id=action_id, account=request.account).first()
+    )
+    if not a:
+        return _bad("Action not found", 404)
+    if a.status != "pending":
+        return _bad("This action has already been handled", 409)
+    if a.is_expired:
+        a.status = "expired"
+        a.save(update_fields=["status"])
+        return _bad("This action has expired", 410)
+
+    data = json_body(request) or {}
+    value = data.get("value")
+    if a.action_type == "code":
+        value = str(value or "").strip()
+        if not value:
+            return _bad("value (the entered code) is required")
+    elif a.action_type == "number":
+        value = str(value or "").strip()
+        if value not in [str(n) for n in a.params.get("numbers", [])]:
+            return _bad("value must be one of the offered numbers")
+    else:  # otp — the user just read the code; nothing to capture
+        value = "acknowledged"
+
+    a.response = {"value": value}
+    a.status = "completed"
+    a.completed_at = timezone.now()
+    a.save(update_fields=["response", "status", "completed_at"])
+    # Admin test prompts have no callback URL — the result is just recorded for the console.
+    if a.callback_url and a.partner_id:
+        _deliver_action_callback(a)
+    return JsonResponse({"success": True})
+
+
+def _deliver_action_callback(a):
+    """Synchronously POST the (signed) result to the partner's callback URL. Best-effort — if the
+    partner's server is momentarily down the delivery is lost and the partner re-requests."""
+    payload = {
+        "request_id": str(a.id),
+        "type": a.action_type,
+        "status": "completed",
+        "value": (a.response or {}).get("value"),
+        "user": {"id": str(a.account_id), "external_id": a.account.external_id or ""},
+        "responded_at": a.completed_at.isoformat() if a.completed_at else None,
+    }
+    body = json.dumps(payload).encode()
+    sig = hmac.new(
+        (a.partner.signing_secret or "").encode(), body, hashlib.sha256,
+    ).hexdigest()
+    try:
+        requests.post(
+            a.callback_url, data=body,
+            headers={"Content-Type": "application/json", "X-SyncUp-Signature": f"sha256={sig}"},
+            timeout=8,
+        )
+    except requests.RequestException:
+        pass
 
 
 # --------------------------------------------------------------------------- #

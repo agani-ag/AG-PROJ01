@@ -22,13 +22,16 @@ from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
+from . import partner_api
 from .models import (
     AppAccount,
+    AppActionRequest,
     AppChatMessage,
     AppConfig,
     AppDevice,
     AppLink,
     AppNotificationLog,
+    AppPartner,
     AppReminder,
     CronLock,
 )
@@ -201,6 +204,113 @@ def general_link_edit(request, link_id):
         form = GeneralLinkForm(instance=link)
     return render(request, "mobileapi/general_link_edit.html", {
         "form": form, "link": link, "is_edit": True, "all_urls": _distinct_link_urls(),
+    })
+
+
+# ------------------------------------------------------------------ Partners (B2B API)
+@superuser_required
+def partners(request):
+    if request.method == "POST":
+        name = (request.POST.get("name") or "").strip()
+        contact = (request.POST.get("contact_email") or "").strip()
+        if not name:
+            messages.error(request, "Partner name is required.")
+        else:
+            partner, raw_key = AppPartner.issue(name, contact)
+            # API key is shown once (only the hash is stored). The signing secret is also on the
+            # partner row below (needed to verify action callbacks).
+            messages.success(
+                request,
+                f"Partner “{partner.name}” created. API key (copy now, shown only once): {raw_key} · "
+                f"Signing secret (for callback verification): {partner.signing_secret}",
+            )
+        return redirect("mobile_partners")
+    qs = AppPartner.objects.annotate(user_count=Count("accounts", distinct=True))
+    return render(request, "mobileapi/partners.html", {"partners": qs})
+
+
+@superuser_required
+@require_POST
+def partner_regenerate(request, partner_id):
+    partner = get_object_or_404(AppPartner, id=partner_id)
+    raw_key = partner.regenerate_key()
+    messages.success(
+        request,
+        f"New API key for “{partner.name}” (copy it now, shown only once): {raw_key}. "
+        "The old key stops working immediately.",
+    )
+    return redirect("mobile_partners")
+
+
+@superuser_required
+@require_POST
+def partner_toggle(request, partner_id):
+    partner = get_object_or_404(AppPartner, id=partner_id)
+    partner.is_active = not partner.is_active
+    partner.save(update_fields=["is_active"])
+    messages.success(request, f"Partner “{partner.name}” {'enabled' if partner.is_active else 'disabled'}.")
+    return redirect("mobile_partners")
+
+
+# ------------------------------------------------------------------ Test Verify (action prompts)
+@superuser_required
+def action_test(request):
+    """Send an OTP / code / number prompt to a user's phone from the console — for testing the
+    verification flow ourselves before a partner uses the API. No partner, no callback: the user's
+    response is recorded here so we can confirm it worked."""
+    if request.method == "POST":
+        account = AppAccount.objects.filter(id=request.POST.get("account")).first()
+        atype = request.POST.get("type")
+        title = (request.POST.get("title") or "Verification").strip()
+        message = (request.POST.get("message") or "").strip()
+        params, ok = {}, True
+        if not account:
+            messages.error(request, "Choose a user.")
+            ok = False
+        elif atype == "otp":
+            code = (request.POST.get("code") or "").strip()
+            if not code:
+                messages.error(request, "Enter a code for the OTP test.")
+                ok = False
+            else:
+                params = {"code": code}
+        elif atype == "code":
+            try:
+                length = int(request.POST.get("length") or 6)
+            except (TypeError, ValueError):
+                length = 6
+            params = {"length": max(3, min(10, length))}
+        elif atype == "number":
+            nums = [n.strip() for n in (request.POST.get("numbers") or "").split(",") if n.strip()]
+            if not (2 <= len(nums) <= 6):
+                messages.error(request, "Enter 2–6 comma-separated numbers.")
+                ok = False
+            else:
+                params = {"numbers": nums}
+        else:
+            messages.error(request, "Choose a type.")
+            ok = False
+
+        if ok:
+            action = AppActionRequest.objects.create(
+                partner=None, account=account, action_type=atype, title=title,
+                message=message, params=params, callback_url="",
+                expires_at=timezone.now() + timedelta(minutes=5),
+            )
+            delivered = partner_api.send_action_push(action)
+            messages.success(
+                request,
+                f"Sent a {atype} prompt to {account.email} — {delivered} device(s). Complete it on "
+                "the phone, then refresh this page to see the response below.",
+            )
+        return redirect("mobile_action_test")
+
+    recent = (
+        AppActionRequest.objects.select_related("account", "partner").order_by("-created_at")[:20]
+    )
+    return render(request, "mobileapi/action_test.html", {
+        "accounts": AppAccount.objects.filter(is_active=True),
+        "recent": recent,
     })
 
 

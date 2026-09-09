@@ -5,6 +5,7 @@ Fully isolated from the existing `syncup` app: no foreign keys to any existing
 table, its own account/credential system (not Django `User`), its own token auth.
 See md/syncup-android-backend-plan.md.
 """
+import hashlib
 import secrets
 from datetime import timedelta
 
@@ -41,6 +42,14 @@ class AppAccount(models.Model):
         help_text="Include the shared 'general' links in this user's list. Turn off for single-link "
                   "(kiosk) users so their one link still auto-opens.",
     )
+    # The partner that provisioned this user via the Partner API. Blank = admin-created. Every
+    # Partner-API request is scoped to its own accounts through this FK.
+    partner = models.ForeignKey(
+        "AppPartner", on_delete=models.SET_NULL, null=True, blank=True, related_name="accounts",
+    )
+    # The partner's OWN id for this user (their system's key). Unique per partner, so a partner
+    # can address / upsert / sync users by their own id without ever storing our internal id.
+    external_id = models.CharField(max_length=128, null=True, blank=True)
     last_login = models.DateTimeField(null=True, blank=True)
     # Last time this user's app polled the chat screen — used to skip the admin-reply push
     # while they're actively looking at the chat.
@@ -56,6 +65,14 @@ class AppAccount(models.Model):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            # A partner's external_id is unique within that partner (nulls — admin users — ignored).
+            models.UniqueConstraint(
+                fields=["partner", "external_id"],
+                condition=models.Q(external_id__isnull=False),
+                name="uniq_partner_external_id",
+            ),
+        ]
 
     def set_password(self, raw_password):
         self.password = make_password(raw_password)
@@ -127,6 +144,100 @@ class AppAuthToken(models.Model):
 
     def __str__(self):
         return f"{self.account.email} · {self.key[:8]}…"
+
+
+# =============== Partner (B2B provisioning API) ===============
+class AppPartner(models.Model):
+    """A partner that can create/manage its own users + links via /partner/v1/.
+
+    Authenticates with an API key sent as `Authorization: Bearer <key>`. Only the SHA-256 hash of
+    the key is stored, so the raw key is shown once at creation and can't be recovered — only
+    regenerated. Every Partner-API request is scoped to `self.accounts` (see AppAccount.partner)."""
+
+    name = models.CharField(max_length=100)
+    api_key_hash = models.CharField(max_length=64, unique=True, db_index=True)  # sha256 hex
+    # Raw HMAC secret the partner uses to verify our action-callback signatures (stored plaintext
+    # because we must recompute the HMAC on every callback). Shown to the admin, not the public.
+    signing_secret = models.CharField(max_length=64, default="")
+    contact_email = models.EmailField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    rate_limit_per_min = models.PositiveIntegerField(
+        default=120, help_text="Max Partner-API requests per minute for this partner.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    @staticmethod
+    def hash_key(raw_key):
+        return hashlib.sha256(raw_key.encode()).hexdigest()
+
+    @classmethod
+    def issue(cls, name, contact_email=""):
+        """Create a partner; returns (partner, raw_key). The raw key is shown ONCE."""
+        raw_key = cls._new_key()
+        partner = cls.objects.create(
+            name=name.strip(), contact_email=(contact_email or "").strip() or None,
+            api_key_hash=cls.hash_key(raw_key),
+            signing_secret=secrets.token_urlsafe(24),
+        )
+        return partner, raw_key
+
+    def regenerate_key(self):
+        """Roll the API key (old one stops working immediately). Returns the new raw key."""
+        raw_key = self._new_key()
+        self.api_key_hash = self.hash_key(raw_key)
+        self.save(update_fields=["api_key_hash"])
+        return raw_key
+
+    @staticmethod
+    def _new_key():
+        return "sk_" + secrets.token_urlsafe(32)
+
+    def __str__(self):
+        return self.name
+
+
+# =============== Action / verification request (partner ↔ user bridge) ===============
+class AppActionRequest(models.Model):
+    """A partner-triggered action the target user completes on their phone (OTP shown, code
+    entered, or a number selected). We deliver it via push, capture the user's response, and POST
+    the signed result to the partner's callback_url. We DON'T verify anything — the partner does."""
+
+    ACTION_TYPES = [("otp", "OTP deliver"), ("code", "Code entry"), ("number", "Select a number")]
+    STATUS = [("pending", "Pending"), ("completed", "Completed"), ("expired", "Expired")]
+
+    # Null = admin-initiated test (from the Test Verify console) — no partner, no callback.
+    partner = models.ForeignKey(
+        AppPartner, on_delete=models.CASCADE, related_name="action_requests", null=True, blank=True,
+    )
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="action_requests")
+    action_type = models.CharField(max_length=10, choices=ACTION_TYPES)
+    title = models.CharField(max_length=120)
+    message = models.CharField(max_length=300, blank=True)
+    # Type-specific data: otp → {"code": "123456"}; code → {"length": 6}; number → {"numbers": [..]}.
+    params = models.JSONField(default=dict, blank=True)
+    # Where we POST the signed result. Blank for admin tests (result is just recorded here).
+    callback_url = models.URLField(max_length=500, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS, default="pending")
+    response = models.JSONField(null=True, blank=True)   # what the user entered/selected
+    delivered = models.PositiveIntegerField(default=0)   # device push count
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["account", "status"])]
+
+    @property
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
+
+    def __str__(self):
+        return f"{self.action_type} → {self.account.email} ({self.status})"
 
 
 # Icon names understood by the app (empty = auto-pick from the title).
