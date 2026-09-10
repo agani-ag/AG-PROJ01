@@ -497,7 +497,10 @@ def send_action_push(action):
     tokens = _tokens_for_accounts({"account": action.account})
     delivered = 0
     if tokens and fcm.is_configured():
-        android = fcm.build_android_config({"priority": "high", "notification_priority": "max"})
+        # High-importance "Verification" channel → heads-up banner even when backgrounded/killed.
+        android = fcm.build_android_config({
+            "priority": "high", "notification_priority": "max", "channel_id": "syncup_verify",
+        })
         payload = {"type": "action", "action_id": str(action.id), "action_type": atype}
         try:
             delivered, _ = fcm.send(

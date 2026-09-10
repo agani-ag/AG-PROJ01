@@ -118,6 +118,10 @@ def build_android_config(opts):
         notif["notification_priority"] = "PRIORITY_" + str(opts["notification_priority"]).upper()
     if opts.get("visibility"):
         notif["visibility"] = str(opts["visibility"]).upper()  # PRIVATE | PUBLIC | SECRET
+    if opts.get("channel_id"):
+        # Routes the SYSTEM-rendered notification (app backgrounded/killed) to this channel, which
+        # must exist in the app. Use a high-importance channel for a heads-up banner.
+        notif["channel_id"] = str(opts["channel_id"])
     if opts.get("sticky"):
         notif["sticky"] = True
     if opts.get("local_only"):
