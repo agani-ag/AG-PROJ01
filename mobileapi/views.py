@@ -556,14 +556,19 @@ def action_respond(request, action_id):
 def _deliver_action_callback(a):
     """Synchronously POST the (signed) result to the partner's callback URL. Best-effort — if the
     partner's server is momentarily down the delivery is lost and the partner re-requests."""
+    responded_at = a.completed_at.isoformat() if a.completed_at else None
     payload = {
         "request_id": str(a.id),
         "type": a.action_type,
         "status": "completed",
         "value": (a.response or {}).get("value"),
         "user": {"id": str(a.account_id), "external_id": a.account.external_id or ""},
-        "responded_at": a.completed_at.isoformat() if a.completed_at else None,
+        "responded_at": responded_at,
     }
+    # A "notice" is read-and-acknowledge — give the partner the plain contract they asked for.
+    if a.action_type == "notice":
+        payload["acknowledged"] = True
+        payload["at"] = responded_at
     body = json.dumps(payload).encode()
     sig = hmac.new(
         (a.partner.signing_secret or "").encode(), body, hashlib.sha256,

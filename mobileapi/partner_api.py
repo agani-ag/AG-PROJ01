@@ -151,7 +151,12 @@ def _create_user(partner, data, existing_emails=None, existing_keys=None):
             else bool(_by_external(partner, external_id))
         if key_taken:
             return _err("A user with this external_id already exists", 409), None
-    account = AppAccount(name=name, email=email, partner=partner, external_id=external_id)
+    # Partner users are single-purpose (their partner's link[s] only), so the shared "general links"
+    # are OFF by default — the SyncUp admin can turn them on per user from the Edit Account page.
+    account = AppAccount(
+        name=name, email=email, partner=partner, external_id=external_id,
+        show_general_links=False,
+    )
     account.set_password(password)
     try:
         account.save()
@@ -519,14 +524,15 @@ _DEFAULT_MSG = {
     "otp": "Your verification code",
     "code": "Enter your verification code",
     "number": "Approve your sign-in",
+    "notice": "You have a message to read",
 }
 
 
 def _create_action(partner, account, data):
     """Build an AppActionRequest + push a priority prompt. Returns (JsonResponse, action|None)."""
     atype = (data.get("type") or "").strip().lower()
-    if atype not in ("otp", "code", "number"):
-        return _err("type must be one of: otp, code, number"), None
+    if atype not in ("otp", "code", "number", "notice"):
+        return _err("type must be one of: otp, code, number, notice"), None
     callback_url = (data.get("callback_url") or "").strip()
     if not callback_url.lower().startswith("https://"):
         return _err("callback_url (https://) is required"), None
@@ -545,6 +551,18 @@ def _create_action(partner, account, data):
         except (TypeError, ValueError):
             length = 6
         params = {"length": max(3, min(10, length))}
+    elif atype == "notice":
+        # Info-to-acknowledge: the user must scroll the full body, then tap "I Acknowledge".
+        body = (data.get("body") or "").strip()
+        if not body:
+            return _err("body is required for type=notice"), None
+        cta_url = (data.get("cta_url") or "").strip()
+        if cta_url and not cta_url.lower().startswith("https://"):
+            return _err("cta_url must be an https:// URL"), None
+        params = {"body": body}
+        if cta_url:
+            params["cta_url"] = cta_url
+            params["cta_label"] = (data.get("cta_label") or "View details").strip()
     else:  # number
         numbers = data.get("numbers")
         if not isinstance(numbers, list) or not (2 <= len(numbers) <= 6):

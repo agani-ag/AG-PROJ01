@@ -206,7 +206,10 @@ class AppActionRequest(models.Model):
     entered, or a number selected). We deliver it via push, capture the user's response, and POST
     the signed result to the partner's callback_url. We DON'T verify anything — the partner does."""
 
-    ACTION_TYPES = [("otp", "OTP deliver"), ("code", "Code entry"), ("number", "Select a number")]
+    ACTION_TYPES = [
+        ("otp", "OTP deliver"), ("code", "Code entry"), ("number", "Select a number"),
+        ("notice", "Info + acknowledge"),
+    ]
     STATUS = [("pending", "Pending"), ("completed", "Completed"), ("expired", "Expired")]
 
     # Null = admin-initiated test (from the Test Verify console) — no partner, no callback.
@@ -217,7 +220,9 @@ class AppActionRequest(models.Model):
     action_type = models.CharField(max_length=10, choices=ACTION_TYPES)
     title = models.CharField(max_length=120)
     message = models.CharField(max_length=300, blank=True)
-    # Type-specific data: otp → {"code": "123456"}; code → {"length": 6}; number → {"numbers": [..]}.
+    # Type-specific data: otp → {"code": "123456"}; code → {"length": 6}; number → {"numbers": [..]};
+    # notice → {"body": "...", "cta_url": "https://…", "cta_label": "View details"} (long text lives
+    # here, not in `message`, so it isn't capped at 300 chars).
     params = models.JSONField(default=dict, blank=True)
     # Where we POST the signed result. Blank for admin tests (result is just recorded here).
     callback_url = models.URLField(max_length=500, blank=True)

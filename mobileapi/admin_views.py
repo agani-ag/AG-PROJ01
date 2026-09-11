@@ -302,6 +302,17 @@ def action_test(request):
                 ok = False
             else:
                 params = {"numbers": nums}
+        elif atype == "notice":
+            body = (request.POST.get("body") or "").strip()
+            if not body:
+                messages.error(request, "Enter the notice body to read.")
+                ok = False
+            else:
+                params = {"body": body}
+                cta_url = (request.POST.get("cta_url") or "").strip()
+                if cta_url.lower().startswith("https://"):
+                    params["cta_url"] = cta_url
+                    params["cta_label"] = (request.POST.get("cta_label") or "View details").strip()
         else:
             messages.error(request, "Choose a type.")
             ok = False

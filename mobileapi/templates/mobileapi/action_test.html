@@ -7,8 +7,9 @@
         <div class="text-center mb-4">
             <h2 class="fw-bold">Test Verify</h2>
             <div class="text-muted">
-                Send an <strong>OTP</strong>, <strong>code entry</strong> or <strong>select-a-number</strong>
-                prompt to a user's phone to test the flow yourself — before a partner uses the API.
+                Send an <strong>OTP</strong>, <strong>code entry</strong>, <strong>select-a-number</strong>
+                or <strong>info notice</strong> prompt to a user's phone to test the flow yourself —
+                before a partner uses the API.
             </div>
         </div>
 
@@ -30,6 +31,7 @@
                         <option value="otp">OTP deliver (show a code)</option>
                         <option value="code">Code entry (user types a code)</option>
                         <option value="number">Select a number</option>
+                        <option value="notice">Info notice (read + acknowledge)</option>
                     </select>
                 </div>
             </div>
@@ -51,6 +53,26 @@
                     <label class="form-label">Numbers (comma-separated)</label>
                     <input type="text" name="numbers" class="form-control" placeholder="e.g. 12, 45, 78">
                     <div class="form-text">The user taps one — you decide which is "correct" (partner does this normally).</div>
+                </div>
+            </div>
+            <div id="p-notice" style="display:none;">
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <label class="form-label">Notice body (the user must scroll through all of it)</label>
+                        <textarea name="body" class="form-control" rows="4"
+                                  placeholder="The full message the user reads before acknowledging…"></textarea>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12 col-md-6 mb-3">
+                        <label class="form-label">CTA link — optional (https://)</label>
+                        <input type="text" name="cta_url" class="form-control" placeholder="https://example.com/details">
+                        <div class="form-text">Shown as a button that opens in the in-app browser.</div>
+                    </div>
+                    <div class="col-12 col-md-6 mb-3">
+                        <label class="form-label">CTA button label</label>
+                        <input type="text" name="cta_label" class="form-control" placeholder="View details">
+                    </div>
                 </div>
             </div>
 
@@ -112,6 +134,7 @@
         document.getElementById("p-otp").style.display = t.value === "otp" ? "" : "none";
         document.getElementById("p-code").style.display = t.value === "code" ? "" : "none";
         document.getElementById("p-number").style.display = t.value === "number" ? "" : "none";
+        document.getElementById("p-notice").style.display = t.value === "notice" ? "" : "none";
     }
     t.addEventListener("change", sync); sync();
 })();
