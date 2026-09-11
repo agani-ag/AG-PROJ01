@@ -18,6 +18,7 @@ from functools import wraps
 
 from django.core.cache import cache
 from django.db import IntegrityError
+from django.db.models import Q
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -519,6 +520,90 @@ def notify_all(request):
     return JsonResponse({"success": True, "delivered": delivered})
 
 
+@partner_api_required
+@require_http_methods(["POST"])
+def notify_bulk(request):
+    """Send many DISTINCT push messages in ONE request — e.g. 60 overdue reminders, each to a
+    different user with its own text — instead of 60 separate calls (one request stays under the
+    per-minute rate limit). Each item targets a user by `external_id` or `user_id`. Returns a
+    per-item result so the partner sees exactly which landed and which didn't."""
+    data = _json(request)
+    if data is None:
+        return _err("Invalid JSON")
+    items = data.get("messages")
+    if not isinstance(items, list) or not items:
+        return _err("messages must be a non-empty list")
+    if len(items) > MAX_BULK:
+        return _err(f"messages can hold at most {MAX_BULK} items")
+
+    # Resolve every target account and its active tokens up front — two queries, not per-item.
+    ext_ids = {str(it["external_id"]).strip() for it in items
+               if isinstance(it, dict) and it.get("external_id")}
+    int_ids = {int(it["user_id"]) for it in items
+               if isinstance(it, dict) and str(it.get("user_id") or "").isdigit()}
+    by_ext, by_id = {}, {}
+    for a in AppAccount.objects.filter(partner=request.partner).filter(
+        Q(external_id__in=ext_ids) | Q(id__in=int_ids)
+    ):
+        by_id[a.id] = a
+        if a.external_id:
+            by_ext[a.external_id] = a
+    tokens_by_acc = {}
+    for acc_id, tok in (
+        AppDevice.objects.filter(is_active=True, account__partner=request.partner)
+        .exclude(fcm_token="").exclude(fcm_token__isnull=True)
+        .values_list("account_id", "fcm_token")
+    ):
+        tokens_by_acc.setdefault(acc_id, []).append(tok)
+
+    # Validate each item in order; collect the ones ready to send.
+    results = [None] * len(items)
+    ready = []  # (index, account, title, body, url)
+    for i, it in enumerate(items):
+        if not isinstance(it, dict):
+            results[i] = {"error": "each message must be an object"}
+            continue
+        ref, acc = {}, None
+        if it.get("external_id"):
+            ref["external_id"] = str(it["external_id"]).strip()
+            acc = by_ext.get(ref["external_id"])
+        elif str(it.get("user_id") or "").isdigit():
+            ref["user_id"] = int(it["user_id"])
+            acc = by_id.get(ref["user_id"])
+        title = (it.get("title") or "").strip()
+        body = (it.get("body") or "").strip()
+        url = (it.get("url") or "").strip()
+        if not acc or not acc.is_active:
+            results[i] = {**ref, "error": "User not found"}
+        elif not title:
+            results[i] = {**ref, "error": "title is required"}
+        elif url and not url.lower().startswith("https://"):
+            results[i] = {**ref, "error": "url must be https://"}
+        else:
+            ready.append((i, ref, acc, title, body, url))
+
+    # Fan the sends out concurrently and JOIN before responding (safe on PythonAnywhere — the
+    # threads finish inside the request, unlike a fire-and-forget background thread).
+    def _one(job):
+        _i, _ref, _acc, _title, _body, _url = job
+        return _i, _ref, _acc, _title, _body, _url, _push(tokens_by_acc.get(_acc.id, []), _title, _body, _url)
+
+    logs, sent = [], 0
+    if ready:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(16, len(ready))) as pool:
+            for i, ref, acc, title, body, url, delivered in pool.map(_one, ready):
+                results[i] = {**ref, "delivered": delivered}
+                sent += 1
+                logs.append(AppNotificationLog(
+                    account=acc, title=title, body=body,
+                    data={"link_url": url} if url else None, success_count=delivered, fail_count=0,
+                ))
+    if logs:
+        AppNotificationLog.objects.bulk_create(logs)
+    return JsonResponse({"success": True, "sent": sent, "count": len(items), "results": results})
+
+
 # --------------------------------------------------------------------------- actions (verify)
 _DEFAULT_MSG = {
     "otp": "Your verification code",
@@ -651,3 +736,43 @@ def action_by_external(request, external_id):
         return _err("Invalid JSON")
     err, action = _create_action(request.partner, account, data)
     return err or _action_response(action)
+
+
+def _action_status_dict(a):
+    """Full, pollable state of a prompt — the same result the callback carries, but fetchable any
+    time (the callback is best-effort / fire-once, so this is the partner's safety net)."""
+    resp = a.response or {}
+    out = {
+        "request_id": str(a.id),
+        "type": a.action_type,
+        "status": a.status,  # pending | completed | expired
+        "value": resp.get("value"),
+        "user": {"id": str(a.account_id), "external_id": a.account.external_id or ""},
+        "delivered": a.delivered,
+        "created_at": a.created_at.isoformat(),
+        "expires_at": a.expires_at.isoformat(),
+        "responded_at": a.completed_at.isoformat() if a.completed_at else None,
+    }
+    if a.status == "completed":
+        if a.action_type == "approve":
+            out["approved"] = resp.get("value") == "approved"
+        elif a.action_type == "notice":
+            out["acknowledged"] = True
+    return out
+
+
+@partner_api_required
+@require_http_methods(["GET"])
+def action_status(request, request_id):
+    """Look up a prompt's answer after the fact — e.g. the partner was down when the user tapped
+    Approve, so the one-shot callback was lost. Scoped to the partner's own actions."""
+    a = (
+        AppActionRequest.objects.select_related("account")
+        .filter(id=request_id, partner=request.partner).first()
+    )
+    if not a:
+        return _err("Action not found", 404)
+    if a.status == "pending" and a.is_expired:
+        a.status = "expired"
+        a.save(update_fields=["status"])
+    return JsonResponse({"success": True, **_action_status_dict(a)})

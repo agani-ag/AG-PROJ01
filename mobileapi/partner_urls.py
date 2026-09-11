@@ -24,8 +24,11 @@ urlpatterns = [
     path("users/<int:user_id>/notify", v.notify_user_by_id, name="partner_notify_by_id"),
     path("users/external/<str:external_id>/notify", v.notify_user_by_external, name="partner_notify_by_external"),
     path("notify", v.notify_all, name="partner_notify_all"),
+    path("notify/bulk", v.notify_bulk, name="partner_notify_bulk"),
 
-    # Action / verification prompts (OTP deliver / code entry / select a number)
+    # Action / verification prompts (otp / code / number / notice / approve)
     path("users/<int:user_id>/action", v.action_by_id, name="partner_action_by_id"),
     path("users/external/<str:external_id>/action", v.action_by_external, name="partner_action_by_external"),
+    # Poll a prompt's answer after the fact (callback safety net).
+    path("actions/<int:request_id>", v.action_status, name="partner_action_status"),
 ]
