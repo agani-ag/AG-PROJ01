@@ -546,6 +546,8 @@ def action_respond(request, action_id):
     a.completed_at = timezone.now()
     a.save(update_fields=["response", "status", "completed_at"])
     # Admin test prompts have no callback URL — the result is just recorded for the console.
+    # Delivered INLINE with a short timeout: PythonAnywhere web apps don't run background threads
+    # (they're killed after the request), so a thread here would silently drop every callback.
     if a.callback_url and a.partner_id:
         _deliver_action_callback(a)
     return JsonResponse({"success": True})
@@ -570,7 +572,7 @@ def _deliver_action_callback(a):
         requests.post(
             a.callback_url, data=body,
             headers={"Content-Type": "application/json", "X-SyncUp-Signature": f"sha256={sig}"},
-            timeout=8,
+            timeout=4,  # short — this runs inline, so it must not hold up the app's response
         )
     except requests.RequestException:
         pass

@@ -289,6 +289,9 @@ class AppLink(models.Model):
         default=False,
         help_text="Keep the screen awake on this page so its audio keeps playing (for radio/music links).",
     )
+    # A partner's own key for this link (their system's id). Unique per account, so a partner can
+    # replace-by-key: upserting a user's link with the same key updates it instead of duplicating.
+    external_id = models.CharField(max_length=128, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -296,6 +299,13 @@ class AppLink(models.Model):
         ordering = ["title"]  # links always shown ascending by title
         indexes = [
             models.Index(fields=["account", "is_active"]),  # speeds the per-account active-link query
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "external_id"],
+                condition=models.Q(external_id__isnull=False),
+                name="uniq_account_link_external_id",
+            ),
         ]
 
     def save(self, *args, **kwargs):

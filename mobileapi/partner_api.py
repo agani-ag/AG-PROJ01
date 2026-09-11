@@ -61,6 +61,19 @@ def _user_json(a):
     }
 
 
+def _link_json(link):
+    """Link for partner responses — the app-facing dict plus the partner's own key (external_id),
+    so a partner can confirm/match a link by key rather than by URL."""
+    data = link_dict(link)
+    data["external_id"] = link.external_id or ""
+    return data
+
+
+def _user_with_links(a):
+    """User + its links — returned from create/upsert so a login can be issued in one call."""
+    return {"user": _user_json(a), "links": [_link_json(link) for link in a.links.all()]}
+
+
 def partner_api_required(view):
     """Gate on the partner API key; sets request.partner. Rate-limited per partner, CSRF-exempt."""
 
@@ -116,8 +129,11 @@ def _apply_user_fields(account, data):
     return None
 
 
-def _create_user(partner, data):
-    """Create a new account for the partner. Returns (JsonResponse, account | None)."""
+def _create_user(partner, data, existing_emails=None, existing_keys=None):
+    """Create a new account for the partner. Returns (JsonResponse, account | None).
+
+    For bulk, pass pre-fetched `existing_emails` / `existing_keys` sets so uniqueness is checked
+    in memory (no per-user query); successful creates are added back so intra-batch dups are caught."""
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
@@ -126,17 +142,53 @@ def _create_user(partner, data):
         return _err("name and email are required"), None
     if len(password) < 6:
         return _err("password must be at least 6 characters"), None
-    if AppAccount.objects.filter(email=email).exists():
+    email_taken = email in existing_emails if existing_emails is not None \
+        else AppAccount.objects.filter(email=email).exists()
+    if email_taken:
         return _err("A user with this email already exists", 409), None
-    if external_id and _by_external(partner, external_id):
-        return _err("A user with this external_id already exists", 409), None
+    if external_id:
+        key_taken = external_id in existing_keys if existing_keys is not None \
+            else bool(_by_external(partner, external_id))
+        if key_taken:
+            return _err("A user with this external_id already exists", 409), None
     account = AppAccount(name=name, email=email, partner=partner, external_id=external_id)
     account.set_password(password)
     try:
         account.save()
     except IntegrityError:
         return _err("A user with this email or external_id already exists", 409), None
+    # Keep the in-memory sets current so a later duplicate in the same batch is caught.
+    if existing_emails is not None:
+        existing_emails.add(email)
+    if existing_keys is not None and external_id:
+        existing_keys.add(external_id)
+    _apply_links(account, data.get("links"))
     return None, account
+
+
+def _apply_links(account, links):
+    """Replace-by-key upsert of a user's links, so provisioning a login (user + link) is one call.
+    Each item: {external_id (key), title, url [https], description?, icon?}. A matching key updates
+    the existing link; no key creates a new one. Invalid entries are skipped."""
+    if not isinstance(links, list):
+        return
+    for item in links:
+        if not isinstance(item, dict):
+            continue
+        title = (item.get("title") or "").strip()
+        url = _https(item.get("url"))
+        if not title or not url:
+            continue
+        fields = {
+            "title": title, "url": url,
+            "description": (item.get("description") or "").strip() or None,
+            "icon": (item.get("icon") or "").strip() or None,
+        }
+        key = (item.get("external_id") or "").strip() or None
+        if key:
+            AppLink.objects.update_or_create(account=account, external_id=key, defaults=fields)
+        else:
+            AppLink.objects.create(account=account, **fields)
 
 
 # --------------------------------------------------------------------------- users: collection
@@ -150,7 +202,7 @@ def users(request):
         err, account = _create_user(request.partner, data)
         if err:
             return err
-        return JsonResponse({"success": True, "user": _user_json(account)}, status=201)
+        return JsonResponse({"success": True, **_user_with_links(account)}, status=201)
 
     # GET — cursor-paginated, optionally filtered by email or external_id.
     qs = AppAccount.objects.filter(partner=request.partner)
@@ -193,12 +245,26 @@ def users_bulk(request):
         return _err("users list is empty")
     if len(items) > MAX_BULK:
         return _err(f"Too many users in one call (max {MAX_BULK})")
+
+    # Pre-fetch which emails / external_ids in this batch already exist — two queries total instead
+    # of two per user. _create_user then checks in memory and keeps the sets current.
+    emails = [(it.get("email") or "").strip().lower() for it in items if isinstance(it, dict)]
+    keys = [(it.get("external_id") or "").strip() for it in items if isinstance(it, dict)]
+    existing_emails = set(
+        AppAccount.objects.filter(email__in=[e for e in emails if e]).values_list("email", flat=True)
+    )
+    existing_keys = set(
+        AppAccount.objects.filter(
+            partner=request.partner, external_id__in=[k for k in keys if k],
+        ).values_list("external_id", flat=True)
+    )
+
     results = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):
             results.append({"index": i, "status": "error", "message": "not an object"})
             continue
-        err, account = _create_user(request.partner, item)
+        err, account = _create_user(request.partner, item, existing_emails, existing_keys)
         if err:
             body = json.loads(err.content)
             results.append({"index": i, "status": "error", "message": body.get("message")})
@@ -261,11 +327,12 @@ def user_by_external(request, external_id):
                 account.save()
             except IntegrityError:
                 return _err("Conflict saving user", 409)
-            return JsonResponse({"success": True, "created": False, "user": _user_json(account)})
+            _apply_links(account, data.get("links"))  # replace-by-key link upsert
+            return JsonResponse({"success": True, "created": False, **_user_with_links(account)})
         err, account = _create_user(request.partner, {**data, "external_id": external_id})
         if err:
             return err
-        return JsonResponse({"success": True, "created": True, "user": _user_json(account)}, status=201)
+        return JsonResponse({"success": True, "created": True, **_user_with_links(account)}, status=201)
 
     if not account:
         return _err("User not found", 404)
@@ -282,14 +349,22 @@ def _links_collection(request, account):
         url = _https(data.get("url"))
         if not title or not url:
             return _err("title and a valid https:// url are required")
-        link = AppLink.objects.create(
-            account=account, title=title, url=url,
-            description=(data.get("description") or "").strip() or None,
-            icon=(data.get("icon") or "").strip() or None,
-        )
-        return JsonResponse({"success": True, "link": link_dict(link)}, status=201)
+        key = (data.get("external_id") or "").strip() or None
+        fields = {
+            "title": title, "url": url,
+            "description": (data.get("description") or "").strip() or None,
+            "icon": (data.get("icon") or "").strip() or None,
+        }
+        # If a key is given, upsert by it (replace-by-key) so a repeat add doesn't duplicate.
+        if key:
+            link, _ = AppLink.objects.update_or_create(
+                account=account, external_id=key, defaults=fields,
+            )
+        else:
+            link = AppLink.objects.create(account=account, **fields)
+        return JsonResponse({"success": True, "link": _link_json(link)}, status=201)
     return JsonResponse(
-        {"success": True, "links": [link_dict(link) for link in account.links.all()]}
+        {"success": True, "links": [_link_json(link) for link in account.links.all()]}
     )
 
 
@@ -339,8 +414,13 @@ def link_detail(request, link_id):
         link.icon = (data.get("icon") or "").strip() or None
     if "is_active" in data:
         link.is_active = bool(data.get("is_active"))
-    link.save()
-    return JsonResponse({"success": True, "link": link_dict(link)})
+    if "external_id" in data:
+        link.external_id = (data.get("external_id") or "").strip() or None
+    try:
+        link.save()
+    except IntegrityError:
+        return _err("external_id already in use for this user", 409)
+    return JsonResponse({"success": True, "link": _link_json(link)})
 
 
 # --------------------------------------------------------------------------- notifications
