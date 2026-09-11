@@ -525,14 +525,15 @@ _DEFAULT_MSG = {
     "code": "Enter your verification code",
     "number": "Approve your sign-in",
     "notice": "You have a message to read",
+    "approve": "Approve or reject this request",
 }
 
 
 def _create_action(partner, account, data):
     """Build an AppActionRequest + push a priority prompt. Returns (JsonResponse, action|None)."""
     atype = (data.get("type") or "").strip().lower()
-    if atype not in ("otp", "code", "number", "notice"):
-        return _err("type must be one of: otp, code, number, notice"), None
+    if atype not in ("otp", "code", "number", "notice", "approve"):
+        return _err("type must be one of: otp, code, number, notice, approve"), None
     callback_url = (data.get("callback_url") or "").strip()
     if not callback_url.lower().startswith("https://"):
         return _err("callback_url (https://) is required"), None
@@ -563,6 +564,12 @@ def _create_action(partner, account, data):
         if cta_url:
             params["cta_url"] = cta_url
             params["cta_label"] = (data.get("cta_label") or "View details").strip()
+    elif atype == "approve":
+        # A yes/no decision — two buttons. Labels are optional (default Approve / Reject).
+        params = {
+            "approve_label": (data.get("approve_label") or "Approve").strip()[:24],
+            "reject_label": (data.get("reject_label") or "Reject").strip()[:24],
+        }
     else:  # number
         numbers = data.get("numbers")
         if not isinstance(numbers, list) or not (2 <= len(numbers) <= 6):

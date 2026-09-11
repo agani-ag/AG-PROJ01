@@ -313,6 +313,11 @@ def action_test(request):
                 if cta_url.lower().startswith("https://"):
                     params["cta_url"] = cta_url
                     params["cta_label"] = (request.POST.get("cta_label") or "View details").strip()
+        elif atype == "approve":
+            params = {
+                "approve_label": (request.POST.get("approve_label") or "Approve").strip()[:24],
+                "reject_label": (request.POST.get("reject_label") or "Reject").strip()[:24],
+            }
         else:
             messages.error(request, "Choose a type.")
             ok = False

@@ -208,7 +208,7 @@ class AppActionRequest(models.Model):
 
     ACTION_TYPES = [
         ("otp", "OTP deliver"), ("code", "Code entry"), ("number", "Select a number"),
-        ("notice", "Info + acknowledge"),
+        ("notice", "Info + acknowledge"), ("approve", "Approve / Reject"),
     ]
     STATUS = [("pending", "Pending"), ("completed", "Completed"), ("expired", "Expired")]
 
@@ -222,7 +222,8 @@ class AppActionRequest(models.Model):
     message = models.CharField(max_length=300, blank=True)
     # Type-specific data: otp → {"code": "123456"}; code → {"length": 6}; number → {"numbers": [..]};
     # notice → {"body": "...", "cta_url": "https://…", "cta_label": "View details"} (long text lives
-    # here, not in `message`, so it isn't capped at 300 chars).
+    # here, not in `message`, so it isn't capped at 300 chars); approve → optional
+    # {"approve_label": "Approve", "reject_label": "Reject"}.
     params = models.JSONField(default=dict, blank=True)
     # Where we POST the signed result. Blank for admin tests (result is just recorded here).
     callback_url = models.URLField(max_length=500, blank=True)

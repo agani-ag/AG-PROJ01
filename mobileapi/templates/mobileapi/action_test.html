@@ -32,6 +32,7 @@
                         <option value="code">Code entry (user types a code)</option>
                         <option value="number">Select a number</option>
                         <option value="notice">Info notice (read + acknowledge)</option>
+                        <option value="approve">Approve / Reject (yes-no decision)</option>
                     </select>
                 </div>
             </div>
@@ -73,6 +74,18 @@
                         <label class="form-label">CTA button label</label>
                         <input type="text" name="cta_label" class="form-control" placeholder="View details">
                     </div>
+                </div>
+            </div>
+
+            <div class="row" id="p-approve" style="display:none;">
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Approve button label</label>
+                    <input type="text" name="approve_label" class="form-control" placeholder="Approve" maxlength="24">
+                </div>
+                <div class="col-12 col-md-6 mb-3">
+                    <label class="form-label">Reject button label</label>
+                    <input type="text" name="reject_label" class="form-control" placeholder="Reject" maxlength="24">
+                    <div class="form-text">Put the decision itself in the Title/Message below (e.g. "Approve RS 5000 to ABC?").</div>
                 </div>
             </div>
 
@@ -135,6 +148,7 @@
         document.getElementById("p-code").style.display = t.value === "code" ? "" : "none";
         document.getElementById("p-number").style.display = t.value === "number" ? "" : "none";
         document.getElementById("p-notice").style.display = t.value === "notice" ? "" : "none";
+        document.getElementById("p-approve").style.display = t.value === "approve" ? "" : "none";
     }
     t.addEventListener("change", sync); sync();
 })();

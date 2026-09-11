@@ -538,7 +538,11 @@ def action_respond(request, action_id):
         value = str(value or "").strip()
         if value not in [str(n) for n in a.params.get("numbers", [])]:
             return _bad("value must be one of the offered numbers")
-    else:  # otp — the user just read the code; nothing to capture
+    elif a.action_type == "approve":
+        value = str(value or "").strip().lower()
+        if value not in ("approved", "rejected"):
+            return _bad("value must be 'approved' or 'rejected'")
+    else:  # otp / notice — the user just read the code or message; nothing to capture
         value = "acknowledged"
 
     a.response = {"value": value}
@@ -568,6 +572,10 @@ def _deliver_action_callback(a):
     # A "notice" is read-and-acknowledge — give the partner the plain contract they asked for.
     if a.action_type == "notice":
         payload["acknowledged"] = True
+        payload["at"] = responded_at
+    # An "approve" is a yes/no decision — surface it as a clean boolean too.
+    elif a.action_type == "approve":
+        payload["approved"] = (a.response or {}).get("value") == "approved"
         payload["at"] = responded_at
     body = json.dumps(payload).encode()
     sig = hmac.new(
