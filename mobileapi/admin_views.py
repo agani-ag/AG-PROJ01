@@ -61,11 +61,26 @@ def dashboard(request):
 # ------------------------------------------------------------------ Accounts
 @superuser_required
 def accounts(request):
-    qs = AppAccount.objects.annotate(
+    qs = AppAccount.objects.select_related("partner").annotate(
         link_count=Count("links", distinct=True),
         device_count=Count("devices", distinct=True),
     )
-    return render(request, "mobileapi/accounts.html", {"accounts": qs})
+    # Filter by origin: "admin" = admin-created (no partner), "<id>" = one partner, "" = all.
+    selected = (request.GET.get("partner") or "").strip()
+    if selected == "admin":
+        qs = qs.filter(partner__isnull=True)
+    elif selected.isdigit():
+        qs = qs.filter(partner_id=int(selected))
+    partners = AppPartner.objects.annotate(
+        user_count=Count("accounts", distinct=True),
+    ).order_by("name")
+    return render(request, "mobileapi/accounts.html", {
+        "accounts": qs,
+        "partners": partners,
+        "selected_partner": selected,
+        "admin_count": AppAccount.objects.filter(partner__isnull=True).count(),
+        "total_count": AppAccount.objects.count(),
+    })
 
 
 @superuser_required
