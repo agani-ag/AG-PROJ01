@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Cloudinary{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+<style>
+  body { background: #f4f6fb; }
+  .brand-icon { color: #2c3e50; }
+  .card-img-top-wrap {
+    aspect-ratio: 4 / 3; overflow: hidden; background: #f0f2f7;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .card-img-top-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .file-name { font-weight: 600; font-size: 14px; word-break: break-all; }
+  .file-sub { font-size: 12px; }
+  .dropzone {
+    border: 2px dashed #c7cddb; border-radius: 12px; padding: 28px; text-align: center;
+    color: #6c757d; cursor: pointer; transition: all .12s ease; background: #fff;
+  }
+  .dropzone.drag { border-color: #0d6efd; background: #eef4ff; }
+  .ctx-pre { white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 12px; }
+  .lb-img { max-width: 100%; max-height: 78vh; object-fit: contain; }
+  .badge-stat { font-size: 13px; }
+  .top-btn {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1040;
+    width: 46px; height: 46px; border-radius: 50%; padding: 0;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25); font-size: 20px;
+  }
+  .top-btn.show { display: inline-flex; }
+  /* Bulk selection */
+  .card-img-top-wrap { position: relative; }
+  .sel-check {
+    position: absolute; top: 8px; left: 8px; z-index: 3;
+    width: 22px; height: 22px; cursor: pointer; display: none;
+    box-shadow: 0 0 0 2px #fff; background-color: #fff;
+  }
+  #gallery.select-mode .sel-check { display: block; }
+  .card.selected { outline: 3px solid #0d6efd; outline-offset: -1px; }
+  .card.selected .card-img-top-wrap::after {
+    content: ""; position: absolute; inset: 0; background: rgba(13,110,253,.12);
+  }
+  #bulkBar { top: 8px; z-index: 1030; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header (page toolbar — base.html already provides the site navbar) -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-4 pt-4 pb-2">
+  <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-cloud-fill brand-icon"></i> Cloud Gallery
+  </h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-outline-dark btn-sm" id="selectBtn"><i class="bi bi-check2-square"></i> Select</button>
+    <button class="btn btn-outline-primary btn-sm" id="refreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    <button class="btn btn-outline-info btn-sm" id="statusBtn"><i class="bi bi-heart-pulse"></i> Cloud Status</button>
+    <button class="btn btn-outline-secondary btn-sm" id="settingsBtn"><i class="bi bi-cloud-arrow-up"></i> Upload</button>
+  </div>
+</div>
+
+<div class="container-fluid px-4 py-4">
+
+  <!-- Upload (toggled by the Upload button, collapsed by default) -->
+  <div class="collapse" id="settingsPanel">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div id="upTarget" class="small mb-2"></div>
+        <div id="dropzone" class="dropzone">
+          <div class="fs-2"><i class="bi bi-cloud-arrow-up"></i></div>
+          <div><b>Drag &amp; drop</b> images here, or
+            <label for="fileInput" class="text-primary" style="cursor:pointer;">browse</label></div>
+          <input type="file" id="fileInput" accept="image/*" multiple class="d-none" />
+        </div>
+        <div id="upStatus" class="small mt-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="row g-3 align-items-end mb-3">
+    <div class="col-md-2">
+      <label class="form-label fw-semibold mb-1">Scope</label>
+      <select id="scope" class="form-select">
+        <option value="">— All —</option>
+        <option value="device" selected>Devices</option>
+        <option value="notification">Notifications</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold mb-1">Device</label>
+      <select id="deviceFilter" class="form-select"><option value="">— All Devices —</option></select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label fw-semibold mb-1">Type</label>
+      <select id="rtype" class="form-select">
+        <option value="image">Images</option>
+        <option value="video">Videos</option>
+        <option value="raw">Raw</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label fw-semibold mb-1">Search</label>
+      <input id="filter" type="search" class="form-control" placeholder="Filter by filename…" />
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <span class="badge text-bg-primary badge-stat" id="countBadge">0 files</span>
+    </div>
+  </div>
+
+  <!-- Bulk selection toolbar (shown only in Select mode) -->
+  <div id="bulkBar" class="d-none align-items-center gap-2 flex-wrap mb-3 p-2 rounded border bg-white shadow-sm sticky-top">
+    <span class="fw-semibold me-1"><span id="selCount">0</span> selected</span>
+    <button class="btn btn-sm btn-outline-primary" id="selAllBtn">Select all (<span id="selAllCount">0</span>)</button>
+    <button class="btn btn-sm btn-outline-secondary" id="selClearBtn">Clear</button>
+    <button class="btn btn-sm btn-success ms-auto" id="bulkDownloadBtn" disabled>
+      <i class="bi bi-download"></i> Download selected
+    </button>
+    <button class="btn btn-sm btn-danger" id="bulkDeleteBtn" disabled>
+      <i class="bi bi-trash"></i> Delete selected
+    </button>
+  </div>
+
+  <div id="status" class="small mb-2"></div>
+
+  <!-- Gallery -->
+  <div class="row g-3" id="gallery"></div>
+
+  <!-- Lazy-load sentinel / loader -->
+  <div id="sentinel" class="text-center py-4 text-muted small"></div>
+</div>
+
+<!-- File Info modal -->
+<div class="modal fade" id="infoModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-info-circle-fill text-info"></i> File Info</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm table-bordered align-middle mb-3"><tbody id="infoBody"></tbody></table>
+        <div class="fw-semibold mb-1">▾ Context</div>
+        <pre id="infoContext" class="ctx-pre bg-light border rounded p-2 mb-0"></pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox modal -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title text-truncate" id="viewTitle"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center bg-dark">
+        <img id="viewImg" class="lb-img" alt="" />
+      </div>
+      <div class="modal-footer">
+        <a id="viewOpen" class="btn btn-outline-primary" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Open original</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Go to top -->
+<button class="btn btn-primary top-btn" id="topBtn" title="Go to top"><i class="bi bi-arrow-up"></i></button>
+{% endblock %}
+
+{% block script %}
+<!-- Bootstrap & SweetAlert2 are already loaded by base.html -->
+<script>
+(function () {
+  "use strict";
+
+const config = JSON.parse(
+    atob('{{ app_config|escapejs }}')
+);
+
+  const deviceMappings = config.devices || [];
+  const CLOUD_NAME = config.cloud_name || "";
+  const TAG = config.tags || "";
+  const UPLOAD_PRESET = config.upload_preset || "";
+  const SIGN_URL = config.sign_url || "";
+
+  // Notification images are backed up under this tag/folder (separate from the
+  // per-device "devices" namespace). We fetch this list too and mark its assets
+  // as scope "notification" so they can be browsed/managed without polluting the
+  // Device filter.
+  const NOTIF_TAG = "notifications";
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    rtype: $("rtype"), scope: $("scope"),
+    deviceFilter: $("deviceFilter"), filter: $("filter"),
+    gallery: $("gallery"), status: $("status"), upStatus: $("upStatus"),
+    countBadge: $("countBadge"), sentinel: $("sentinel"),
+    dropzone: $("dropzone"), fileInput: $("fileInput"),
+    settingsBtn: $("settingsBtn"), settingsPanel: $("settingsPanel"),
+    statusBtn: $("statusBtn"), refreshBtn: $("refreshBtn"), topBtn: $("topBtn"),
+    infoBody: $("infoBody"), infoContext: $("infoContext"),
+    viewImg: $("viewImg"), viewTitle: $("viewTitle"), viewOpen: $("viewOpen"),
+    selectBtn: $("selectBtn"), bulkBar: $("bulkBar"),
+    selCount: $("selCount"), selAllCount: $("selAllCount"),
+    selAllBtn: $("selAllBtn"), selClearBtn: $("selClearBtn"),
+    bulkDownloadBtn: $("bulkDownloadBtn"), bulkDeleteBtn: $("bulkDeleteBtn"),
+    upTarget: $("upTarget"),
+  };
+
+  const infoModal = new bootstrap.Modal($("infoModal"));
+  const viewModal = new bootstrap.Modal($("viewModal"));
+  let resources = [];
+
+  // ---- bulk selection state ----
+  let selectMode = false;
+  const selected = new Set();   // public_ids currently selected
+
+  // ---- lazy rendering (infinite scroll) ----
+  const PAGE_SIZE = 48;
+  let viewList = [];   // current filtered list
+  let rendered = 0;    // how many cards are currently in the DOM
+  let io = null;       // IntersectionObserver
+
+  function setStatus(msg, kind) {
+    els.status.className = "small mb-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    els.status.innerHTML = msg;
+  }
+  function setUpStatus(msg, kind) {
+    els.upStatus.className = "small mt-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    els.upStatus.innerHTML = msg;
+  }
+
+  function deliveryUrl(cloud, rtype, publicId, version, format, transform) {
+    const t = transform ? (transform + "/") : "";
+    const v = version ? ("v" + version + "/") : "";
+    const ext = format ? ("." + format) : "";
+    return "https://res.cloudinary.com/" + cloud + "/" + rtype + "/upload/" + t + v + publicId + ext;
+  }
+  function formatBytes(b) {
+    if (!b) return "";
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+  function deviceOf(publicId) {
+    const parts = (publicId || "").split("/");
+    return parts.length >= 3 ? parts[1] : (parts.length === 2 ? parts[0] : "");
+  }
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  // Signatures are computed on the SERVER — the Cloudinary API secret never reaches the browser.
+  // Returns { signature, api_key, timestamp } for the given params (server injects the timestamp).
+  async function signOnServer(params) {
+    const res = await fetch(SIGN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params }),
+    });
+    if (!res.ok) throw new Error("Signing failed — sign in as an admin and retry.");
+    return res.json();
+  }
+
+  // Cloudinary's client-side "list" endpoint returns at most 1000 assets PER TAG
+  // (hard limit, no pagination). To show more than 1000 without a backend we shard:
+  // fetch one list per device tag (each device has < 1000 files) plus the base
+  // TAG list, then merge and de-duplicate by public_id.
+  // The backup app tags every asset as `device_${deviceId}` (and `user_${userId}`),
+  // so the per-device shard tag is "device_" + device_id.
+  const DEVICE_TAGS = Array.from(new Set(
+    deviceMappings.map(d => d.device_id).filter(Boolean).map(id => "device_" + id)
+  ));
+  const LIST_LIMIT = 1000;            // Cloudinary's per-tag cap
+  const LIST_CONCURRENCY = 6;         // parallel list requests
+
+  function listUrl(rtype, tag) {
+    return "https://res.cloudinary.com/" + encodeURIComponent(CLOUD_NAME) + "/" +
+           encodeURIComponent(rtype) + "/list/" + encodeURIComponent(tag) + ".json";
+  }
+
+  // Fetch one tag list. Returns { tag, resources, capped, missing, error }.
+  async function fetchTagList(rtype, tag) {
+    try {
+      const res = await fetch(listUrl(rtype, tag), { cache: "no-store" });
+      if (res.status === 404) return { tag, resources: [], missing: true };
+      if (!res.ok) return { tag, resources: [], error: res.status + " " + res.statusText };
+      const data = await res.json();
+      const list = (data.resources || []).map(r => Object.assign({ resource_type: rtype }, r));
+      return { tag, resources: list, capped: list.length >= LIST_LIMIT };
+    } catch (e) {
+      return { tag, resources: [], error: e.message || String(e) };
+    }
+  }
+
+  // Run async fn over items with a bounded number of concurrent requests.
+  async function mapLimit(items, limit, fn) {
+    const out = new Array(items.length);
+    let i = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+    });
+    await Promise.all(workers);
+    return out;
+  }
+
+  async function loadImages() {
+    const rtype = els.rtype.value;
+    setStatus('<span class="spinner-border spinner-border-sm"></span> Loading…');
+    try {
+      // Base tag first (also covers assets whose device isn't in the device list).
+      const base = await fetchTagList(rtype, TAG);
+      if (base.error) throw new Error(base.error);
+
+      // Shard by device tag ("device_<id>") to get past the 1000-per-tag cap.
+      const shards = await mapLimit(DEVICE_TAGS, LIST_CONCURRENCY, tag => fetchTagList(rtype, tag));
+
+      // Notification images live under a separate tag/folder.
+      const notif = await fetchTagList(rtype, NOTIF_TAG);
+
+      // Merge + de-dupe by public_id; stamp each asset with its scope. Device
+      // lists come first so their objects win on ties (notif won't collide anyway).
+      const seen = new Map();
+      const addAll = (list, scope) => list.forEach(r => {
+        if (r.public_id && !seen.has(r.public_id)) { r._scope = scope; seen.set(r.public_id, r); }
+      });
+      addAll(base.resources, "device");
+      shards.forEach(s => addAll(s.resources, "device"));
+      addAll(notif.resources, "notification");
+
+      resources = Array.from(seen.values());
+      resources.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+
+      buildDeviceFilter();
+      syncScopeUI();
+      render();
+
+      // Status: explain what sharding did (or why it couldn't help).
+      const shardHits = shards.filter(s => s.resources.length > 0).length;
+      const notifCount = notif.resources.length;
+      const total = resources.length;
+      if (!total) {
+        setStatus('Loaded, but no images carry the tag "' + TAG + '" / "' + NOTIF_TAG +
+          '" and "Resource list" is enabled (Settings → Security).', "err");
+      } else if (shardHits === 0 && base.capped) {
+        // No per-device tags exist → still capped at 1000. Tell the user how to fix.
+        setStatus('Loaded ' + total + ' image(s) — capped at Cloudinary\'s 1000/tag limit. ' +
+          'To show all files, tag each asset with its device_id (no per-device tags were found).', "err");
+      } else {
+        setStatus('Loaded ' + total + ' image(s) from ' + (shardHits + 1) +
+          ' device list(s)' + (notifCount ? (' + ' + notifCount + ' notification(s)') : '') + '.', "ok");
+      }
+    } catch (err) {
+      let msg = err.message || String(err);
+      if (msg === "Failed to fetch" || /NetworkError/i.test(msg))
+        msg = '"Resource list" is likely OFF (Settings → Security), or the cloud name/tag is wrong.';
+      setStatus("Error: " + msg, "err");
+    }
+  }
+
+  function buildDeviceFilter() {
+      // Only device-scope assets contribute devices — notifications must not show up.
+      const devices = Array.from(new Set(
+        resources.filter(r => r._scope === "device").map(r => deviceOf(r.public_id)).filter(Boolean)
+      )).sort();
+      // device_id -> user_id map
+      const deviceMap = {};
+      deviceMappings.forEach(d => {deviceMap[d.device_id] = d.user_id;});
+      const cur = els.deviceFilter.value;
+
+      els.deviceFilter.innerHTML ='<option value="">— All Devices —</option>' +
+          devices.map(deviceId => {
+              const label = deviceMap[deviceId] ? `${deviceId}-${deviceMap[deviceId]}` : deviceId;
+              return `<option value="${escapeHtml(deviceId)}">${escapeHtml(label)}</option>`;
+          }).join("");
+      if (devices.includes(cur)) {els.deviceFilter.value = cur;}
+  }
+
+  // The Device filter only makes sense for device-scope assets. When the Scope is
+  // "notification", disable it (notifications have no device).
+  function syncScopeUI() {
+    const notifOnly = els.scope.value === "notification";
+    els.deviceFilter.disabled = notifOnly;
+    if (notifOnly) els.deviceFilter.value = "";
+  }
+
+  function currentList() {
+    const q = els.filter.value.trim().toLowerCase();
+    const dev = els.deviceFilter.value;
+    const scope = els.scope.value;
+    return resources.filter(r => {
+      if (scope && r._scope !== scope) return false;
+      if (dev && deviceOf(r.public_id) !== dev) return false;
+      if (q && !(r.public_id || "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }
+
+  function makeCard(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const full = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "");
+    const thumb = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "c_fill,w_400,h_300,q_auto,f_auto");
+    const fname = (r.public_id || "").split("/").pop() + (r.format ? ("." + r.format) : "");
+    const sub = (r.width && r.height) ? (r.width + "×" + r.height) : "";
+
+    const col = document.createElement("div");
+    col.className = "col-6 col-md-4 col-lg-3";
+    const card = document.createElement("div");
+    card.className = "card h-100 shadow-sm";
+    if (selected.has(r.public_id)) card.classList.add("selected");
+
+    const imgWrap = document.createElement("div");
+    imgWrap.className = "card-img-top-wrap";
+    const img = document.createElement("img");
+    img.loading = "lazy"; img.alt = fname; img.src = thumb;
+    img.onerror = function () { img.onerror = null; img.src = full; };
+    imgWrap.appendChild(img);
+
+    // Selection checkbox (visible only in Select mode via CSS).
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "form-check-input sel-check";
+    check.dataset.pid = r.public_id;
+    check.checked = selected.has(r.public_id);
+    check.addEventListener("click", e => e.stopPropagation());
+    check.addEventListener("change", () => setSelected(r.public_id, check.checked, card, check));
+    imgWrap.appendChild(check);
+
+    imgWrap.addEventListener("click", () => {
+      if (selectMode) { setSelected(r.public_id, !check.checked, card, check); }
+      else openView(full, r.public_id);
+    });
+
+    const body = document.createElement("div");
+    body.className = "card-body p-2";
+    body.innerHTML =
+      '<div class="file-name text-truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + "</div>" +
+      '<div class="file-sub text-muted">' + escapeHtml(sub) + "</div>" +
+      (r.created_at ? '<div class="file-sub text-muted">' + escapeHtml(r.created_at) + "</div>" : "");
+
+    const btns = document.createElement("div");
+    btns.className = "btn-group btn-group-sm w-100 px-2 pb-2";
+    btns.appendChild(iconBtn("btn-outline-primary", "bi-eye", "View", () => openView(full, r.public_id)));
+    btns.appendChild(iconBtn("btn-outline-success", "bi-download", "Download", () => downloadImage(r)));
+    btns.appendChild(iconBtn("btn-outline-info", "bi-info-circle", "Info", () => showInfo(r)));
+    btns.appendChild(iconBtn("btn-outline-danger", "bi-trash", "Delete", () => deleteImage(r)));
+
+    card.appendChild(imgWrap); card.appendChild(body); card.appendChild(btns);
+    col.appendChild(card);
+    return col;
+  }
+
+  function appendPage() {
+    const slice = viewList.slice(rendered, rendered + PAGE_SIZE);
+    const frag = document.createDocumentFragment();
+    slice.forEach(r => frag.appendChild(makeCard(r)));
+    els.gallery.appendChild(frag);
+    rendered += slice.length;
+
+    if (rendered >= viewList.length) {
+      els.sentinel.textContent = viewList.length ? ("All " + viewList.length + " loaded.") : "";
+    } else {
+      els.sentinel.textContent = "Showing " + rendered + " of " + viewList.length + " — scroll for more…";
+      // Re-arm the observer so it re-checks if the sentinel is still on screen.
+      if (io) { io.unobserve(els.sentinel); io.observe(els.sentinel); }
+    }
+  }
+
+  function render() {
+    viewList = currentList();
+    els.gallery.innerHTML = "";
+    rendered = 0;
+    els.countBadge.textContent = viewList.length + " files";
+    els.selAllCount.textContent = viewList.length;
+    updateSelBar();
+    appendPage();
+  }
+
+  function iconBtn(cls, icon, title, handler) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn " + cls; b.title = title;
+    b.innerHTML = '<i class="bi ' + icon + '"></i>';
+    b.addEventListener("click", e => { e.stopPropagation(); handler(); });
+    return b;
+  }
+
+  function openView(url, name) {
+    els.viewImg.src = url; els.viewTitle.textContent = name || "";
+    els.viewOpen.href = url; viewModal.show();
+  }
+
+  function downloadImage(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const url = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "fl_attachment");
+    const a = document.createElement("a");
+    a.href = url; a.download = (r.public_id || "image").split("/").pop();
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  // ---- bulk selection ----
+  function setSelected(pid, on, card, check) {
+    if (on) selected.add(pid); else selected.delete(pid);
+    if (card) card.classList.toggle("selected", on);
+    if (check) check.checked = on;
+    updateSelBar();
+  }
+  function updateSelBar() {
+    els.selCount.textContent = selected.size;
+    els.bulkDownloadBtn.disabled = selected.size === 0;
+    els.bulkDeleteBtn.disabled = selected.size === 0;
+  }
+  // Re-sync every rendered card's checkbox/highlight from the `selected` set.
+  function reflectSelection() {
+    els.gallery.querySelectorAll(".sel-check").forEach(cb => {
+      const on = selected.has(cb.dataset.pid);
+      cb.checked = on;
+      const card = cb.closest(".card");
+      if (card) card.classList.toggle("selected", on);
+    });
+    updateSelBar();
+  }
+  function toggleSelectMode() {
+    selectMode = !selectMode;
+    els.gallery.classList.toggle("select-mode", selectMode);
+    els.bulkBar.classList.toggle("d-none", !selectMode);
+    els.bulkBar.classList.toggle("d-flex", selectMode);
+    els.selectBtn.classList.toggle("active", selectMode);
+    els.selectBtn.innerHTML = selectMode
+      ? '<i class="bi bi-x-lg"></i> Done'
+      : '<i class="bi bi-check2-square"></i> Select';
+    if (!selectMode) clearSelection();  // drop selection + highlights on exit
+    updateSelBar();
+  }
+  function selectAllVisible() {
+    viewList.forEach(r => selected.add(r.public_id));
+    reflectSelection();
+  }
+  function clearSelection() {
+    selected.clear();
+    reflectSelection();
+  }
+  function selectedResources() {
+    const byId = new Map(resources.map(r => [r.public_id, r]));
+    return Array.from(selected).map(id => byId.get(id)).filter(Boolean);
+  }
+
+  // Bulk download: one signed Cloudinary ZIP (CORS-enabled Upload API), with an
+  // automatic fallback to individual file downloads if archiving fails.
+  async function archiveZip(list, rtype) {
+    const publicIds = list.map(r => r.public_id);
+    // Server signs the params (secret stays server-side); it returns the timestamp it used.
+    const signed = await signOnServer({
+      mode: "download",
+      public_ids: publicIds.join(","),
+      target_format: "zip",
+    });
+
+    const form = new FormData();
+    publicIds.forEach(id => form.append("public_ids[]", id));
+    form.append("mode", "download");
+    form.append("target_format", "zip");
+    form.append("timestamp", signed.timestamp);
+    form.append("api_key", signed.api_key);
+    form.append("signature", signed.signature);
+
+    const res = await fetch(
+      "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/generate_archive",
+      { method: "POST", body: form });
+    if (!res.ok) {
+      let msg = "HTTP " + res.status;
+      try { const j = await res.json(); msg = (j.error && j.error.message) || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "cloud-gallery-" + ts + ".zip";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  }
+
+  async function sequentialDownload(list) {
+    for (let i = 0; i < list.length; i++) {
+      downloadImage(list[i]);
+      setStatus('<span class="spinner-border spinner-border-sm"></span> Downloading ' + (i + 1) + "/" + list.length + "…");
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  async function bulkDownload() {
+    const list = selectedResources();
+    if (!list.length) return;
+    const rtype = els.rtype.value;
+
+    if (list.length > 100) {
+      const c = await Swal.fire({
+        icon: "question",
+        title: "Download " + list.length + " files?",
+        text: "They'll be bundled into a single ZIP.",
+        showCancelButton: true, confirmButtonText: "Download",
+        confirmButtonColor: "#198754", cancelButtonColor: "#6c757d",
+      });
+      if (!c.isConfirmed) return;
+    }
+
+    els.bulkDownloadBtn.disabled = true;
+    setStatus('<span class="spinner-border spinner-border-sm"></span> Preparing ZIP of ' + list.length + " file(s)…");
+    try {
+      await archiveZip(list, rtype);
+      setStatus("Downloaded a ZIP of " + list.length + " file(s).", "ok");
+    } catch (e) {
+      setStatus("ZIP failed (" + (e.message || e) + "). Downloading files individually…", "err");
+      await sequentialDownload(list);
+      setStatus("Downloaded " + list.length + " file(s) individually.", "ok");
+    } finally {
+      els.bulkDownloadBtn.disabled = selected.size === 0;
+    }
+  }
+
+  function showInfo(r) {
+    const cloud = CLOUD_NAME;
+    const rtype = r.resource_type || "image";
+    const rows = [
+      ["Filename", (r.public_id || "").split("/").pop()],
+      ["Public ID", r.public_id],
+      ["Scope", r._scope === "notification" ? "Notification" : "Device"],
+      ["Device", r._scope === "notification" ? "" : deviceOf(r.public_id)],
+      ["Type", rtype + (r.format ? (" · " + r.format) : "")],
+      ["Version", r.version],
+      ["Dimensions", (r.width && r.height) ? (r.width + " × " + r.height) : ""],
+      ["Size", r.bytes ? formatBytes(r.bytes) : ""],
+      ["Created", r.created_at],
+      ["Tags", Array.isArray(r.tags) ? r.tags.join(", ") : TAG],
+      ["URL", deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "")],
+    ].filter(row => row[1]);
+    els.infoBody.innerHTML = rows.map(row =>
+      '<tr><th class="text-muted" style="width:35%">' + row[0] + "</th><td>" + escapeHtml(String(row[1])) + "</td></tr>"
+    ).join("");
+
+    const ctx = r.context;
+    const hasCtx = ctx && (typeof ctx === "object") && Object.keys(ctx).length > 0;
+    if (hasCtx) {
+      els.infoContext.classList.remove("text-muted");
+      els.infoContext.textContent = JSON.stringify(ctx, null, 2);
+    } else {
+      els.infoContext.classList.add("text-muted");
+      els.infoContext.textContent =
+        "No context available.\nThe browser-safe list endpoint does not return context metadata. " +
+        "It's shown only for images uploaded through this page (or read via the Admin API on a backend).";
+    }
+    infoModal.show();
+  }
+
+  // Signed destroy via the (CORS-enabled) Upload API. Signature = SHA-1 of
+  // alphabetically-sorted params + API secret. Removes the item from `resources`
+  // on success. Throws on failure. Does NOT re-render (caller decides when).
+  async function destroyResource(r) {
+    const rtype = r.resource_type || "image";
+    // Server signs (secret stays server-side) and returns the timestamp it used.
+    const signed = await signOnServer({ public_id: r.public_id });
+
+    const form = new FormData();
+    form.append("public_id", r.public_id);
+    form.append("timestamp", signed.timestamp);
+    form.append("api_key", signed.api_key);
+    form.append("signature", signed.signature);
+
+    const res = await fetch(
+      "https://api.cloudinary.com/v1_1/" + encodeURIComponent(CLOUD_NAME) + "/" + rtype + "/destroy",
+      { method: "POST", body: form });
+    const data = await res.json();
+    if (data.result !== "ok" && data.result !== "not found")
+      throw new Error((data.error && data.error.message) || data.result || ("HTTP " + res.status));
+
+    const i = resources.indexOf(r);
+    if (i >= 0) resources.splice(i, 1);
+    selected.delete(r.public_id);
+  }
+
+  async function deleteImage(r) {
+    const confirmRes = await Swal.fire({
+      icon: "warning",
+      title: "Delete this image?",
+      html: '<code>' + escapeHtml(r.public_id || "") + "</code>",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc3545",
+      cancelButtonColor: "#6c757d",
+    });
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+      await destroyResource(r);
+      buildDeviceFilter(); render();
+      Swal.fire({ icon: "success", title: "Deleted", timer: 1400, showConfirmButton: false });
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Delete failed", text: e.message || String(e), confirmButtonColor: "#0d6efd" });
+    }
+  }
+
+  async function bulkDelete() {
+    const list = selectedResources();
+    if (!list.length) return;
+
+    const confirmRes = await Swal.fire({
+      icon: "warning",
+      title: "Delete " + list.length + " file(s)?",
+      text: "This permanently removes them from Cloudinary and cannot be undone.",
+      showCancelButton: true,
+      confirmButtonText: "Delete " + list.length,
+      confirmButtonColor: "#dc3545",
+      cancelButtonColor: "#6c757d",
+    });
+    if (!confirmRes.isConfirmed) return;
+
+    els.bulkDeleteBtn.disabled = true;
+    els.bulkDownloadBtn.disabled = true;
+    let done = 0, ok = 0, fail = 0;
+    // Destroy concurrently (bounded pool) — ~DELETE_CONCURRENCY× faster than serial.
+    // The pool caps in-flight requests so we don't trip the Upload API rate limit.
+    const DELETE_CONCURRENCY = 12;
+    await mapLimit(list, DELETE_CONCURRENCY, async (r) => {
+      try { await destroyResource(r); ok++; }
+      catch (e) { fail++; }
+      done++;
+      if (done === list.length || done % 4 === 0)
+        setStatus('<span class="spinner-border spinner-border-sm"></span> Deleting ' +
+          done + "/" + list.length + "…");
+    });
+    buildDeviceFilter(); render();
+    setStatus("Deleted " + ok + " file(s)" + (fail ? (", " + fail + " failed.") : "."), fail ? "err" : "ok");
+    if (fail) {
+      Swal.fire({ icon: fail === list.length ? "error" : "warning",
+        title: "Delete finished",
+        text: ok + " deleted, " + fail + " failed.", confirmButtonColor: "#0d6efd" });
+    } else {
+      Swal.fire({ icon: "success", title: "Deleted " + ok + " file(s)", timer: 1400, showConfirmButton: false });
+    }
+  }
+
+  // Look up the user_id for a device_id (for the user_ tag), from the device list.
+  function userOf(deviceId) {
+    const m = deviceMappings.find(d => d.device_id === deviceId);
+    return m ? m.user_id : "";
+  }
+
+  // Show where uploads will land, based on the selected Device filter.
+  function updateUploadTarget() {
+    const deviceId = els.deviceFilter.value;
+    if (deviceId) {
+      const userId = userOf(deviceId);
+      els.upTarget.className = "small mb-2 text-success";
+      els.upTarget.innerHTML = '<i class="bi bi-tag"></i> Uploads → device <b>' +
+        escapeHtml(deviceId) + "</b>" + (userId ? (" (user " + escapeHtml(String(userId)) + ")") : "") +
+        " — tagged and foldered like the app.";
+    } else {
+      els.upTarget.className = "small mb-2 text-warning";
+      els.upTarget.innerHTML = '<i class="bi bi-exclamation-triangle"></i> No device selected — ' +
+        'uploads get the base tag only. Pick a Device above to tag them per-device.';
+    }
+  }
+
+  async function uploadFiles(fileList) {
+    const cloud = CLOUD_NAME, preset = UPLOAD_PRESET, tag = TAG;
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+
+    // Uploads inherit the currently-selected Device so they carry the same tags
+    // the backup app writes (`device_<id>`, `user_<id>`, mediaType, base tag) and
+    // land in the matching folder — so they shard and delete cleanly.
+    const deviceId = els.deviceFilter.value;
+    const userId = deviceId ? userOf(deviceId) : "";
+    const tags = [tag, "image"];
+    if (deviceId) tags.push("device_" + deviceId);
+    if (userId) tags.push("user_" + userId);
+    const folder = deviceId ? (tag + "/" + deviceId) : tag;
+
+    const url = "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/image/upload";
+    let done = 0, failed = 0;
+    setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading 0/' + files.length + '…');
+
+    for (const file of files) {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("upload_preset", preset);
+      form.append("return_delete_token", "true");
+      if (tag) { form.append("tags", tags.join(",")); form.append("folder", folder); }
+      try {
+        const res = await fetch(url, { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error((data.error && data.error.message) || ("HTTP " + res.status));
+        resources.unshift({
+          public_id: data.public_id, format: data.format, version: data.version,
+          width: data.width, height: data.height, bytes: data.bytes,
+          created_at: data.created_at, tags: data.tags, context: data.context,
+          delete_token: data.delete_token, resource_type: "image", _scope: "device",
+        });
+        done++;
+      } catch (e) {
+        failed++;
+        setUpStatus("Upload error: " + (e.message || e) +
+          ' (check the preset is set to "Unsigned" and the name is correct).', "err");
+      }
+      setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading ' + (done + failed) + '/' + files.length + '…');
+      buildDeviceFilter(); render();
+    }
+    if (!failed) setUpStatus("Uploaded " + done + " file(s).", "ok");
+    else if (done) setUpStatus("Uploaded " + done + ", failed " + failed + ". See error above.", "err");
+  }
+
+  // Header actions
+  function cloudStatus() {
+    const total = resources.length;
+    const devices = new Set(resources.map(r => deviceOf(r.public_id)).filter(Boolean)).size;
+    Swal.fire({
+      icon: "info",
+      title: "Cloud Status",
+      html:
+        '<div class="text-start mx-auto" style="max-width:260px">' +
+        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Cloud</span><b>' + escapeHtml(CLOUD_NAME) + "</b></div>" +
+        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Loaded files</span><b>' + total + "</b></div>" +
+        '<div class="d-flex justify-content-between py-1"><span class="text-muted">Devices</span><b>' + devices + "</b></div>" +
+        "</div>",
+      confirmButtonColor: "#0d6efd",
+    });
+  }
+
+  // Events
+  els.rtype.addEventListener("change", loadImages);
+  els.filter.addEventListener("input", render);
+  els.scope.addEventListener("change", () => { syncScopeUI(); render(); });
+  els.deviceFilter.addEventListener("change", () => { render(); updateUploadTarget(); });
+  els.statusBtn.addEventListener("click", cloudStatus);
+  els.refreshBtn.addEventListener("click", loadImages);
+  els.selectBtn.addEventListener("click", toggleSelectMode);
+  els.selAllBtn.addEventListener("click", selectAllVisible);
+  els.selClearBtn.addEventListener("click", clearSelection);
+  els.bulkDownloadBtn.addEventListener("click", bulkDownload);
+  els.bulkDeleteBtn.addEventListener("click", bulkDelete);
+  els.settingsBtn.addEventListener("click", () => {
+    updateUploadTarget();
+    bootstrap.Collapse.getOrCreateInstance(els.settingsPanel).toggle();
+  });
+
+  // Go-to-top button
+  els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  window.addEventListener("scroll", () => {
+    els.topBtn.classList.toggle("show", window.scrollY > 300);
+  });
+  els.fileInput.addEventListener("change", e => { uploadFiles(e.target.files); e.target.value = ""; });
+  els.dropzone.addEventListener("click", e => {
+    if (e.target.tagName === "LABEL" || e.target.tagName === "INPUT") return;
+    els.fileInput.click();
+  });
+  ["dragenter", "dragover"].forEach(ev =>
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(ev =>
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.remove("drag"); }));
+  els.dropzone.addEventListener("drop", e => { if (e.dataTransfer) uploadFiles(e.dataTransfer.files); });
+
+  // Lazy-load: append the next page when the sentinel scrolls into view.
+  io = new IntersectionObserver(function (entries) {
+    if (entries[0].isIntersecting && rendered < viewList.length) appendPage();
+  }, { rootMargin: "400px" });
+  io.observe(els.sentinel);
+
+  // Auto-load on page open (cloud name / tag / preset are hardcoded above).
+  loadImages();
+})();
+</script>
+{% endblock %}

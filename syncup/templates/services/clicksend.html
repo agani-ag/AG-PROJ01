@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}ClickSend SMS{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+<style>
+  body { background: #f4f6fb; }
+  .brand-icon { color: #2c3e50; }
+  .stat-card { border: 0; border-radius: 14px; }
+  .stat-card .val { font-size: 1.55rem; font-weight: 700; line-height: 1.1; word-break: break-word; }
+  .stat-card .lbl { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; opacity: .85; }
+  .msg-body { max-width: 460px; white-space: normal; word-break: break-word; }
+  /* Inbound rows stand out (most traffic is outbound) */
+  .table > tbody > tr.msg-in > td { background: #fff3cd; }
+  .table > tbody > tr.msg-in > td:first-child { border-left: 4px solid #ffc107; }
+  .filter-lbl { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #6c757d; }
+  .top-btn {
+    position: fixed; bottom: 24px; right: 24px; z-index: 1040;
+    width: 46px; height: 46px; border-radius: 50%; padding: 0;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.25); font-size: 20px;
+  }
+  .top-btn.show { display: inline-flex; }
+
+  /* Mobile: stack table rows into labelled cards, and tighten the stat cards */
+  @media (max-width: 767.98px) {
+    .stat-card .val { font-size: 1.25rem; }
+    .stat-card .card-body { padding: .7rem .85rem; }
+
+    .resp-table thead { display: none; }
+    .resp-table > tbody > tr {
+      display: block; background: #fff; border: 1px solid #e6e8ef;
+      border-radius: 10px; margin-bottom: 10px; padding: 4px 12px;
+    }
+    .resp-table > tbody > tr.msg-in { background: #fff3cd; }
+    .resp-table > tbody > tr > td {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 14px; border: 0 !important; padding: 6px 0; text-align: right;
+    }
+    .resp-table > tbody > tr > td::before {
+      content: attr(data-label); font-weight: 600; color: #6c757d;
+      text-align: left; white-space: nowrap; flex: 0 0 auto;
+    }
+    .resp-table > tbody > tr > td:empty { display: none; }
+    .resp-table .msg-body { max-width: none; text-align: right; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header (page toolbar — base.html already provides the site navbar) -->
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-3 px-md-4 pt-4 pb-2">
+  <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
+    <i class="bi bi-chat-dots-fill brand-icon"></i> ClickSend SMS
+  </h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <button class="btn btn-success btn-sm" id="sendBtn"><i class="bi bi-send"></i> Send</button>
+    <button class="btn btn-outline-primary btn-sm" id="refreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+    <button class="btn btn-outline-info btn-sm" id="statusBtn"><i class="bi bi-person-badge"></i> Account Status</button>
+  </div>
+</div>
+
+<div class="container-fluid px-3 px-md-4 py-3">
+
+  <!-- Summary cards -->
+  <div class="row g-3 mb-3" id="cards"></div>
+
+  <!-- Send panel (toggled by Send, collapsed by default) -->
+  <div class="collapse" id="sendPanel">
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold mb-1">To <span class="text-muted">(E.164)</span></label>
+          <input id="smsTo" class="form-control" placeholder="+15551234567" />
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold mb-1">From <span class="text-muted">(optional)</span></label>
+          <input id="smsFrom" class="form-control" placeholder="Sender ID / number" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-semibold mb-1">Message</label>
+          <textarea id="smsBody" class="form-control" rows="2" placeholder="Type your message…"></textarea>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2 mt-2">
+        <button class="btn btn-success btn-sm" id="smsSubmit"><i class="bi bi-send"></i> Send SMS</button>
+        <span class="small text-muted" id="smsHint"></span>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- Filters (mirror the ClickSend /v3/sms/history query params) -->
+  <div class="card shadow-sm mb-3"><div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+
+      <!-- q search: field + value -->
+      <div class="col-6 col-md-2">
+        <label class="filter-lbl mb-1">Search field (q)</label>
+        <select id="qField" class="form-select form-select-sm">
+          <option value="">— None —</option>
+          <option value="to">To</option>
+          <option value="from">From</option>
+          <option value="status">Status</option>
+          <option value="subaccount_id">Subaccount ID</option>
+          <option value="message_id">Message ID</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2" id="qValueWrap">
+        <label class="filter-lbl mb-1">Search value</label>
+        <input type="search" id="qValue" class="form-control form-control-sm" placeholder="value…" />
+      </div>
+      <div class="col-6 col-md-2 d-none" id="qStatusWrap">
+        <label class="filter-lbl mb-1">Status</label>
+        <select id="qStatus" class="form-select form-select-sm">
+          <option>Queued</option><option>Completed</option><option>Scheduled</option>
+          <option>WaitApproval</option><option>Failed</option><option>Cancelled</option>
+          <option>CancelledAfterReview</option><option>Received</option><option>Sent</option>
+        </select>
+      </div>
+
+      <!-- order_by: field + direction -->
+      <div class="col-6 col-md-2">
+        <label class="filter-lbl mb-1">Order by</label>
+        <select id="orderField" class="form-select form-select-sm">
+          <option value="date">Date</option>
+          <option value="username">Username</option>
+          <option value="from">From</option>
+          <option value="to">To</option>
+          <option value="status">Status</option>
+          <option value="body">Body</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-1">
+        <label class="filter-lbl mb-1">Dir</label>
+        <select id="orderDir" class="form-select form-select-sm">
+          <option value="desc">Desc</option>
+          <option value="asc">Asc</option>
+        </select>
+      </div>
+
+      <!-- dates -->
+      <div class="col-6 col-md-2">
+        <label class="filter-lbl mb-1">Date from</label>
+        <input type="date" id="dateFrom" class="form-control form-control-sm" />
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="filter-lbl mb-1">Date to</label>
+        <input type="date" id="dateTo" class="form-control form-control-sm" />
+      </div>
+
+      <!-- limit -->
+      <div class="col-6 col-md-1">
+        <label class="filter-lbl mb-1">Per page</label>
+        <select id="limitSel" class="form-select form-select-sm">
+          <option>15</option><option selected>25</option><option>50</option><option>100</option>
+        </select>
+      </div>
+
+    </div>
+  </div></div>
+
+  <div id="status" class="small mb-2"></div>
+
+  <!-- History (server-side paginated) -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      <!-- Top pagination -->
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <span class="small text-muted" id="pageInfoTop"></span>
+        <div class="btn-group">
+          <button class="btn btn-outline-secondary btn-sm" id="prevBtnTop"><i class="bi bi-chevron-left"></i> Previous</button>
+          <button class="btn btn-outline-secondary btn-sm" id="nextBtnTop">Next <i class="bi bi-chevron-right"></i></button>
+        </div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0 resp-table">
+          <thead><tr>
+            <th style="width:175px">Date</th>
+            <th>To</th>
+            <th>From</th>
+            <th>Message</th>
+            <th style="width:120px">Status</th>
+          </tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Bottom pagination -->
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+        <span class="small text-muted" id="pageInfo"></span>
+        <div class="btn-group">
+          <button class="btn btn-outline-secondary btn-sm" id="prevBtn"><i class="bi bi-chevron-left"></i> Previous</button>
+          <button class="btn btn-outline-secondary btn-sm" id="nextBtn">Next <i class="bi bi-chevron-right"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Account Status modal -->
+<div class="modal fade" id="acctModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-person-badge text-info"></i> Account Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="acctBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Go to top -->
+<button class="btn btn-primary top-btn" id="topBtn" title="Go to top"><i class="bi bi-arrow-up"></i></button>
+{% endblock %}
+
+{% block script %}
+<!-- Bootstrap & SweetAlert2 are already loaded by base.html -->
+<script>
+(function () {
+  "use strict";
+
+  const config = JSON.parse(atob('{{ app_config|escapejs }}'));
+  const USERNAME = config.username || "";
+  const API_KEY  = config.api_key || "";
+  const BASE = "https://rest.clicksend.com";
+  const AUTH = "Basic " + btoa(USERNAME + ":" + API_KEY);
+  const SP = '<span class="spinner-border spinner-border-sm"></span> ';
+
+  const g = (id) => document.getElementById(id);
+  const els = {
+    cards: g("cards"), status: g("status"),
+    sendBtn: g("sendBtn"), refreshBtn: g("refreshBtn"), statusBtn: g("statusBtn"),
+    sendPanel: g("sendPanel"), smsTo: g("smsTo"), smsFrom: g("smsFrom"),
+    smsBody: g("smsBody"), smsSubmit: g("smsSubmit"), smsHint: g("smsHint"),
+    qField: g("qField"), qValue: g("qValue"), qValueWrap: g("qValueWrap"),
+    qStatus: g("qStatus"), qStatusWrap: g("qStatusWrap"),
+    orderField: g("orderField"), orderDir: g("orderDir"),
+    dateFrom: g("dateFrom"), dateTo: g("dateTo"), limitSel: g("limitSel"),
+    acctBody: g("acctBody"), topBtn: g("topBtn"), histBody: g("histBody"),
+    pageInfo: g("pageInfo"), prevBtn: g("prevBtn"), nextBtn: g("nextBtn"),
+    pageInfoTop: g("pageInfoTop"), prevBtnTop: g("prevBtnTop"), nextBtnTop: g("nextBtnTop"),
+  };
+
+  const acctModal = new bootstrap.Modal(g("acctModal"));
+
+  let account = null, stats = null, messages = [];
+  // pagination state (from the API's response)
+  let page = 1, lastPage = 1, total = 0, nextUrl = null, prevUrl = null;
+  let curLimit = 25;
+  // recharge transactions — latest one for the card. The modal keeps its own
+  // pagination state so paging in the popup never changes the card.
+  let lastTx = null;
+  const TX_LIMIT = 100;
+
+  function setStatus(msg, kind) {
+    els.status.className = "small mb-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+    els.status.innerHTML = msg;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g,
+      c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---- API helper (HTTP Basic auth; ClickSend is CORS-enabled) ----
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = Object.assign({ "Authorization": AUTH, "Accept": "application/json" }, opts.headers || {});
+    if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const res = await fetch(BASE + path, { method: opts.method || "GET", headers, body: opts.body });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { data = { raw: text }; }
+    if (!res.ok) {
+      const msg = (data && (data.response_msg || data.error_text || data.response_code)) ||
+        (res.status + " " + res.statusText);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function money(v) {
+    const n = parseFloat(v);
+    const cur = (account && account.currency) || {};
+    const prefix = cur.currency_prefix_d || "";
+    if (isNaN(n)) return String(v == null ? "" : v);
+    return prefix + n.toFixed(4);
+  }
+  // Date format everywhere: DD-MM-YYYY (with HH:MM for message/transaction times).
+  function fmtDate(unix) {
+    const n = Number(unix);
+    if (!n) return "";
+    const d = new Date(n * 1000);
+    const pad = (x) => String(x).padStart(2, "0");
+    return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear() +
+           " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function toUnix(dateStr, endOfDay) {
+    if (!dateStr) return "";
+    const t = Math.floor(new Date(dateStr + (endOfDay ? "T23:59:59" : "T00:00:00")).getTime() / 1000);
+    return isNaN(t) ? "" : t;
+  }
+  function pageFromUrl(u) {
+    if (!u) return null;
+    const m = /[?&]page=(\d+)/.exec(u);
+    return m ? Number(m[1]) : null;
+  }
+
+  // Build the ClickSend `q` param as "field:value" (value URL-encoded; colon kept
+  // literal, per the docs). Body is NOT a searchable field, so it's handled client-side.
+  function buildQ() {
+    const f = els.qField.value;
+    if (!f) return "";
+    const raw = (f === "status") ? els.qStatus.value : els.qValue.value.trim();
+    if (!raw) return "";
+    return f + ":" + encodeURIComponent(raw);
+  }
+  function orderBy() {
+    return els.orderField.value + ":" + els.orderDir.value;   // e.g. date:desc
+  }
+
+  // ---- loaders ----
+  async function loadAccount() {
+    const d = await api("/v3/account");
+    account = (d && d.data) ? d.data : d;
+  }
+  async function loadStats() {
+    try { const d = await api("/v3/statistics/sms"); stats = (d && d.data) ? d.data : d; }
+    catch (e) { stats = null; }
+  }
+
+  // Fetch a single history page — one API call.
+  async function loadHistoryPage(p) {
+    const df = toUnix(els.dateFrom.value, false);
+    const dto = toUnix(els.dateTo.value, true);
+    const q = buildQ();
+    curLimit = Number(els.limitSel.value) || 25;
+    const qs = "?date_from=" + encodeURIComponent(df) +
+               "&date_to=" + encodeURIComponent(dto) +
+               "&order_by=" + encodeURIComponent(orderBy()) +
+               "&page=" + p +
+               "&limit=" + curLimit +
+               (q ? ("&q=" + q) : "");
+    setStatus(SP + "Loading page " + p + "…");
+    const d = await api("/v3/sms/history" + qs);
+    const pg = (d && d.data) ? d.data : {};
+    messages = pg.data || [];
+    page = Number(pg.current_page) || p;
+    lastPage = Number(pg.last_page) || 1;
+    total = (pg.total != null) ? Number(pg.total) : messages.length;
+    nextUrl = pg.next_page_url || null;
+    prevUrl = pg.prev_page_url || null;
+    renderTable();
+    renderPager();
+    renderCards();
+    setStatus("Showing page " + page + " of " + lastPage + " (" + total + " total).", "ok");
+  }
+
+  function goPage(p) {
+    if (p < 1 || p > lastPage || p === page) return;
+    loadHistoryPage(p).catch(e => setStatus("Error: " + esc(e.message || String(e)), "err"));
+  }
+  function reloadFirstPage() {
+    loadHistoryPage(1).catch(e => setStatus("Error: " + esc(e.message || String(e)), "err"));
+  }
+
+  // ---- rendering ----
+  function statusBadge(m) {
+    const st = m.status || m.status_text || "";
+    const l = st.toLowerCase();
+    let cls = "secondary";
+    if (/deliver|sent|success|complete/.test(l)) cls = "success";
+    else if (/fail|error|undeliver|reject|cancel/.test(l)) cls = "danger";
+    else if (/queue|pending|wait|schedul|sending/.test(l)) cls = "warning";
+    else if (/receiv/.test(l)) cls = "info";
+    return '<span class="badge text-bg-' + cls + '">' + esc(st || "—") + "</span>";
+  }
+
+  function renderTable() {
+    els.histBody.innerHTML = messages.length ? messages.map(m => {
+      const isIn = (m.direction || "").toLowerCase() === "in";
+      return '<tr class="' + (isIn ? "msg-in" : "") + '">' +
+        '<td data-label="Date" class="text-nowrap">' + esc(fmtDate(m.date)) + "</td>" +
+        '<td data-label="To">' + esc(m.to || "") + "</td>" +
+        '<td data-label="From">' + esc(m.from || m.sender || "") +
+          (isIn ? ' <span class="badge text-bg-warning ms-1">IN</span>' : "") + "</td>" +
+        '<td data-label="Message"><div class="msg-body">' + esc(m.body || "") + "</div></td>" +
+        '<td data-label="Status">' + statusBadge(m) + "</td>" +
+      "</tr>";
+    }).join("")
+      : '<tr><td colspan="5" class="text-center text-muted py-3">No messages.</td></tr>';
+  }
+
+  function renderPager() {
+    const info = total
+      ? ("Page " + page + " of " + lastPage + " · " + total + " messages · " + curLimit + "/page")
+      : "No messages";
+    els.pageInfo.textContent = info;
+    els.pageInfoTop.textContent = info;
+    const noPrev = !(prevUrl || page > 1);
+    const noNext = !(nextUrl || page < lastPage);
+    els.prevBtn.disabled = noPrev; els.prevBtnTop.disabled = noPrev;
+    els.nextBtn.disabled = noNext; els.nextBtnTop.disabled = noNext;
+  }
+
+  function renderCards() {
+    const bal = account ? money(account.balance) : "—";
+    const cur = (account && account.currency && account.currency.currency_name_short) || "";
+    const card = (val, lbl, cls, icon) =>
+      '<div class="col-12 col-sm-6 col-lg-4">' +
+        '<div class="card stat-card shadow-sm text-bg-' + cls + ' h-100"><div class="card-body">' +
+          '<div class="lbl"><i class="bi ' + icon + '"></i> ' + lbl + "</div>" +
+          '<div class="val">' + val + "</div>" +
+        "</div></div></div>";
+
+    const lt = lastTx;
+    const txVal = lt ? ((lt.currency ? esc(lt.currency) + " " : "") + esc(lt.amount != null ? lt.amount : "—")) : "—";
+    const txCard =
+      '<div class="col-12 col-sm-6 col-lg-4">' +
+        '<div class="card stat-card shadow-sm text-bg-secondary h-100" id="txCard" role="button" style="cursor:pointer" title="View all transactions">' +
+          '<div class="card-body">' +
+            '<div class="lbl"><i class="bi bi-receipt"></i> Last Transaction</div>' +
+            '<div class="val">' + txVal + "</div>" +
+          "</div></div></div>";
+
+    els.cards.innerHTML =
+      card(total || "—", "Total Messages", "dark", "bi-chat-left-text") +
+      card(bal + ' <small class="fs-6">' + esc(cur) + "</small>", "Balance", "primary", "bi-wallet2") +
+      txCard;
+
+    const tc = g("txCard");
+    if (tc) tc.addEventListener("click", openTxModal);
+  }
+
+  // ---- recharge transactions ----
+  // Fetch one page; returns a self-contained pagination object (no shared state).
+  async function fetchTxPage(p) {
+    const d = await api("/v3/recharge/transactions?page=" + p + "&limit=" + TX_LIMIT);
+    const pg = (d && d.data) ? d.data : {};
+    const rows = pg.data || [];
+    return {
+      rows,
+      page: Number(pg.current_page) || p,
+      last: Number(pg.last_page) || 1,
+      total: (pg.total != null) ? Number(pg.total) : rows.length,
+      next: pg.next_page_url || null,
+      prev: pg.prev_page_url || null,
+    };
+  }
+
+  // Latest transaction for the card — always from page 1 (API returns newest first).
+  async function loadLastTx() {
+    const pg = await fetchTxPage(1);
+    lastTx = pg.rows.length
+      ? pg.rows.reduce((a, b) => ((Number(b.date) || 0) > (Number(a.date) || 0)) ? b : a, pg.rows[0])
+      : null;
+  }
+
+  function renderTxHtml(st) {
+    if (!st.rows.length) return '<div class="text-muted p-3 text-center">No transactions.</div>';
+    const body = st.rows.map(t =>
+      "<tr>" +
+        '<td data-label="Date" class="text-nowrap">' + esc(fmtDate(t.date)) + "</td>" +
+        '<td data-label="Invoice #">' + esc(t.invoice_number || "") + "</td>" +
+        '<td data-label="Amount" class="text-end text-nowrap">' + (t.currency ? esc(t.currency) + " " : "") +
+          esc(t.amount != null ? t.amount : "") + "</td>" +
+      "</tr>").join("");
+    const info = "Page " + st.page + " of " + st.last + " · " + st.total + " transactions";
+    const prevDis = !(st.prev || st.page > 1) ? "disabled" : "";
+    const nextDis = !(st.next || st.page < st.last) ? "disabled" : "";
+    return '<div class="d-flex justify-content-between align-items-center mb-2">' +
+        '<span class="small text-muted">' + info + "</span>" +
+        '<div class="btn-group">' +
+          '<button class="btn btn-sm btn-outline-secondary" id="txPrev" ' + prevDis + '><i class="bi bi-chevron-left"></i> Prev</button>' +
+          '<button class="btn btn-sm btn-outline-secondary" id="txNext" ' + nextDis + '>Next <i class="bi bi-chevron-right"></i></button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="table-responsive"><table class="table table-sm table-striped mb-0 resp-table">' +
+        '<thead><tr><th>Date</th><th>Invoice #</th><th class="text-end">Amount</th></tr></thead>' +
+        "<tbody>" + body + "</tbody></table></div>";
+  }
+
+  async function goTxPage(p, st) {
+    if (p < 1 || p > st.last) return;
+    const wrap = document.getElementById("txWrap");
+    if (wrap) wrap.innerHTML = '<div class="text-center py-3">' + SP + "Loading…</div>";
+    try {
+      Object.assign(st, await fetchTxPage(p));
+      const w = document.getElementById("txWrap");
+      if (w) {
+        w.innerHTML = renderTxHtml(st);
+        const prev = document.getElementById("txPrev");
+        const next = document.getElementById("txNext");
+        if (prev) prev.onclick = () => goTxPage(pageFromUrl(st.prev) || (st.page - 1), st);
+        if (next) next.onclick = () => goTxPage(pageFromUrl(st.next) || (st.page + 1), st);
+      }
+    } catch (e) {
+      const w = document.getElementById("txWrap");
+      if (w) w.innerHTML = '<div class="text-danger p-2">Error: ' + esc(e.message || String(e)) + "</div>";
+    }
+  }
+
+  function openTxModal() {
+    const st = { rows: [], page: 1, last: 1, total: 0, next: null, prev: null };
+    Swal.fire({
+      title: "Recharge Transactions",
+      html: '<div id="txWrap" class="text-center py-3">' + SP + "Loading…</div>",
+      width: "min(52rem, 96vw)",
+      showConfirmButton: true,
+      confirmButtonText: "Close",
+      didOpen: () => { goTxPage(1, st); },
+    });
+  }
+
+  // ---- send ----
+  async function sendSms() {
+    const to = els.smsTo.value.trim();
+    const body = els.smsBody.value.trim();
+    const from = els.smsFrom.value.trim();
+    if (!to || !body) {
+      Swal.fire({ icon: "warning", title: "Missing fields", text: "Enter a destination number and a message.", confirmButtonColor: "#0d6efd" });
+      return;
+    }
+    const payload = { messages: [Object.assign({ source: "YSRBSProposal", body, to, country: "US" }, from ? { from } : {})] };
+    els.smsSubmit.disabled = true;
+    try {
+      const d = await api("/v3/sms/send", { method: "POST", body: JSON.stringify(payload) });
+      const m = (d && d.data && d.data.messages && d.data.messages[0]) || {};
+      const st = m.status || (d && d.response_code) || "SUCCESS";
+      const price = (m.message_price != null) ? (" · " + money(m.message_price)) : "";
+      const good = /success|queued|sent/i.test(String(st));
+      Swal.fire({
+        icon: good ? "success" : "info",
+        title: "Message " + st,
+        text: "To " + to + price,
+        timer: 2400, showConfirmButton: false,
+      });
+      els.smsBody.value = ""; els.smsHint.textContent = "";
+      await loadAccount();
+      await loadHistoryPage(1);
+    } catch (e) {
+      Swal.fire({ icon: "error", title: "Send failed", text: e.message || String(e), confirmButtonColor: "#0d6efd" });
+    } finally {
+      els.smsSubmit.disabled = false;
+    }
+  }
+
+  // ---- account status modal ----
+  function kvTable(pairs) {
+    const rows = pairs.filter(r => r[1] != null && r[1] !== "")
+      .map(r => '<tr><th class="text-muted" style="width:42%">' + esc(r[0]) + "</th><td>" + esc(String(r[1])) + "</td></tr>")
+      .join("");
+    return '<table class="table table-sm mb-2"><tbody>' + rows + "</tbody></table>";
+  }
+  function showAccount() {
+    const a = account || {};
+    const cur = a.currency || {};
+    let html = '<div class="fw-semibold mb-1">Account</div>' + kvTable([
+      ["Account name", a.account_name || a.username],
+      ["Username", a.username],
+      ["User ID", a.user_id],
+      ["Email", a.email],
+      ["Phone", a.phone],
+      ["Country", a.country],
+      ["Timezone", a.timezone],
+      ["Balance", money(a.balance) + " " + (cur.currency_name_short || "")],
+    ]);
+    if (stats && typeof stats === "object") {
+      const flat = Object.entries(stats).filter(([k, v]) => v != null && typeof v !== "object");
+      if (flat.length) html += '<div class="fw-semibold mb-1">SMS Statistics (Usage)</div>' + kvTable(flat);
+    }
+    els.acctBody.innerHTML = html;
+    acctModal.show();
+  }
+
+  // ---- orchestration ----
+  async function loadAll() {
+    if (!USERNAME || !API_KEY) {
+      setStatus("ClickSend credentials are not configured (username / api_key).", "err");
+      return;
+    }
+    setStatus(SP + "Loading…");
+    try {
+      await loadAccount();
+      renderCards();
+      await loadStats();
+      try { await loadLastTx(); } catch (e) { /* card shows — if unavailable */ }
+      await loadHistoryPage(1);
+    } catch (e) {
+      let msg = e.message || String(e);
+      if (/Failed to fetch/i.test(msg)) msg = "Network/CORS error, or the credentials are invalid.";
+      setStatus("Error: " + esc(msg), "err");
+    }
+  }
+
+  // Toggle the q value control between a text box and the Status dropdown.
+  function syncQField() {
+    const isStatus = els.qField.value === "status";
+    els.qStatusWrap.classList.toggle("d-none", !isStatus);
+    els.qValueWrap.classList.toggle("d-none", isStatus);
+  }
+
+  // ---- events ----
+  els.refreshBtn.addEventListener("click", loadAll);
+  els.statusBtn.addEventListener("click", showAccount);
+  els.sendBtn.addEventListener("click", () => bootstrap.Collapse.getOrCreateInstance(els.sendPanel).toggle());
+  els.smsSubmit.addEventListener("click", sendSms);
+
+  // Filters auto-apply — no Apply/Clear buttons. Text search is debounced.
+  const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+  const debouncedReload = debounce(reloadFirstPage, 400);
+
+  els.qField.addEventListener("change", () => { syncQField(); reloadFirstPage(); });
+  els.qStatus.addEventListener("change", reloadFirstPage);
+  els.qValue.addEventListener("input", debouncedReload);
+  els.qValue.addEventListener("keydown", e => { if (e.key === "Enter") reloadFirstPage(); });
+  els.orderField.addEventListener("change", reloadFirstPage);
+  els.orderDir.addEventListener("change", reloadFirstPage);
+  els.limitSel.addEventListener("change", reloadFirstPage);
+  els.dateFrom.addEventListener("change", reloadFirstPage);
+  els.dateTo.addEventListener("change", reloadFirstPage);
+
+  const goPrev = () => goPage(pageFromUrl(prevUrl) || (page - 1));
+  const goNext = () => goPage(pageFromUrl(nextUrl) || (page + 1));
+  els.prevBtn.addEventListener("click", goPrev);
+  els.nextBtn.addEventListener("click", goNext);
+  els.prevBtnTop.addEventListener("click", goPrev);
+  els.nextBtnTop.addEventListener("click", goNext);
+
+  els.smsBody.addEventListener("input", () => {
+    const n = els.smsBody.value.length;
+    const parts = n ? Math.ceil(n / 160) : 0;
+    els.smsHint.textContent = n + " chars" + (parts > 1 ? (" · ~" + parts + " segments") : "");
+  });
+
+  els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  window.addEventListener("scroll", () => els.topBtn.classList.toggle("show", window.scrollY > 300));
+
+  // Auto-load on open.
+  loadAll();
+})();
+</script>
+{% endblock %}

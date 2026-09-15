@@ -2,7 +2,7 @@
 Client-side unsigned Cloudinary image widget for notification/reminder images.
 Fills the #id_image_url field. Requires `cloud_cfg` in context. No API secret is used
 (upload = unsigned preset; pick-existing = public tag-list JSON). Follows the pattern in
-media/cloudinary.html.
+services/cloudinary.html.
 {% endcomment %}
 {% if cloud_cfg.enabled %}
 {{ cloud_cfg|json_script:"cld-cfg" }}

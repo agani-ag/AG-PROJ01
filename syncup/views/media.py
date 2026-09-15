@@ -46,7 +46,7 @@ def cloudinary(request):
     }
 
     encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
-    return render(request, "media/cloudinary.html", {"app_config": encoded})
+    return render(request, "services/cloudinary.html", {"app_config": encoded})
 
 
 @csrf_exempt
@@ -85,7 +85,7 @@ def clicksend(request):
     }
 
     encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
-    return render(request, "media/clicksend.html", {"app_config": encoded})
+    return render(request, "services/clicksend.html", {"app_config": encoded})
 
 
 @superuser_required
@@ -94,4 +94,4 @@ def video_player(request):
     # Paste-and-play only — pure client-side player. Supports YouTube, Vimeo,
     # direct media files (mp4/webm/ogg…) and HLS (.m3u8). No API key, no search,
     # no server-side config.
-    return render(request, "media/video_player.html")
+    return render(request, "services/video_player.html")
