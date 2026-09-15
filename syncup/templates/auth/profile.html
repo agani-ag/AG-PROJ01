@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-lg-7">
+
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Profile</h2>
+            <div class="text-muted">Signed in as <strong>{{ user.username }}</strong></div>
+        </div>
+
+        <form method="POST" class="card shadow-sm p-4 mb-4" autocomplete="off">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="profile">
+
+            <!-- Name -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.name.id_for_label }}">Name</label>
+                {{ form.name }}
+                {% for e in form.name.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+            </div>
+
+            <!-- New password -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="{{ form.new_password.id_for_label }}">New password</label>
+                <div class="input-group">
+                    {{ form.new_password }}
+                    <button type="button" class="btn btn-outline-secondary" title="Show / hide"
+                            onclick="toggleVisible('{{ form.new_password.id_for_label }}', this)"><i class="fas fa-eye"></i></button>
+                </div>
+                {% for e in form.new_password.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+                <div class="form-text">Leave blank to keep your current password.</div>
+            </div>
+
+            <!-- New PIN -->
+            <div class="mb-4">
+                <label class="form-label fw-semibold" for="{{ form.new_pin.id_for_label }}">
+                    New PIN
+                    {% if has_pin %}<span class="badge text-bg-success ms-1">PIN is set</span>
+                    {% else %}<span class="badge text-bg-danger ms-1">No PIN set</span>{% endif %}
+                </label>
+                <div class="input-group">
+                    {{ form.new_pin }}
+                    <button type="button" class="btn btn-outline-secondary" title="Show / hide"
+                            onclick="toggleVisible('{{ form.new_pin.id_for_label }}', this)"><i class="fas fa-eye"></i></button>
+                </div>
+                {% for e in form.new_pin.errors %}<div class="text-danger small mt-1">{{ e }}</div>{% endfor %}
+                <div class="form-text">
+                    5 letters or digits, used by <em>Forgot Password?</em> on the login page.
+                    Leave blank to keep {% if has_pin %}your current PIN{% else %}PIN login off{% endif %}.
+                </div>
+            </div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-check me-2"></i>Save</button>
+            </div>
+        </form>
+
+        <!-- Magic link -->
+        <div class="card shadow-sm p-4 mb-4">
+            <h6 class="text-muted text-uppercase small mb-2"><i class="fas fa-link me-1"></i> Magic sign-in link</h6>
+            <p class="small mb-3">
+                Copy the link, paste it into any browser, and you're signed in. It works <strong>once</strong>
+                and expires in <strong>{{ link_ttl_minutes }} minutes</strong>. Generating a new link cancels the old one.
+            </p>
+            {% if magic_link %}
+            <div class="input-group mb-1">
+                <input type="text" class="form-control font-monospace small" id="magicLink" value="{{ magic_link }}" readonly>
+                <button type="button" class="btn btn-outline-primary" onclick="copyMagicLink()">
+                    <i class="fas fa-copy me-1"></i><span id="copyLabel">Copy</span>
+                </button>
+            </div>
+            <div class="form-text text-danger mb-2">
+                Copy it now: only a fingerprint of the link is stored, so it can't be shown again.
+            </div>
+            {% endif %}
+            <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="link">
+                <button type="submit" class="btn {% if magic_link %}btn-outline-secondary{% else %}btn-primary{% endif %}">
+                    <i class="fas fa-bolt me-1"></i> {% if magic_link %}Generate a new link{% else %}Generate link{% endif %}
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+function toggleVisible(id, btn) {
+    const el = document.getElementById(id);
+    const show = el.type === 'password';
+    el.type = show ? 'text' : 'password';
+    btn.querySelector('i').className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+}
+
+function copyMagicLink() {
+    const el = document.getElementById('magicLink');
+    const done = () => { document.getElementById('copyLabel').textContent = 'Copied'; };
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(el.value).then(done);
+    } else {
+        el.select();
+        document.execCommand('copy');
+        done();
+    }
+}
+</script>
+{% endblock %}

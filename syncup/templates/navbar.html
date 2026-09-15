@@ -1,5 +1,5 @@
 <style>
-  /* Two-column (left/right) mega-menu — used by the Devices and Mobile App dropdowns */
+  /* Two-column (left/right) mega-menu — used by the Media and Mobile App dropdowns */
   .dropdown-2col { min-width: 400px; max-width: 96vw; padding: .5rem .25rem; }
   .dropdown-2col .dd-cols { display: flex; }
   .dropdown-2col .dd-col { flex: 1 1 0; min-width: 180px; padding: 0 .5rem; }
@@ -15,7 +15,7 @@
     <div class="container">
         <a class="navbar-brand" 
             {% if user.is_authenticated %}
-                href="{% url 'profile_edit' %}">{{ user.username|capfirst }}
+                href="{% url 'admin_profile' %}">{{ user.first_name|default:user.username|capfirst }}
             {% else %}
                 href="{% url 'login' %}">SyncUp <i class="fas fa-refresh"></i>
             {% endif %}
@@ -30,89 +30,6 @@
 
         <div class="collapse navbar-collapse" id="navbarContent">
             <ul class="navbar-nav ms-auto">
-
-                <!-- CRM Dropdown -->
-                {% if user.is_superuser or user.is_staff %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="crmDropdown"
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        CRM
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="crmDropdown">
-                        <li><a class="dropdown-item" href="{% url 'leads' %}">Leads</a></li>
-                        <li><a class="dropdown-item" href="{% url 'workers' %}">Workers</a></li>
-                        <div class="dropdown-divider"></div>
-                        <h6 class="dropdown-header">Features</h6>
-                        <li><a class="dropdown-item" href="{% url 'activity_log' %}">Activity Log</a></li>
-                        <li><a class="dropdown-item" href="{% url 'opportunity' %}">Opportunity</a></li>
-                        <li><a class="dropdown-item" href="{% url 'worker_commissions' %}">Commissions</a></li>
-                        <li><a class="dropdown-item" href="{% url 'material_request' %}">Material Requests</a></li>
-                    </ul>
-                </li>
-                {% endif %}
-
-                <!-- Track Dropdown -->
-                {% if user.is_superuser or user.is_staff %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="trackDropdown"
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Track
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="trackDropdown">
-                        {% if user.is_superuser %}
-                        <li><a class="dropdown-item" href="{% url 'profiles' %}">Users</a></li>
-                        <li><a class="dropdown-item" href="{% url 'invoice_employee_list' %}">Invoices</a></li>
-                        <li><a class="dropdown-item" href="{% url 'employee_incentive' %}">Incentives</a></li>
-                        <li><a class="dropdown-item" href="{% url 'attendances' %}">Attendances</a></li>
-                        {% endif %}
-                        {% if user.is_staff and not user.is_superuser %}
-                        <li><a class="dropdown-item" href="{% url 'my_employee_incentive' %}">My Incentives</a></li>
-                        <li><a class="dropdown-item" href="{% url 'attendance_calendar' user.id %}">My Attendance</a></li>
-                        <li><a class="dropdown-item" href="{% url 'employee_invoices' user.id %}">My Invoices</a></li>
-                        <div class="dropdown-divider"></div>
-                        <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
-                        {% endif %}
-                    </ul>
-                </li>
-                {% endif %}
-
-                <!-- Devices Dropdown -->
-                {% if user.is_superuser and user.userprofile.special_menus_access %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="devicesDropdown"
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        Devices
-                    </a>
-                    <div class="dropdown-menu dropdown-menu-end dropdown-2col" aria-labelledby="devicesDropdown">
-                        <div class="dd-cols">
-                            <!-- Left column -->
-                            <div class="dd-col">
-                                <h6 class="dropdown-header">Access Control</h6>
-                                <a class="dropdown-item" href="{% url 'link_registry' %}">Link Registry</a>
-                                <a class="dropdown-item" href="{% url 'public_users' %}">Public Users</a>
-                                <a class="dropdown-item" href="{% url 'instance_info' %}">Instance Info</a>
-                                <div class="dropdown-divider"></div>
-                                <h6 class="dropdown-header">Device Access</h6>
-                                <a class="dropdown-item" href="{% url 'device_list' %}">Device List</a>
-                                <a class="dropdown-item" href="{% url 'reminders' %}">Reminders</a>
-                                <a class="dropdown-item" href="{% url 'audit_errors_list' %}">Audit Errors</a>
-                            </div>
-                            <!-- Right column -->
-                            <div class="dd-col">
-                                <h6 class="dropdown-header">Services</h6>
-                                <a class="dropdown-item" href="{% url 'clicksend' %}">Click Send</a>
-                                <a class="dropdown-item" href="{% url 'cloudinary' %}">Cloudinary</a>
-                                <a class="dropdown-item" href="{% url 'video_player' %}">Video Player</a>
-                                <div class="dropdown-divider"></div>
-                                <h6 class="dropdown-header">Live Channels</h6>
-                                <a class="dropdown-item" href="{% url 'live_admin' 'radio' %}">Radio (Live)</a>
-                                <a class="dropdown-item" href="{% url 'live_admin' 'tv' %}">TV (Live)</a>
-                                <a class="dropdown-item" href="{% url 'broadcast_admin' %}">Live Broadcast</a>
-                            </div>
-                        </div>
-                    </div>
-                </li>
-                {% endif %}
                 
                 <!-- SyncUp Mobile App Dropdown -->
                 {% if user.is_superuser %}
@@ -127,13 +44,12 @@
                             <div class="dd-col">
                                 <h6 class="dropdown-header">Overview</h6>
                                 <a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a>
+                                <a class="dropdown-item" href="{% url 'mobile_action_test' %}">Test Verify</a>
                                 <div class="dropdown-divider"></div>
                                 <h6 class="dropdown-header">Accounts</h6>
                                 <a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a>
                                 <a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a>
                                 <a class="dropdown-item" href="{% url 'mobile_general_links' %}">General Links</a>
-                                <a class="dropdown-item" href="{% url 'mobile_partners' %}">Partners</a>
-                                <a class="dropdown-item" href="{% url 'mobile_action_test' %}">Test Verify</a>
                                 <a class="dropdown-item" href="{% url 'mobile_chats' %}">Messages</a>
                             </div>
                             <!-- Right column -->
@@ -143,9 +59,38 @@
                                 <a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a>
                                 <div class="dropdown-divider"></div>
                                 <h6 class="dropdown-header">Config</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_partners' %}">Partners</a>
                                 <a class="dropdown-item" href="{% url 'mobile_config' %}">App Config</a>
                                 <a class="dropdown-item" href="{% url 'mobile_remote_config' %}">Remote Config</a>
                                 <a class="dropdown-item" href="{% url 'privacy_policy' %}" target="_blank">Privacy Policy <i class="fas fa-external-link-alt small"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+                {% endif %}
+
+                <!-- Media Dropdown (Services + Live Channels) -->
+                {% if user.is_superuser %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="mediaDropdown"
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        Media
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end dropdown-2col" aria-labelledby="mediaDropdown">
+                        <div class="dd-cols">
+                            <!-- Left column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Services</h6>
+                                <a class="dropdown-item" href="{% url 'clicksend' %}">Click Send</a>
+                                <a class="dropdown-item" href="{% url 'cloudinary' %}">Cloudinary</a>
+                                <a class="dropdown-item" href="{% url 'video_player' %}">Video Player</a>
+                            </div>
+                            <!-- Right column -->
+                            <div class="dd-col">
+                                <h6 class="dropdown-header">Live Channels</h6>
+                                <a class="dropdown-item" href="{% url 'live_admin' 'radio' %}">Radio (Live)</a>
+                                <a class="dropdown-item" href="{% url 'live_admin' 'tv' %}">TV (Live)</a>
+                                <a class="dropdown-item" href="{% url 'broadcast_admin' %}">Live Broadcast</a>
                             </div>
                         </div>
                     </div>
@@ -160,7 +105,8 @@
                         Settings
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="settingsDropdown">
-                        <h6 class="dropdown-header">Feature</h6>
+                        <h6 class="dropdown-header">Account</h6>
+                        <li><a class="dropdown-item" href="{% url 'admin_profile' %}">Profile</a></li>
                         <li><a class="dropdown-item" href="{% url 'download_sqlite' %}">SQLite Backup</a></li>
                         <div class="dropdown-divider"></div>
                         <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>

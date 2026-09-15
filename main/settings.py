@@ -133,7 +133,6 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Varibles
 LOGIN_URL = "/login"
-PROJ01_URL = os.getenv('PROJ01_URL')
 PROJ02_URL = os.getenv('PROJ02_URL')
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUPS = [
@@ -175,11 +174,10 @@ CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "syncup")
 USE_CLOUD_STORAGE = bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
 
-# Cloudinary device-backup config (served via /device/api/cloud-config)
+# Cloudinary unsigned upload preset (gallery page + mobile push/reminder image widget) and
+# the base asset tag the gallery lists by.
 CLOUDINARY_UPLOAD_PRESET = os.getenv("CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned")
 CLOUDINARY_FOLDER_PREFIX = os.getenv("CLOUDINARY_FOLDER_PREFIX", "devices")
-CLOUDINARY_MAX_FILE_SIZE = int(os.getenv("CLOUDINARY_MAX_FILE_SIZE", "10485760"))
-CLOUDINARY_BACKUP_ENABLED = os.getenv("CLOUDINARY_BACKUP_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # ClickSend SMS API credentials
 CLICKSEND_USERNAME = os.getenv("CLICKSEND_USERNAME")

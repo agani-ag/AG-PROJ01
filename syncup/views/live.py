@@ -23,18 +23,45 @@ import time
 import logging
 import requests
 from datetime import timedelta
+from functools import wraps
 
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import Max
 from django.http import JsonResponse, Http404
-from django.shortcuts import render, get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from ..models import LiveChannel, LiveTrack, BroadcastState, SignalMessage
-from .device_access import _superuser_page, _superuser_api
+
+
+# The admin screens are superuser-only (matching the navbar gate); the viewer pages and their
+# state/signal APIs stay public.
+def _superuser_page(view):
+    """Guard for superuser-only PAGES — redirects everyone else."""
+    @wraps(view)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            messages.error(request, "You are not authorized to access this page.")
+            return redirect('home')
+        return view(request, *args, **kwargs)
+    return _wrapped
+
+
+def _superuser_api(view):
+    """Guard for superuser-only JSON APIs — returns 403 JSON."""
+    @wraps(view)
+    @login_required
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return JsonResponse({'success': False, 'error': 'Not authorized'}, status=403)
+        return view(request, *args, **kwargs)
+    return _wrapped
 
 
 # The two fixed channels. Seeded lazily so we never depend on a (gitignored) migration.
@@ -66,7 +93,7 @@ def live_viewer(request, slug):
     ch = _get_channel(slug)
     if not ch:
         raise Http404("Unknown channel")
-    return render(request, "device_access/live_viewer.html", {
+    return render(request, "live/live_viewer.html", {
         "channel": ch, "slug": ch.slug, "kind": ch.kind, "name": ch.name,
     })
 
@@ -108,7 +135,7 @@ def live_admin(request, slug):
         raise Http404("Unknown channel")
     tracks = list(ch.tracks.all().order_by('order', 'id'))
     total = sum(t.duration_seconds for t in tracks if t.is_active and t.duration_seconds)
-    return render(request, "device_access/live_admin.html", {
+    return render(request, "live/live_admin.html", {
         "channel": ch,
         "tracks": tracks,
         "total": total,
@@ -309,13 +336,13 @@ def _broadcast_state():
 
 @require_GET
 def broadcast_viewer(request):
-    return render(request, "device_access/broadcast_viewer.html", {})
+    return render(request, "live/broadcast_viewer.html", {})
 
 
 @_superuser_page
 @require_GET
 def broadcast_admin(request):
-    return render(request, "device_access/broadcast_admin.html", {
+    return render(request, "live/broadcast_admin.html", {
         "public_url": request.build_absolute_uri(reverse("broadcast_viewer")),
     })
 
