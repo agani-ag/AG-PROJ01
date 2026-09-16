@@ -44,20 +44,22 @@
                             <div class="dd-col">
                                 <h6 class="dropdown-header">Overview</h6>
                                 <a class="dropdown-item" href="{% url 'mobile_dashboard' %}">Dashboard</a>
-                                <a class="dropdown-item" href="{% url 'mobile_action_test' %}">Test Verify</a>
                                 <div class="dropdown-divider"></div>
                                 <h6 class="dropdown-header">Accounts</h6>
                                 <a class="dropdown-item" href="{% url 'mobile_accounts' %}">Accounts</a>
                                 <a class="dropdown-item" href="{% url 'mobile_devices' %}">Devices</a>
                                 <a class="dropdown-item" href="{% url 'mobile_general_links' %}">General Links</a>
                                 <a class="dropdown-item" href="{% url 'mobile_chats' %}">Messages</a>
+                                <div class="dropdown-divider"></div>
+                                <h6 class="dropdown-header">Logs</h6>
+                                <a class="dropdown-item" href="{% url 'mobile_push_log' %}">Push Log</a>
+                                <a class="dropdown-item" href="{% url 'mobile_action_test' %}">Test Verify</a>
                             </div>
                             <!-- Right column -->
                             <div class="dd-col">
                                 <h6 class="dropdown-header">Notify</h6>
                                 <a class="dropdown-item" href="{% url 'mobile_reminders' %}">Reminders</a>
                                 <a class="dropdown-item" href="{% url 'mobile_push' %}">Push Notifications</a>
-                                <a class="dropdown-item" href="{% url 'mobile_push_log' %}">Push Log</a>
                                 <a class="dropdown-item" href="{% url 'mobile_telegram' %}">Telegram</a>
                                 <div class="dropdown-divider"></div>
                                 <h6 class="dropdown-header">Config</h6>

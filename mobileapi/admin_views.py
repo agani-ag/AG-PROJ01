@@ -587,6 +587,7 @@ def push_log(request):
         "source_choices": PUSH_SOURCE_CHOICES,
         "status_choices": PUSH_STATUS_CHOICES,
         "periods": PUSH_LOG_PERIODS,
+        "log_days": AppConfig.load().cleanup_log_days,   # retention used by /cron/cleanup
         "querystring": params.urlencode(),
     })
 

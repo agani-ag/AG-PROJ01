@@ -9,6 +9,10 @@
             <div>
                 <h2 class="fw-bold mb-1">Push Log</h2>
                 <div class="text-muted">Every push notification SyncUp sent, from any part of the system.</div>
+                <div class="small text-muted mt-1">
+                    {% if log_days %}Entries older than {{ log_days }} day{{ log_days|pluralize }} are removed by the daily cleanup.{% else %}Entries are kept forever: push log cleanup is turned off.{% endif %}
+                    <a href="{% url 'mobile_config' %}">Change in App Config</a>
+                </div>
             </div>
             <a href="{% url 'mobile_push' %}" class="btn btn-outline-primary"><i class="fas fa-paper-plane me-1"></i> Send a push</a>
         </div>
