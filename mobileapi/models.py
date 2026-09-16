@@ -5,6 +5,7 @@ Fully isolated from the existing `syncup` app: no foreign keys to any existing
 table, its own account/credential system (not Django `User`), its own token auth.
 See md/syncup-android-backend-plan.md.
 """
+import json
 import hashlib
 import secrets
 from datetime import timedelta
@@ -433,29 +434,80 @@ class AppConfig(models.Model):
 
 
 # =============== Push notification log / composer ===============
-class AppNotificationLog(models.Model):
-    """One push send. `account` blank = broadcast to all active devices.
+PUSH_SOURCE_CHOICES = [
+    ("admin", "Push page"),
+    ("test", "Test push"),
+    ("scheduled", "Scheduled"),
+    ("partner_api", "Partner API"),
+    ("partner_token", "Partner website"),
+    ("verification", "Verification"),
+    ("chat", "Chat"),
+    ("other", "Not recorded"),
+]
 
-    Creating a row in the admin triggers the actual FCM send (see admin.py).
+PUSH_STATUS_CHOICES = [
+    ("sent", "Sent"),
+    ("partial", "Partly failed"),
+    ("failed", "Failed"),
+    ("no_devices", "No devices"),
+    ("not_configured", "FCM not configured"),
+    ("error", "Error"),
+]
+
+
+class AppNotificationLog(models.Model):
+    """One push, whichever part of SyncUp sent it. Written by fcm.push(); browsed under
+    Mobile App → Push Log. Creating a row in the Django admin sends it (see admin.py).
+
+    `account` blank = not aimed at one user: a broadcast, or a chat alert to the support agents.
+    Rows from before sources were tracked have source "other" and a blank status.
     """
 
     account = models.ForeignKey(
         AppAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications",
         help_text="Leave blank to broadcast to all active devices.",
     )
+    partner = models.ForeignKey(
+        AppPartner, on_delete=models.SET_NULL, null=True, blank=True, related_name="push_logs",
+    )
+    link = models.ForeignKey(
+        AppLink, on_delete=models.SET_NULL, null=True, blank=True, related_name="push_logs",
+    )
+    source = models.CharField(max_length=20, choices=PUSH_SOURCE_CHOICES, default="other", db_index=True)
+    status = models.CharField(max_length=20, choices=PUSH_STATUS_CHOICES, blank=True, default="",
+                              db_index=True)
     title = models.CharField(max_length=200)
     body = models.TextField()
     data = models.JSONField(null=True, blank=True)
-    sent_at = models.DateTimeField(auto_now_add=True)
+    image_url = models.CharField(max_length=500, null=True, blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    devices = models.PositiveIntegerField(default=0, help_text="Device tokens the push was addressed to.")
     success_count = models.IntegerField(default=0)
     fail_count = models.IntegerField(default=0)
+    error = models.TextField(null=True, blank=True)
 
     class Meta:
         ordering = ["-sent_at"]
 
+    @property
+    def target_label(self):
+        """Who the push was for, in words."""
+        if self.account_id:
+            return self.account.email
+        if self.source == "chat":
+            return "Support agents"
+        if self.partner_id:
+            return f"All {self.partner.name} users"
+        if self.source == "test":
+            return "Selected accounts"
+        return "All devices"
+
+    @property
+    def data_json(self):
+        return json.dumps(self.data, indent=2, ensure_ascii=False) if self.data else ""
+
     def __str__(self):
-        target = self.account.email if self.account else "all devices"
-        return f"{self.title} → {target}"
+        return f"{self.title} → {self.target_label}"
 
 
 # =============== Telegram relay log ===============

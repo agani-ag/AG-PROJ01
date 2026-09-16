@@ -454,16 +454,11 @@ def _tokens_for_accounts(account_filter):
     )
 
 
-def _push(tokens, title, body, url):
-    """Send one push to a set of device tokens. Returns delivered count."""
-    if not tokens or not fcm.is_configured():
-        return 0
+def _push(tokens, title, body, url, *, account=None, partner=None, save_log=True):
+    """Send one push to a set of device tokens and log it. Returns the fcm.PushResult."""
     data = {"link_url": url, "link_title": ""} if url else None
-    try:
-        ok, _ = fcm.send(tokens, title[:100], body[:200], data=data)
-        return ok
-    except Exception:  # noqa: BLE001 — never let a push failure 500 the API
-        return 0
+    return fcm.push(tokens, title[:100], body[:200], source="partner_api", account=account,
+                    partner=partner, data=data, save_log=save_log)
 
 
 @partner_api_required
@@ -476,11 +471,8 @@ def notify_user_by_id(request, user_id):
     if err:
         return err
     title, body, url = parsed
-    delivered = _push(_tokens_for_accounts({"account": account}), title, body, url)
-    AppNotificationLog.objects.create(
-        account=account, title=title, body=body,
-        data={"link_url": url} if url else None, success_count=delivered, fail_count=0,
-    )
+    delivered = _push(_tokens_for_accounts({"account": account}), title, body, url,
+                      account=account, partner=request.partner).delivered
     return JsonResponse({"success": True, "delivered": delivered})
 
 
@@ -494,11 +486,8 @@ def notify_user_by_external(request, external_id):
     if err:
         return err
     title, body, url = parsed
-    delivered = _push(_tokens_for_accounts({"account": account}), title, body, url)
-    AppNotificationLog.objects.create(
-        account=account, title=title, body=body,
-        data={"link_url": url} if url else None, success_count=delivered, fail_count=0,
-    )
+    delivered = _push(_tokens_for_accounts({"account": account}), title, body, url,
+                      account=account, partner=request.partner).delivered
     return JsonResponse({"success": True, "delivered": delivered})
 
 
@@ -513,11 +502,7 @@ def notify_all(request):
     tokens = _tokens_for_accounts(
         {"account__partner": request.partner, "account__is_active": True}
     )
-    delivered = _push(tokens, title, body, url)
-    AppNotificationLog.objects.create(
-        account=None, title=title, body=body,
-        data={"link_url": url} if url else None, success_count=delivered, fail_count=0,
-    )
+    delivered = _push(tokens, title, body, url, partner=request.partner).delivered
     return JsonResponse({"success": True, "delivered": delivered})
 
 
@@ -587,19 +572,18 @@ def notify_bulk(request):
     # threads finish inside the request, unlike a fire-and-forget background thread).
     def _one(job):
         _i, _ref, _acc, _title, _body, _url = job
-        return _i, _ref, _acc, _title, _body, _url, _push(tokens_by_acc.get(_acc.id, []), _title, _body, _url)
+        # The log row comes back unsaved and is bulk-created below, off the worker threads.
+        return _i, _ref, _push(tokens_by_acc.get(_acc.id, []), _title, _body, _url,
+                               account=_acc, partner=request.partner, save_log=False)
 
     logs, sent = [], 0
     if ready:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(16, len(ready))) as pool:
-            for i, ref, acc, title, body, url, delivered in pool.map(_one, ready):
-                results[i] = {**ref, "delivered": delivered}
+            for i, ref, result in pool.map(_one, ready):
+                results[i] = {**ref, "delivered": result.delivered}
                 sent += 1
-                logs.append(AppNotificationLog(
-                    account=acc, title=title, body=body,
-                    data={"link_url": url} if url else None, success_count=delivered, fail_count=0,
-                ))
+                logs.append(result.log)
     if logs:
         AppNotificationLog.objects.bulk_create(logs)
     return JsonResponse({"success": True, "sent": sent, "count": len(items), "results": results})
@@ -774,19 +758,16 @@ def send_action_push(action):
         else (action.message or _DEFAULT_MSG.get(atype, "Verification needed"))
     )
     tokens = _tokens_for_accounts({"account": action.account})
-    delivered = 0
-    if tokens and fcm.is_configured():
-        # High-importance "Verification" channel → heads-up banner even when backgrounded/killed.
-        android = fcm.build_android_config({
-            "priority": "high", "notification_priority": "max", "channel_id": "syncup_verify",
-        })
-        payload = {"type": "action", "action_id": str(action.id), "action_type": atype}
-        try:
-            delivered, _ = fcm.send(
-                tokens, action.title[:100], notif_body[:200], data=payload, android=android,
-            )
-        except Exception:  # noqa: BLE001
-            delivered = 0
+    # High-importance "Verification" channel → heads-up banner even when backgrounded/killed.
+    android = fcm.build_android_config({
+        "priority": "high", "notification_priority": "max", "channel_id": "syncup_verify",
+    })
+    payload = {"type": "action", "action_id": str(action.id), "action_type": atype}
+    delivered = fcm.push(
+        tokens, action.title[:100], notif_body[:200], source="verification",
+        account=action.account, partner=action.partner, data=payload, android=android,
+        log_body="Code: (hidden)" if atype == "otp" else None,   # never store a one-time code
+    ).delivered
     action.delivered = delivered
     action.save(update_fields=["delivered"])
     return delivered

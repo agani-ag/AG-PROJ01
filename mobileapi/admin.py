@@ -81,15 +81,11 @@ class AppAccountAdmin(admin.ModelAdmin):
             AppDevice.objects.filter(account__in=queryset, is_active=True)
             .values_list("fcm_token", flat=True)
         )
-        try:
-            ok, fail = fcm.send(tokens, "SyncUp", "This is a test notification.")
-            AppNotificationLog.objects.create(
-                title="SyncUp", body="This is a test notification.",
-                success_count=ok, fail_count=fail,
-            )
-            self.message_user(request, f"Push sent: {ok} ok, {fail} failed.")
-        except fcm.FCMError as e:
-            self.message_user(request, f"Push failed: {e}", level=messages.ERROR)
+        result = fcm.push(tokens, "SyncUp", "This is a test notification.", source="test")
+        if result.status == "error":
+            self.message_user(request, f"Push failed: {result.error}", level=messages.ERROR)
+        else:
+            self.message_user(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
 
     @admin.action(description="Deactivate selected accounts")
     def deactivate_accounts(self, request, queryset):
@@ -161,47 +157,41 @@ class AppConfigAdmin(admin.ModelAdmin):
 # ----------------------------- Push composer / log ------------------------- #
 @admin.register(AppNotificationLog)
 class AppNotificationLogAdmin(admin.ModelAdmin):
-    list_display = ["title", "account", "sent_at", "success_count", "fail_count"]
+    list_display = ["title", "source", "status", "account", "sent_at", "devices", "success_count", "fail_count"]
+    list_filter = ["source", "status"]
     search_fields = ["title", "body", "account__email"]
-    readonly_fields = ["sent_at", "success_count", "fail_count"]
+    readonly_fields = ["source", "status", "partner", "link", "data", "image_url", "sent_at", "devices",
+                       "success_count", "fail_count", "error"]
 
     def get_fields(self, request, obj=None):
         if obj is None:  # compose screen
             return ["account", "title", "body"]
-        return ["account", "title", "body", "sent_at", "success_count", "fail_count"]
+        return ["source", "status", "account", "partner", "link", "title", "body", "data", "image_url",
+                "sent_at", "devices", "success_count", "fail_count", "error"]
 
     def save_model(self, request, obj, form, change):
         # Only send on creation; editing an existing log never re-sends.
         if change:
             super().save_model(request, obj, form, change)
             return
-        if not fcm.is_configured():
-            obj.success_count = 0
-            obj.fail_count = 0
-            super().save_model(request, obj, form, change)
+        devices = AppDevice.objects.filter(is_active=True)
+        if obj.account:
+            devices = devices.filter(account=obj.account)
+        tokens = list(devices.values_list("fcm_token", flat=True))
+        # push() fills in and saves this very row, so the compose screen's row is the log entry.
+        result = fcm.push(tokens, obj.title, obj.body, source="admin", account=obj.account,
+                          data=obj.data or None, log=obj)
+        if result.status == "not_configured":
             self.message_user(
                 request,
                 "Saved, but NOT sent — FCM is not configured "
                 "(set SYNCUP_FIREBASE_PROJECT_ID and SYNCUP_FIREBASE_SA_FILE).",
                 level=messages.WARNING,
             )
-            return
-
-        devices = AppDevice.objects.filter(is_active=True)
-        if obj.account:
-            devices = devices.filter(account=obj.account)
-        tokens = list(devices.values_list("fcm_token", flat=True))
-        try:
-            ok, fail = fcm.send(tokens, obj.title, obj.body, obj.data or None)
-            obj.success_count = ok
-            obj.fail_count = fail
-            super().save_model(request, obj, form, change)
-            self.message_user(request, f"Push sent: {ok} ok, {fail} failed.")
-        except fcm.FCMError as e:
-            obj.success_count = 0
-            obj.fail_count = 0
-            super().save_model(request, obj, form, change)
-            self.message_user(request, f"Saved, but push failed: {e}", level=messages.ERROR)
+        elif result.status == "error":
+            self.message_user(request, f"Saved, but push failed: {result.error}", level=messages.ERROR)
+        else:
+            self.message_user(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
 
 
 # ----------------------------- Reminders (device-fired) -------------------- #

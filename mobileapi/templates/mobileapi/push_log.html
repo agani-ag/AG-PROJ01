@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Mobile App — Push Log{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-xl-11">
+
+        <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+            <div>
+                <h2 class="fw-bold mb-1">Push Log</h2>
+                <div class="text-muted">Every push notification SyncUp sent, from any part of the system.</div>
+            </div>
+            <a href="{% url 'mobile_push' %}" class="btn btn-outline-primary"><i class="fas fa-paper-plane me-1"></i> Send a push</a>
+        </div>
+
+        <!-- Last 24 hours -->
+        <div class="small text-muted text-uppercase fw-semibold mb-2" style="letter-spacing:.06em;">Last 24 hours · excluding chat</div>
+        <div class="row g-2 mb-4">
+            <div class="col-6 col-md-3">
+                <div class="card shadow-sm h-100 p-3">
+                    <div class="small text-muted">Pushes</div>
+                    <div class="fs-3 fw-bold">{{ summary.pushes|default:0 }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card shadow-sm h-100 p-3">
+                    <div class="small text-muted">Devices reached</div>
+                    <div class="fs-3 fw-bold text-success">{{ summary.delivered|default:0 }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card shadow-sm h-100 p-3">
+                    <div class="small text-muted">Failed deliveries</div>
+                    <div class="fs-3 fw-bold {% if summary.failed %}text-danger{% endif %}">{{ summary.failed|default:0 }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card shadow-sm h-100 p-3">
+                    <div class="small text-muted">Need attention</div>
+                    <div class="fs-3 fw-bold {% if summary.problems %}text-danger{% endif %}">{{ summary.problems }}</div>
+                    <div class="small text-muted">{{ summary.no_devices }} with no devices</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <form method="get" class="card shadow-sm p-3 mb-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label class="form-label small text-muted mb-1" for="f-q">Search</label>
+                    <input type="search" id="f-q" name="q" value="{{ q }}" class="form-control" placeholder="Title, message, user or partner">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-1" for="f-source">Source</label>
+                    <select id="f-source" name="source" class="form-select">
+                        <option value="" {% if not source %}selected{% endif %}>All except chat</option>
+                        <option value="all" {% if source == "all" %}selected{% endif %}>All, with chat</option>
+                        {% for value, label in source_choices %}
+                        <option value="{{ value }}" {% if source == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-1" for="f-status">Status</label>
+                    <select id="f-status" name="status" class="form-select">
+                        <option value="" {% if not status %}selected{% endif %}>Any status</option>
+                        {% for value, label in status_choices %}
+                        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small text-muted mb-1" for="f-days">Period</label>
+                    <select id="f-days" name="days" class="form-select">
+                        {% for value, label in periods %}
+                        <option value="{{ value }}" {% if period == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-fill">Apply</button>
+                    <a href="{% url 'mobile_push_log' %}" class="btn btn-outline-secondary" title="Reset filters">Reset</a>
+                </div>
+            </div>
+        </form>
+
+        <!-- Log -->
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>{{ page.paginator.count }} push{{ page.paginator.count|pluralize:"es" }}</span>
+                <small class="text-muted">Times in IST · click a row's title for details</small>
+            </div>
+            <div class="table-responsive">
+                <table class="table mb-0 align-middle">
+                    <thead>
+                        <tr><th>When</th><th>Source</th><th>To</th><th>Notification</th><th class="text-end">Devices</th><th>Result</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for n in page %}
+                        <tr>
+                            <td class="text-nowrap"><small>{{ n.sent_at|date:"d M Y" }}<br><span class="text-muted">{{ n.sent_at|date:"H:i:s" }}</span></small></td>
+                            <td><span class="badge text-bg-light border text-dark">{{ n.get_source_display }}</span></td>
+                            <td style="max-width:220px;">
+                                <span class="d-inline-block text-truncate" style="max-width:210px;" title="{{ n.target_label }}">{{ n.target_label }}</span>
+                                {% if n.partner and n.account %}<div class="small text-muted">{{ n.partner.name }}</div>{% endif %}
+                            </td>
+                            <td style="min-width:260px;">
+                                <details>
+                                    <summary style="cursor:pointer;">
+                                        <strong>{{ n.title }}</strong>
+                                        <span class="d-block small text-muted text-truncate" style="max-width:380px;">{{ n.body }}</span>
+                                    </summary>
+                                    <dl class="small mt-2 mb-1">
+                                        <dt>Message</dt>
+                                        <dd style="white-space:pre-wrap;">{{ n.body|default:"—" }}</dd>
+                                        {% if n.data.link_url %}<dt>Opens on tap</dt><dd class="text-break">{{ n.data.link_url }}</dd>{% endif %}
+                                        {% if n.link %}<dt>Link</dt><dd>{{ n.link.title }}</dd>{% endif %}
+                                        {% if n.partner %}<dt>Partner</dt><dd>{{ n.partner.name }}</dd>{% endif %}
+                                        {% if n.image_url %}<dt>Image</dt><dd class="text-break"><a href="{{ n.image_url }}" target="_blank" rel="noopener">{{ n.image_url }}</a></dd>{% endif %}
+                                        {% if n.error %}<dt class="text-danger">Error</dt><dd class="text-danger text-break">{{ n.error }}</dd>{% endif %}
+                                        {% if n.data %}<dt>Payload</dt><dd><pre class="bg-light border rounded p-2 mb-0 small" style="white-space:pre-wrap;">{{ n.data_json }}</pre></dd>{% endif %}
+                                    </dl>
+                                </details>
+                            </td>
+                            <td class="text-end" style="font-variant-numeric:tabular-nums;">{{ n.devices }}</td>
+                            <td class="text-nowrap">
+                                {% if n.status == "sent" %}<span class="badge text-bg-success">Sent</span>
+                                {% elif n.status == "partial" %}<span class="badge text-bg-warning">Partly failed</span>
+                                {% elif n.status == "failed" %}<span class="badge text-bg-danger">Failed</span>
+                                {% elif n.status == "error" %}<span class="badge text-bg-danger">Error</span>
+                                {% elif n.status == "no_devices" %}<span class="badge text-bg-secondary">No devices</span>
+                                {% elif n.status == "not_configured" %}<span class="badge text-bg-dark">FCM not configured</span>
+                                {% else %}<span class="badge text-bg-light border text-muted">Not recorded</span>{% endif %}
+                                <div class="small text-muted mt-1" style="font-variant-numeric:tabular-nums;">{{ n.success_count }} ok{% if n.fail_count %} · {{ n.fail_count }} failed{% endif %}</div>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-4">No pushes match these filters.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if page.paginator.num_pages > 1 %}
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <small class="text-muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</small>
+                <div class="btn-group">
+                    {% if page.has_previous %}
+                    <a class="btn btn-sm btn-outline-secondary" href="?{{ querystring }}&page={{ page.previous_page_number }}">Newer</a>
+                    {% endif %}
+                    {% if page.has_next %}
+                    <a class="btn btn-sm btn-outline-secondary" href="?{{ querystring }}&page={{ page.next_page_number }}">Older</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}

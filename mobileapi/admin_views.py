@@ -10,7 +10,8 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
-from django.db.models import Count, Max, Q
+from django.core.paginator import Paginator
+from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -36,6 +37,8 @@ from .models import (
     AppReminder,
     AppTelegramLog,
     CronLock,
+    PUSH_SOURCE_CHOICES,
+    PUSH_STATUS_CHOICES,
 )
 
 superuser_required = user_passes_test(
@@ -53,7 +56,7 @@ def dashboard(request):
         "link_count": AppLink.objects.count(),
         "reminder_count": AppReminder.objects.filter(is_active=True).count(),
         "recent_accounts": AppAccount.objects.order_by("-created_at")[:5],
-        "recent_notifications": AppNotificationLog.objects.all()[:5],
+        "recent_notifications": AppNotificationLog.objects.exclude(source="chat").select_related("account", "partner")[:5],
         "fcm_configured": fcm.is_configured(),
         "chat_unread_count": AppChatMessage.objects.filter(sender="user", read_by_admin=False).count(),
     }
@@ -512,37 +515,79 @@ def push(request):
                 cfg.save()
             android = fcm.build_android_config(fcm_opts)
 
-            ok = fail = 0
-            if not fcm.is_configured():
+            result = fcm.push(tokens, title, body, source="admin", account=account, data=data,
+                              image=image_url or None, android=android)
+            if result.status == "not_configured":
                 messages.warning(request, "Saved, but NOT sent — FCM is not configured.")
-            elif not tokens:
+            elif result.status == "no_devices":
                 messages.warning(request, "No active devices to send to.")
+            elif result.status == "error":
+                messages.error(request, f"Push failed: {result.error}")
             else:
-                try:
-                    ok, fail = fcm.send(tokens, title, body, data, image_url or None, android=android)
-                    messages.success(request, f"Push sent: {ok} ok, {fail} failed.")
-                except fcm.FCMError as e:
-                    messages.error(request, f"Push failed: {e}")
-
-            log_data = {}
-            if link_url:
-                log_data["link_url"] = link_url
-            if image_url:
-                log_data["image"] = image_url
-            AppNotificationLog.objects.create(
-                account=account, title=title, body=body, data=log_data or None,
-                success_count=ok, fail_count=fail,
-            )
+                messages.success(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
             return redirect("mobile_push")
         messages.error(request, form.errors.as_text())
     else:
         form = PushForm()
     return render(request, "mobileapi/push.html", {
         "form": form,
-        "logs": AppNotificationLog.objects.all()[:20],
+        "logs": AppNotificationLog.objects.exclude(source="chat").select_related("account", "partner")[:20],
         "fcm_configured": fcm.is_configured(),
         "all_urls": _distinct_link_urls(),
         "cloud_cfg": _cloudinary_widget_cfg(),
+    })
+
+
+# ------------------------------------------------------------------ Push log
+PUSH_LOG_PAGE_SIZE = 50
+PUSH_LOG_PERIODS = [("1", "Last 24 hours"), ("7", "Last 7 days"), ("30", "Last 30 days"), ("all", "All time")]
+
+
+@superuser_required
+def push_log(request):
+    """Every push SyncUp sent (see fcm.push), newest first. Chat alerts are left out unless asked
+    for: there's one per chat message and they would bury everything else."""
+    source = request.GET.get("source", "")
+    status = request.GET.get("status", "")
+    period = request.GET.get("days", "7")
+    q = (request.GET.get("q") or "").strip()
+    if period not in dict(PUSH_LOG_PERIODS):
+        period = "7"
+
+    rows = AppNotificationLog.objects.select_related("account", "partner", "link")
+    if period != "all":
+        rows = rows.filter(sent_at__gte=timezone.now() - timedelta(days=int(period)))
+    if source == "all":
+        pass
+    elif source:
+        rows = rows.filter(source=source)
+    else:
+        rows = rows.exclude(source="chat")
+    if status:
+        rows = rows.filter(status=status)
+    if q:
+        rows = rows.filter(
+            Q(title__icontains=q) | Q(body__icontains=q) | Q(account__email__icontains=q)
+            | Q(account__name__icontains=q) | Q(partner__name__icontains=q)
+        )
+
+    last_day = AppNotificationLog.objects.filter(
+        sent_at__gte=timezone.now() - timedelta(hours=24),
+    ).exclude(source="chat")
+    summary = last_day.aggregate(pushes=Count("id"), delivered=Sum("success_count"), failed=Sum("fail_count"))
+    summary["problems"] = last_day.filter(status__in=["failed", "error", "not_configured"]).count()
+    summary["no_devices"] = last_day.filter(status="no_devices").count()
+
+    params = request.GET.copy()
+    params.pop("page", None)
+    return render(request, "mobileapi/push_log.html", {
+        "page": Paginator(rows, PUSH_LOG_PAGE_SIZE).get_page(request.GET.get("page")),
+        "summary": summary,
+        "source": source, "status": status, "period": period, "q": q,
+        "source_choices": PUSH_SOURCE_CHOICES,
+        "status_choices": PUSH_STATUS_CHOICES,
+        "periods": PUSH_LOG_PERIODS,
+        "querystring": params.urlencode(),
     })
 
 
@@ -683,11 +728,9 @@ def _notify_chat_reply(account, body):
         .exclude(fcm_token="").exclude(fcm_token__isnull=True)
         .values_list("fcm_token", flat=True)
     )
-    if tokens and fcm.is_configured():
-        try:
-            fcm.send(tokens, "New message from Admin", body[:120], data={"type": "chat"})
-        except Exception:
-            pass  # message is saved regardless; the app picks it up on next poll/open
+    # Never raises; the message is saved regardless and the app picks it up on next poll/open.
+    fcm.push(tokens, "New message from Admin", body[:120], source="chat", account=account,
+             data={"type": "chat"})
 
 
 @superuser_required

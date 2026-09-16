@@ -7,6 +7,7 @@ project's style. Contract: md/syncup-android-backend-plan.md §5.
 import hashlib
 import hmac
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import requests
@@ -30,6 +31,7 @@ from .models import (
     AppConfig,
     AppDevice,
     AppLink,
+    AppNotificationLog,
     AppReminder,
     AppReminderReceipt,
 )
@@ -172,28 +174,31 @@ def account_link_delete(request, link_id):
 # 3b. Partner push — a website (opened in the app) pushes to THIS exact user.
 #     Called by the partner's backend with the window.SyncUp.token we injected.
 # --------------------------------------------------------------------------- #
-PARTNER_NOTIFY_RATE = 20  # max notifications per account per minute
+PARTNER_NOTIFY_RATE = 20         # max notifications per account per minute
+PARTNER_NOTIFY_MAX_BATCH = 200   # messages per request in the batch form
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-def partner_notify(request):
-    """POST { token, title, body, url? } — token is the window.SyncUp.token from a link that
-    has notifications enabled. Sends an FCM push to that user; tapping opens the link/url.
-    No API key: the signed token IS the credential, and unchecking the link's box revokes it."""
-    data = json_body(request)
-    if data is None:
-        return _bad("Invalid JSON")
-    token = data.get("token") or ""
-    title = (data.get("title") or "").strip()
-    body = (data.get("body") or "").strip()
-    url = (data.get("url") or "").strip()
+def _partner_notify_check(item):
+    """Validate one partner message and resolve who it's for.
+
+    Returns (message, None) when it can be sent, or (None, (http_code, text)) when it can't. The
+    single and batch forms both go through here, so every message gets exactly the checks, codes
+    and wording the single form has always returned.
+    """
+    if not isinstance(item, dict):
+        return None, (400, "Each message must be a JSON object")
+    token = item.get("token") or ""
+    title = str(item.get("title") or "").strip()
+    body = str(item.get("body") or "").strip()
+    url = str(item.get("url") or "").strip()
     if not token or not title:
-        return _bad("token and title are required")
+        return None, (400, "token and title are required")
+    if not isinstance(token, str):
+        return None, (403, "Invalid token")
     try:
         payload = signing.loads(token, salt=PARTNER_NOTIFY_SALT)
     except signing.BadSignature:
-        return _bad("Invalid token", status=403)
+        return None, (403, "Invalid token")
     # The link must still exist, be active, and still have notifications enabled (uncheck = revoke).
     link = (
         AppLink.objects.filter(
@@ -202,28 +207,93 @@ def partner_notify(request):
         )
         .select_related("account").first()
     )
-    if not link or not link.account.is_active:
-        return _bad("Token revoked or link unavailable", status=403)
-    # Simple per-account rate limit.
+    if not link or not link.account or not link.account.is_active:
+        return None, (403, "Token revoked or link unavailable")
+    # Simple per-account rate limit, counted per message.
     rk = f"pnotify:{link.account_id}"
     count = cache.get(rk, 0)
     if count >= PARTNER_NOTIFY_RATE:
-        return _bad("Rate limit exceeded, try again shortly", status=429)
+        return None, (429, "Rate limit exceeded, try again shortly")
     cache.set(rk, count + 1, 60)
-    # Deliver via FCM; tap opens the provided https url (must be) or the link itself.
+    # Tapping opens the provided https url, or the link itself.
     open_url = url if url.lower().startswith("https://") else link.url
-    tokens = list(
-        AppDevice.objects.filter(account=link.account, is_active=True)
+    return {"link": link, "title": title, "body": body, "open_url": open_url}, None
+
+
+def _account_device_tokens(account_ids):
+    """Active FCM tokens per account, for any number of accounts in one query."""
+    tokens = {}
+    for account_id, token in (
+        AppDevice.objects.filter(account_id__in=list(account_ids), is_active=True)
         .exclude(fcm_token="").exclude(fcm_token__isnull=True)
-        .values_list("fcm_token", flat=True)
+        .values_list("account_id", "fcm_token")
+    ):
+        tokens.setdefault(account_id, []).append(token)
+    return tokens
+
+
+def _partner_push(message, tokens, save_log=True):
+    link = message["link"]
+    return fcm.push(
+        tokens, message["title"][:100], message["body"][:200], source="partner_token",
+        account=link.account, link=link,
+        data={"link_url": message["open_url"], "link_title": link.title}, save_log=save_log,
     )
-    sent = 0
-    if tokens and fcm.is_configured():
-        try:
-            sent, _ = fcm.send(tokens, title[:100], body[:200], data={"link_url": open_url, "link_title": link.title})
-        except Exception:
-            pass
-    return JsonResponse({"success": True, "delivered": sent})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def partner_notify(request):
+    """Push to SyncUp users from a partner website, authorised by the window.SyncUp.token the app
+    injects into that site. No API key: the signed token IS the credential, and unticking the
+    link's notification box revokes it.
+
+      single  {"token", "title", "body"?, "url"?}      -> {"success": true, "delivered": N}
+      batch   {"messages": [ {...same fields...} ]}    -> one result per message, in order
+    """
+    data = json_body(request)
+    if not isinstance(data, dict):
+        return _bad("Invalid JSON")
+    if "messages" in data:
+        return _partner_notify_batch(data["messages"])
+    message, err = _partner_notify_check(data)
+    if err:
+        return _bad(err[1], status=err[0])
+    account_id = message["link"].account_id
+    tokens = _account_device_tokens([account_id]).get(account_id, [])
+    return JsonResponse({"success": True, "delivered": _partner_push(message, tokens).delivered})
+
+
+def _partner_notify_batch(items):
+    if not isinstance(items, list) or not items:
+        return _bad("messages must be a non-empty list")
+    if len(items) > PARTNER_NOTIFY_MAX_BATCH:
+        return _bad(f"messages can hold at most {PARTNER_NOTIFY_MAX_BATCH} items")
+
+    # Check every message first, in order: the per-user rate limit counts messages.
+    results, ready = [None] * len(items), []
+    for i, item in enumerate(items):
+        message, err = _partner_notify_check(item)
+        if err:
+            results[i] = {"index": i, "code": err[0], "success": False, "message": err[1]}
+        else:
+            ready.append((i, message))
+    tokens = _account_device_tokens({m["link"].account_id for _, m in ready})
+
+    # Send concurrently and wait for all of them before responding. Log rows come back unsaved
+    # and are written together afterwards, keeping the log writes on the request thread.
+    def _send(job):
+        i, message = job
+        return i, _partner_push(message, tokens.get(message["link"].account_id, []), save_log=False)
+
+    if ready:
+        logs = []
+        with ThreadPoolExecutor(max_workers=min(16, len(ready))) as pool:
+            for i, result in pool.map(_send, ready):
+                results[i] = {"index": i, "code": 200, "success": True, "delivered": result.delivered}
+                logs.append(result.log)
+        AppNotificationLog.objects.bulk_create(logs)
+    return JsonResponse({"success": True, "count": len(items), "sent": len(ready), "results": results})
 
 
 # --------------------------------------------------------------------------- #

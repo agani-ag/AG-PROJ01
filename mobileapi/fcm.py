@@ -9,9 +9,11 @@ the project's existing credentials (own code, no import of the other app's helpe
     SERVICE_ACCOUNT_FILE    path to the service-account JSON (abs, or relative to BASE_DIR)
 """
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -26,6 +28,8 @@ MAX_SEND_WORKERS = 16
 
 # OAuth tokens are valid ~1h; cache and reuse across sends in a run, refreshing a little early.
 _token_cache = {"token": None, "expires_at": 0.0}
+
+logger = logging.getLogger(__name__)
 
 
 class FCMError(Exception):
@@ -257,6 +261,69 @@ def send(tokens, title, body, data=None, image=None, timeout=15, max_workers=MAX
 
     _deactivate_dead_tokens(dead_tokens)
     return success, fail
+
+
+# --------------------------------------------------------------------------- #
+# Send + log — the one entry point every sender uses
+# --------------------------------------------------------------------------- #
+class PushResult(NamedTuple):
+    delivered: int      # devices that accepted the push
+    failed: int         # devices FCM rejected
+    status: str         # sent / partial / failed / no_devices / not_configured / error
+    error: str          # the exception text when status is "error", else ""
+    log: object         # the AppNotificationLog row (unsaved when save_log=False)
+
+
+def push(tokens, title, body, *, source, account=None, partner=None, link=None, data=None,
+         image=None, android=None, timeout=15, log=None, save_log=True, log_body=None):
+    """Send a push and record it in AppNotificationLog (Mobile App → Push Log).
+
+    Every sender in the project calls this instead of send(), so no push goes unlogged and a
+    failure is visible rather than swallowed. Never raises: a Firebase or network failure comes
+    back as status "error" with its message, and the caller decides whether to retry.
+
+      log       fill in (and save) this existing unsaved row instead of creating a new one
+      save_log  False returns the row unsaved, for callers that send from worker threads and
+                bulk-create the rows afterwards, keeping the log writes on the request thread
+      log_body  text to store in place of `body`, e.g. to keep one-time codes out of the log
+    """
+    from .models import AppNotificationLog
+
+    tokens = [t for t in (tokens or []) if t]
+    delivered = failed = 0
+    error = ""
+    if not is_configured():
+        status = "not_configured"
+    elif not tokens:
+        status = "no_devices"
+    else:
+        try:
+            delivered, failed = send(tokens, title, body, data=data, image=image,
+                                     timeout=timeout, android=android)
+            status = "sent" if not failed else ("partial" if delivered else "failed")
+        except Exception as e:  # noqa: BLE001 — reported on the log row and to the caller
+            status, error = "error", str(e)[:500]
+
+    row = log if log is not None else AppNotificationLog()
+    row.source = source
+    row.status = status
+    row.account = account
+    row.partner = partner
+    row.link = link
+    row.title = (title or "")[:200]
+    row.body = body if log_body is None else log_body
+    row.data = data or None
+    row.image_url = image or None
+    row.devices = len(tokens)
+    row.success_count = delivered
+    row.fail_count = failed
+    row.error = error or None
+    if save_log:
+        try:
+            row.save()
+        except Exception:  # noqa: BLE001 — a logging hiccup must never undo a delivered push
+            logger.exception("Could not record push in AppNotificationLog")
+    return PushResult(delivered, failed, status, error, row)
 
 
 def _deactivate_dead_tokens(tokens):

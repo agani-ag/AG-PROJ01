@@ -110,7 +110,7 @@
         <div class="card shadow-sm h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Recent push</span>
-                <a href="{% url 'mobile_push' %}" class="small">Compose</a>
+                <span class="small"><a href="{% url 'mobile_push_log' %}">Log</a> · <a href="{% url 'mobile_push' %}">Compose</a></span>
             </div>
             <ul class="list-group list-group-flush">
                 {% for n in recent_notifications %}
@@ -119,7 +119,7 @@
                         <strong>{{ n.title }}</strong>
                         <small class="text-muted">{{ n.sent_at|date:"d M, H:i" }}</small>
                     </div>
-                    <small class="text-muted">{{ n.account.email|default:"All devices" }} · {{ n.success_count }} ok / {{ n.fail_count }} failed</small>
+                    <small class="text-muted">{{ n.target_label }} · {{ n.get_source_display }} · {{ n.success_count }} ok / {{ n.fail_count }} failed</small>
                 </li>
                 {% empty %}
                 <li class="list-group-item text-muted">No notifications sent yet.</li>

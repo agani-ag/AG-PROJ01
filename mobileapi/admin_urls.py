@@ -45,6 +45,7 @@ urlpatterns = [
     path("config", v.config, name="mobile_config"),
     path("remote-config", v.remote_config, name="mobile_remote_config"),
     path("push", v.push, name="mobile_push"),
+    path("push-log", v.push_log, name="mobile_push_log"),
 
     # Reminders (device-fired)
     path("reminders", v.reminders, name="mobile_reminders"),

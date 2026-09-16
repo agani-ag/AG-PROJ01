@@ -27,7 +27,7 @@ from django.views.decorators.http import require_http_methods
 
 from . import fcm
 from .cleanup import run_cleanup
-from .models import AppDevice, AppNotificationLog, AppReminder, CronLock
+from .models import AppDevice, AppReminder, CronLock
 from .serializers import reminder_tap_target
 
 # Lock name for the push dispatcher (also read by the admin screen to show the last run).
@@ -255,38 +255,31 @@ def _send_one(reminder):
         )
         return "retrying"
 
-    tokens = _tokens_for(reminder)
-    if not tokens:
+    url, link_title = reminder_tap_target(reminder)
+    data = {"link_url": url, "link_title": link_title} if url else None
+    result = fcm.push(
+        _tokens_for(reminder), reminder.title, reminder.body, source="scheduled",
+        account=reminder.account, link=reminder.link, data=data,
+        image=reminder.image_url or None, timeout=FCM_TIMEOUT,
+    )
+    if result.status == "no_devices":
         # No devices to send to. Complete it rather than retrying forever.
         _finish(reminder, ok=0, fail=0, error="No active devices for this target.")
         return "no_devices"
-
-    url, link_title = reminder_tap_target(reminder)
-    data = {"link_url": url, "link_title": link_title} if url else None
-    try:
-        ok, fail = fcm.send(
-            tokens, reminder.title, reminder.body, data,
-            reminder.image_url or None, timeout=FCM_TIMEOUT,
-        )
-    except Exception as e:  # noqa: BLE001 — network/credential failures shouldn't kill the run
-        msg = str(e)[:500]
+    if result.status == "error":
+        # Network / credential failure: retry on a later tick, up to the attempt cap.
         if reminder.attempts + 1 < MAX_ATTEMPTS:
             AppReminder.objects.filter(pk=reminder.pk).update(
-                status="pending", claimed_at=None, last_error=msg,
+                status="pending", claimed_at=None, last_error=result.error,
             )
             return "retrying"
         AppReminder.objects.filter(pk=reminder.pk).update(
-            status="failed", claimed_at=None, last_error=msg,
+            status="failed", claimed_at=None, last_error=result.error,
         )
         return "failed"
 
-    AppNotificationLog.objects.create(
-        account=reminder.account, title=reminder.title, body=reminder.body,
-        data={"link_url": url} if url else None,
-        success_count=ok, fail_count=fail,
-    )
-    _finish(reminder, ok, fail)
-    return "sent" if ok else "failed"
+    _finish(reminder, result.delivered, result.failed)
+    return "sent" if result.delivered else "failed"
 
 
 def _finish(reminder, ok, fail, error=None):

@@ -172,7 +172,7 @@
         </form>
 
         <div class="card shadow-sm">
-            <div class="card-header">Recent sends</div>
+            <div class="card-header d-flex justify-content-between align-items-center"><span>Recent sends</span><a href="{% url 'mobile_push_log' %}" class="small">View all in Push Log</a></div>
             <div class="table-responsive">
                 <table class="table table-striped mb-0 align-middle">
                     <thead><tr><th>When</th><th>Target</th><th>Title</th><th>Message</th><th>Result</th></tr></thead>
@@ -180,7 +180,7 @@
                         {% for n in logs %}
                         <tr>
                             <td><small>{{ n.sent_at|date:"d M, H:i" }}</small></td>
-                            <td>{{ n.account.email|default:"All devices" }}</td>
+                            <td>{{ n.target_label }}</td>
                             <td>{{ n.title }}</td>
                             <td style="max-width:280px;"><span class="d-inline-block text-truncate" style="max-width:260px;">{{ n.body }}</span></td>
                             <td><span class="badge text-bg-success">{{ n.success_count }}</span> / <span class="badge text-bg-danger">{{ n.fail_count }}</span></td>

@@ -26,6 +26,8 @@ venv/
 env/
 ENV/
 .venv/
+md/
+docs/
 pip-wheel-metadata/
 *.egg-info/
 dist/

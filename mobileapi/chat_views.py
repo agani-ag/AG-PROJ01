@@ -164,11 +164,8 @@ def _notify_agents_new_message(sender_account, body):
         .exclude(fcm_token="").exclude(fcm_token__isnull=True)
         .values_list("fcm_token", flat=True)
     )
-    if tokens and fcm.is_configured():
-        try:
-            fcm.send(tokens, "New message from " + (sender_account.name or "a user"), body[:120], data={"type": "chat"})
-        except Exception:
-            pass
+    fcm.push(tokens, "New message from " + (sender_account.name or "a user"), body[:120],
+             source="chat", data={"type": "chat"})
 
 
 def _notify_admin_reply(target, body):
@@ -180,11 +177,8 @@ def _notify_admin_reply(target, body):
         .exclude(fcm_token="").exclude(fcm_token__isnull=True)
         .values_list("fcm_token", flat=True)
     )
-    if tokens and fcm.is_configured():
-        try:
-            fcm.send(tokens, "New message from Admin", body[:120], data={"type": "chat"})
-        except Exception:
-            pass
+    fcm.push(tokens, "New message from Admin", body[:120], source="chat", account=target,
+             data={"type": "chat"})
 
 
 @require_http_methods(["GET"])
