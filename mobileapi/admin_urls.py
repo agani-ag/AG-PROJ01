@@ -30,6 +30,13 @@ urlpatterns = [
     path("partners/<int:partner_id>/regenerate", v.partner_regenerate, name="mobile_partner_regenerate"),
     path("partners/<int:partner_id>/toggle", v.partner_toggle, name="mobile_partner_toggle"),
 
+    # Telegram (our bot config, onboarding kit, send test, logs)
+    path("telegram", v.telegram_page, name="mobile_telegram"),
+    path("telegram/save", v.telegram_save, name="mobile_telegram_save"),
+    path("telegram/verify", v.telegram_verify, name="mobile_telegram_verify"),
+    path("telegram/discover", v.telegram_discover, name="mobile_telegram_discover"),
+    path("telegram/test", v.telegram_test, name="mobile_telegram_test"),
+
     # Devices
     path("devices", v.devices, name="mobile_devices"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),

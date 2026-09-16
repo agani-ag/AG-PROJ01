@@ -407,6 +407,12 @@ class AppConfig(models.Model):
         default=14, help_text="Delete finished server (cron) reminders — sent/expired/failed — older than this (0 = keep all).",
     )
 
+    # ---- Telegram relay (our bot; partners send reports/messages to their own groups/chats) ----
+    # Stored in the DB (not env) so the bot can be swapped from the admin Telegram page. Blank =
+    # Telegram relay disabled. The username is auto-filled from getMe when the token is verified.
+    telegram_bot_token = models.CharField(max_length=100, blank=True, default="")
+    telegram_bot_username = models.CharField(max_length=64, blank=True, default="")
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -450,6 +456,32 @@ class AppNotificationLog(models.Model):
     def __str__(self):
         target = self.account.email if self.account else "all devices"
         return f"{self.title} → {target}"
+
+
+# =============== Telegram relay log ===============
+class AppTelegramLog(models.Model):
+    """One Telegram message our bot sent on a partner's behalf (or from the admin test console).
+    Addressed by raw chat_id — the partner adds our bot to their group/chat and sends us the id."""
+
+    STATUS = [("sent", "Sent"), ("failed", "Failed")]
+
+    # Null = sent from the admin Telegram page (no partner).
+    partner = models.ForeignKey(
+        AppPartner, on_delete=models.SET_NULL, null=True, blank=True, related_name="telegram_logs",
+    )
+    chat_id = models.CharField(max_length=64)
+    text = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS, default="sent")
+    message_id = models.CharField(max_length=40, blank=True, default="")  # Telegram's message id
+    error = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["-created_at"])]
+
+    def __str__(self):
+        return f"telegram → {self.chat_id} ({self.status})"
 
 
 # =============== Scheduled reminders (server-authored, device-fired) ===============

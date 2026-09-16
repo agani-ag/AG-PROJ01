@@ -53,6 +53,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.gzip.GZipMiddleware',  # compress API/HTML responses (OkHttp auto-decompresses)
+    'main.middleware.StaticNotFoundMiddleware',  # plain 404 page; must stay above CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

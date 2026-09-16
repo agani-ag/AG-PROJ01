@@ -26,6 +26,10 @@ urlpatterns = [
     path("notify", v.notify_all, name="partner_notify_all"),
     path("notify/bulk", v.notify_bulk, name="partner_notify_bulk"),
 
+    # Telegram relay (our bot delivers a report/message to a chat id the partner supplies)
+    path("telegram/send", v.telegram_send, name="partner_telegram_send"),
+    path("telegram/bulk", v.telegram_bulk, name="partner_telegram_bulk"),
+
     # Action / verification prompts (otp / code / number / notice / approve)
     path("users/<int:user_id>/action", v.action_by_id, name="partner_action_by_id"),
     path("users/external/<str:external_id>/action", v.action_by_external, name="partner_action_by_external"),

@@ -21,6 +21,7 @@ from .serializers import chat_message_dict
 from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
+from . import telegram as tg
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from .models import (
@@ -33,6 +34,7 @@ from .models import (
     AppNotificationLog,
     AppPartner,
     AppReminder,
+    AppTelegramLog,
     CronLock,
 )
 
@@ -265,6 +267,82 @@ def partner_toggle(request, partner_id):
     partner.save(update_fields=["is_active"])
     messages.success(request, f"Partner “{partner.name}” {'enabled' if partner.is_active else 'disabled'}.")
     return redirect("mobile_partners")
+
+
+# ------------------------------------------------------------------ Telegram (relay bot)
+@superuser_required
+def telegram_page(request):
+    """Configure our Telegram bot (token stored in the DB), show the partner onboarding kit
+    (bot link + QR + how to get a chat id), and the send log."""
+    cfg = AppConfig.load()
+    bot_link = f"https://t.me/{cfg.telegram_bot_username}" if cfg.telegram_bot_username else ""
+    logs = AppTelegramLog.objects.select_related("partner")[:50]
+    return render(request, "mobileapi/telegram.html", {
+        "cfg": cfg,
+        "configured": bool((cfg.telegram_bot_token or "").strip()),
+        "bot_link": bot_link,
+        "logs": logs,
+    })
+
+
+@superuser_required
+@require_POST
+def telegram_save(request):
+    """Save the bot token (and, if the token verifies, its username)."""
+    cfg = AppConfig.load()
+    token = (request.POST.get("telegram_bot_token") or "").strip()
+    cfg.telegram_bot_token = token
+    # Refresh the username from Telegram so the bot link/QR are correct for whatever token was pasted.
+    if token:
+        me = tg.get_me(token=token)
+        if me:
+            cfg.telegram_bot_username = me.get("username", "") or cfg.telegram_bot_username
+            messages.success(request, f"Saved. Connected as @{cfg.telegram_bot_username}.")
+        else:
+            cfg.telegram_bot_username = ""
+            messages.warning(request, "Token saved, but Telegram didn't accept it — check the token.")
+    else:
+        cfg.telegram_bot_username = ""
+        messages.success(request, "Telegram bot token cleared (relay disabled).")
+    cfg.save(update_fields=["telegram_bot_token", "telegram_bot_username", "updated_at"])
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+def telegram_verify(request):
+    """AJAX: confirm the saved token works (getMe). Returns the bot identity or an error."""
+    me = tg.get_me()
+    if me:
+        return JsonResponse({"ok": True, "username": me.get("username", ""), "name": me.get("first_name", "")})
+    return JsonResponse({"ok": False, "error": "Telegram did not accept the saved token."})
+
+
+@superuser_required
+def telegram_discover(request):
+    """AJAX: list chats the bot has recently seen (getUpdates) so a chat id can be copied after the
+    bot is added to a group / the person taps Start."""
+    return JsonResponse({"ok": True, "chats": tg.discover_chats()})
+
+
+@superuser_required
+@require_POST
+def telegram_test(request):
+    """Send a test message from the console to confirm delivery end-to-end."""
+    chat_id = (request.POST.get("chat_id") or "").strip()
+    text = (request.POST.get("text") or "").strip()
+    if not chat_id or not text:
+        messages.error(request, "Enter both a chat id and a message.")
+        return redirect("mobile_telegram")
+    ok, info = tg.send(chat_id, text)
+    AppTelegramLog.objects.create(
+        partner=None, chat_id=chat_id[:64], text=text,
+        status="sent" if ok else "failed", message_id=info if ok else "", error="" if ok else info,
+    )
+    if ok:
+        messages.success(request, f"Sent to {chat_id} (message id {info}).")
+    else:
+        messages.error(request, f"Failed: {info}")
+    return redirect("mobile_telegram")
 
 
 # ------------------------------------------------------------------ Test Verify (action prompts)

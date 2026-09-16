@@ -24,9 +24,10 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from . import fcm
+from . import fcm, telegram
 from .models import (
     AppAccount, AppActionRequest, AppDevice, AppLink, AppNotificationLog, AppPartner,
+    AppTelegramLog,
 )
 from .serializers import link_dict
 
@@ -601,6 +602,94 @@ def notify_bulk(request):
                 ))
     if logs:
         AppNotificationLog.objects.bulk_create(logs)
+    return JsonResponse({"success": True, "sent": sent, "count": len(items), "results": results})
+
+
+# --------------------------------------------------------------------------- Telegram relay
+def _telegram_one(partner, chat_id, text, parse_mode):
+    """Send one Telegram message + log it. Returns a per-item result dict."""
+    ok, info = telegram.send(chat_id, text, parse_mode=parse_mode)
+    AppTelegramLog.objects.create(
+        partner=partner, chat_id=str(chat_id)[:64], text=text or "",
+        status="sent" if ok else "failed",
+        message_id=info if ok else "", error="" if ok else info,
+    )
+    return {"chat_id": str(chat_id), "message_id": info} if ok else {"chat_id": str(chat_id), "error": info}
+
+
+@partner_api_required
+@require_http_methods(["POST"])
+def telegram_send(request):
+    """Deliver one report/message to a Telegram chat our bot can reach (the partner adds our bot to
+    their group / the person starts our bot, then sends us the chat_id)."""
+    if not telegram.is_configured():
+        return _err("Telegram is not configured on the server", 503)
+    data = _json(request)
+    if data is None:
+        return _err("Invalid JSON")
+    chat_id = str(data.get("chat_id") or "").strip()
+    text = (data.get("text") or "").strip()
+    if not chat_id:
+        return _err("chat_id is required")
+    if not text:
+        return _err("text is required")
+    result = _telegram_one(request.partner, chat_id, text, data.get("parse_mode"))
+    if "error" in result:
+        return JsonResponse({"success": False, **result}, status=502)
+    return JsonResponse({"success": True, **result})
+
+
+@partner_api_required
+@require_http_methods(["POST"])
+def telegram_bulk(request):
+    """Deliver many Telegram reports/messages in ONE request (each to its own chat_id) — same
+    batching win as notify/bulk. Returns a per-item result."""
+    if not telegram.is_configured():
+        return _err("Telegram is not configured on the server", 503)
+    data = _json(request)
+    if data is None:
+        return _err("Invalid JSON")
+    items = data.get("messages")
+    if not isinstance(items, list) or not items:
+        return _err("messages must be a non-empty list")
+    if len(items) > MAX_BULK:
+        return _err(f"messages can hold at most {MAX_BULK} items")
+
+    results = [None] * len(items)
+    ready = []  # (index, chat_id, text, parse_mode)
+    for i, it in enumerate(items):
+        if not isinstance(it, dict):
+            results[i] = {"error": "each message must be an object"}
+            continue
+        chat_id = str(it.get("chat_id") or "").strip()
+        text = (it.get("text") or "").strip()
+        if not chat_id:
+            results[i] = {"error": "chat_id is required"}
+        elif not text:
+            results[i] = {"chat_id": chat_id, "error": "text is required"}
+        else:
+            ready.append((i, chat_id, text, it.get("parse_mode")))
+
+    # Threads do ONLY the Telegram HTTP send (no DB writes — concurrent SQLite writes deadlock).
+    # Results come back to the main thread, which writes all the logs in one bulk_create.
+    sent, logs = 0, []
+    if ready:
+        from concurrent.futures import ThreadPoolExecutor
+        def _job(job):
+            i, chat_id, text, pm = job
+            ok, info = telegram.send(chat_id, text, parse_mode=pm)
+            return i, chat_id, text, ok, info
+        with ThreadPoolExecutor(max_workers=min(8, len(ready))) as pool:
+            for i, chat_id, text, ok, info in pool.map(_job, ready):
+                results[i] = {"chat_id": chat_id, "message_id": info} if ok else {"chat_id": chat_id, "error": info}
+                sent += 1 if ok else 0
+                logs.append(AppTelegramLog(
+                    partner=request.partner, chat_id=chat_id[:64], text=text,
+                    status="sent" if ok else "failed",
+                    message_id=info if ok else "", error="" if ok else info,
+                ))
+    if logs:
+        AppTelegramLog.objects.bulk_create(logs)
     return JsonResponse({"success": True, "sent": sent, "count": len(items), "results": results})
 
 
