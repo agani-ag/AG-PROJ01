@@ -1,0 +1,664 @@
+{% extends "base.html" %}
+{% block title %}ClickSend SMS{% endblock %}
+
+{% block head %}
+<style>
+  /* Three summary tiles (the shared .stats grid is four-up) */
+  .stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stats-3 .stat-value { overflow-wrap: anywhere; }
+  button.stat { width: 100%; font: inherit; text-align: left; cursor: pointer; }
+  button.stat:hover { border-color: var(--border-strong); }
+  button.stat:focus-visible { border-radius: var(--radius-lg); }
+  button.stat .stat-meta { display: inline-flex; align-items: center; gap: 2px; color: var(--accent); }
+
+  /* History filters (mirror the ClickSend /v3/sms/history query params) */
+  .filters { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, .8fr); gap: 12px; border-bottom: 1px solid var(--border); }
+  .status-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .hist-foot { flex-wrap: wrap; }
+  .msg-body { max-width: 460px; white-space: normal; overflow-wrap: anywhere; }
+
+  /* Inbound rows stand out (most traffic is outbound) */
+  #histBody tr.msg-in > td { background: var(--warning-soft); }
+  #histBody tr.msg-in > td:first-child { box-shadow: inset 4px 0 0 var(--warning); }
+  #histBody tr.msg-in .badge-warning { background: var(--surface); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+
+  .tx-table { border: 1px solid var(--border); border-radius: var(--radius); }
+  .modal-head > .icon { color: var(--muted); }
+
+  .top-btn { position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 25; width: 44px; height: 44px; border-radius: 50%; box-shadow: var(--shadow-lg); }
+
+  @media (max-width: 1180px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 640px) {
+    .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats-3 > :last-child { grid-column: 1 / -1; }
+    .stats-3 .stat-value { font-size: 21px; }
+    /* Phone cards: the message leads, the rest are labelled rows */
+    #histTable tbody tr { display: flex; flex-direction: column; }
+    #histTable td.t-primary { order: -1; }
+    #histBody tr.msg-in { background: var(--warning-soft); box-shadow: inset 4px 0 0 var(--warning); }
+    #histBody tr.msg-in > td, #histBody tr.msg-in > td:first-child { background: transparent; box-shadow: none; }
+    .msg-body { max-width: none; }
+    .top-btn { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <h1>ClickSend SMS</h1>
+    <p class="page-sub">Send SMS and browse the ClickSend account's message history</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn" type="button" id="statusBtn">{% icon "id-card" %}Account status</button>
+    <button class="btn" type="button" id="refreshBtn">{% icon "refresh-cw" %}Refresh</button>
+    <button class="btn btn-primary" type="button" id="sendBtn" aria-controls="sendPanel" aria-expanded="false">{% icon "send" %}New SMS</button>
+  </div>
+</div>
+
+<!-- Send panel (toggled by New SMS, hidden by default) -->
+<div class="card" id="sendPanel" hidden>
+  <div class="card-head">
+    {% icon "send" %}<h2>Send an SMS</h2>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" id="sendClose" aria-label="Close">{% icon "x" %}</button>
+  </div>
+  <div class="card-body form-grid">
+    <div class="field">
+      <label class="label" for="smsTo">To <span class="opt">E.164</span></label>
+      <input id="smsTo" class="input" type="tel" placeholder="+15551234567" autocomplete="off" />
+      <span class="help">International format with the country code.</span>
+    </div>
+    <div class="field">
+      <label class="label" for="smsFrom">From <span class="opt">optional</span></label>
+      <input id="smsFrom" class="input" placeholder="Sender ID / number" autocomplete="off" />
+    </div>
+    <div class="field span-2">
+      <label class="label" for="smsBody">Message <span class="counter" id="smsHint"></span></label>
+      <textarea id="smsBody" class="input" rows="3" placeholder="Type your message…"></textarea>
+    </div>
+  </div>
+  <div class="card-foot row">
+    <button class="btn btn-primary" type="button" id="smsSubmit">{% icon "send" %}Send SMS</button>
+    <span class="small muted">Charged to the ClickSend balance.</span>
+  </div>
+</div>
+
+<!-- Summary tiles -->
+<div class="stats stats-3" id="cards">
+  <div class="stat">
+    <span class="stat-label">{% icon "message-square-text" %}Total messages</span>
+    <span class="stat-value" id="statTotal">—</span>
+    <span class="stat-meta">With current filters</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">{% icon "wallet" %}Balance</span>
+    <span class="stat-value" id="statBalance">—</span>
+    <span class="stat-meta" id="statCurrency"></span>
+  </div>
+  <button class="stat" type="button" id="txCard" title="View all transactions">
+    <span class="stat-label">{% icon "receipt" %}Last transaction</span>
+    <span class="stat-value" id="statTx">—</span>
+    <span class="stat-meta">View all transactions{% icon "chevron-right" "icon-sm" %}</span>
+  </button>
+</div>
+
+<!-- History (server-side paginated by ClickSend) -->
+<div class="card">
+  <div class="card-head">{% icon "inbox" %}<h2>Message history</h2></div>
+
+  <div class="card-body filters">
+    <!-- q search: field + value -->
+    <div class="field">
+      <label class="label" for="qField">Search field</label>
+      <select id="qField" class="input input-sm">
+        <option value="">— None —</option>
+        <option value="to">To</option>
+        <option value="from">From</option>
+        <option value="status">Status</option>
+        <option value="subaccount_id">Subaccount ID</option>
+        <option value="message_id">Message ID</option>
+      </select>
+    </div>
+    <div class="field" id="qValueWrap">
+      <label class="label" for="qValue">Search value</label>
+      <input type="search" id="qValue" class="input input-sm" placeholder="value…" autocomplete="off" />
+    </div>
+    <div class="field" id="qStatusWrap" hidden>
+      <label class="label" for="qStatus">Status</label>
+      <select id="qStatus" class="input input-sm">
+        <option>Queued</option><option>Completed</option><option>Scheduled</option>
+        <option>WaitApproval</option><option>Failed</option><option>Cancelled</option>
+        <option>CancelledAfterReview</option><option>Received</option><option>Sent</option>
+      </select>
+    </div>
+
+    <!-- order_by: field + direction -->
+    <div class="field">
+      <label class="label" for="orderField">Order by</label>
+      <select id="orderField" class="input input-sm">
+        <option value="date">Date</option>
+        <option value="username">Username</option>
+        <option value="from">From</option>
+        <option value="to">To</option>
+        <option value="status">Status</option>
+        <option value="body">Body</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="label" for="orderDir">Direction</label>
+      <select id="orderDir" class="input input-sm">
+        <option value="desc">Desc</option>
+        <option value="asc">Asc</option>
+      </select>
+    </div>
+
+    <!-- dates -->
+    <div class="field">
+      <label class="label" for="dateFrom">Date from</label>
+      <input type="date" id="dateFrom" class="input input-sm" />
+    </div>
+    <div class="field">
+      <label class="label" for="dateTo">Date to</label>
+      <input type="date" id="dateTo" class="input input-sm" />
+    </div>
+
+    <!-- limit -->
+    <div class="field">
+      <label class="label" for="limitSel">Per page</label>
+      <select id="limitSel" class="input input-sm">
+        <option>15</option><option selected>25</option><option>50</option><option>100</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Status + top pagination -->
+  <div class="table-tools">
+    <div id="status" class="status-line small muted" role="status" aria-live="polite"></div>
+    <div class="row gap-sm ml-auto">
+      <span class="small muted" id="pageInfoTop"></span>
+      <button class="btn btn-sm" type="button" id="prevBtnTop" disabled>{% icon "chevron-left" %}Previous</button>
+      <button class="btn btn-sm" type="button" id="nextBtnTop" disabled>Next{% icon "chevron-right" %}</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table table-stack" id="histTable">
+      <thead><tr>
+        <th class="nowrap">Date</th>
+        <th>To</th>
+        <th>From</th>
+        <th>Message</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody id="histBody">
+        <tr data-empty data-loading><td colspan="5" class="t-primary"><div class="empty"><span class="spinner spinner-lg"></span><span>Loading messages…</span></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Bottom pagination -->
+  <div class="table-foot hist-foot">
+    <span id="pageInfo"></span>
+    <div class="row gap-sm ml-auto">
+      <button class="btn btn-sm" type="button" id="prevBtn" disabled>{% icon "chevron-left" %}Previous</button>
+      <button class="btn btn-sm" type="button" id="nextBtn" disabled>Next{% icon "chevron-right" %}</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account status dialog -->
+<dialog class="modal" id="acctModal" aria-labelledby="acctModalTitle">
+  <div class="modal-head">
+    {% icon "id-card" %}<h2 id="acctModalTitle">Account status</h2>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+  </div>
+  <div class="modal-content" id="acctBody"></div>
+  <div class="modal-foot bordered">
+    <button class="btn btn-primary" type="button" data-close-dialog>OK</button>
+  </div>
+</dialog>
+
+<!-- Recharge transactions dialog -->
+<dialog class="modal modal-lg" id="txModal" aria-labelledby="txModalTitle">
+  <div class="modal-head">
+    {% icon "receipt" %}<h2 id="txModalTitle">Recharge transactions</h2>
+    <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+  </div>
+  <div class="modal-content"><div id="txWrap" class="stack gap-sm"></div></div>
+  <div class="modal-foot bordered">
+    <button class="btn" type="button" data-close-dialog>Close</button>
+  </div>
+</dialog>
+
+<!-- Back to top -->
+<button class="btn btn-primary btn-icon top-btn" type="button" id="topBtn" title="Back to top" aria-label="Back to top" hidden>{% icon "arrow-up" %}</button>
+{% endblock %}
+
+{% block script %}
+<script>
+// app.js is deferred, so wait for DOMContentLoaded before using window.App.
+document.addEventListener("DOMContentLoaded", function () {
+  "use strict";
+
+  const config = JSON.parse(atob('{{ app_config|escapejs }}'));
+  const USERNAME = config.username || "";
+  const API_KEY  = config.api_key || "";
+  const BASE = "https://rest.clicksend.com";
+  const AUTH = "Basic " + btoa(USERNAME + ":" + API_KEY);
+  const SP = '<span class="spinner"></span> ';
+
+  const g = (id) => document.getElementById(id);
+  const els = {
+    cards: g("cards"), status: g("status"),
+    sendBtn: g("sendBtn"), refreshBtn: g("refreshBtn"), statusBtn: g("statusBtn"),
+    sendPanel: g("sendPanel"), sendClose: g("sendClose"), smsTo: g("smsTo"), smsFrom: g("smsFrom"),
+    smsBody: g("smsBody"), smsSubmit: g("smsSubmit"), smsHint: g("smsHint"),
+    qField: g("qField"), qValue: g("qValue"), qValueWrap: g("qValueWrap"),
+    qStatus: g("qStatus"), qStatusWrap: g("qStatusWrap"),
+    orderField: g("orderField"), orderDir: g("orderDir"),
+    dateFrom: g("dateFrom"), dateTo: g("dateTo"), limitSel: g("limitSel"),
+    acctModal: g("acctModal"), acctBody: g("acctBody"), txModal: g("txModal"),
+    topBtn: g("topBtn"), histBody: g("histBody"),
+    pageInfo: g("pageInfo"), prevBtn: g("prevBtn"), nextBtn: g("nextBtn"),
+    pageInfoTop: g("pageInfoTop"), prevBtnTop: g("prevBtnTop"), nextBtnTop: g("nextBtnTop"),
+    statTotal: g("statTotal"), statBalance: g("statBalance"), statCurrency: g("statCurrency"),
+    statTx: g("statTx"), txCard: g("txCard"),
+  };
+
+  let account = null, stats = null, messages = [];
+  // pagination state (from the API's response)
+  let page = 1, lastPage = 1, total = 0, nextUrl = null, prevUrl = null;
+  let curLimit = 25;
+  // recharge transactions — latest one for the card. The dialog keeps its own
+  // pagination state so paging in the dialog never changes the card.
+  let lastTx = null;
+  let txState = null;   // state object of the open transactions dialog
+  const TX_LIMIT = 100;
+
+  function setStatus(msg, kind) {
+    els.status.className = "status-line small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "muted");
+    const ic = kind === "err" ? App.icon("circle-alert", "icon-sm") : kind === "ok" ? App.icon("circle-check", "icon-sm") : "";
+    els.status.innerHTML = ic + "<span>" + msg + "</span>";
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g,
+      c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---- API helper (HTTP Basic auth; ClickSend is CORS-enabled) ----
+  async function api(path, opts) {
+    opts = opts || {};
+    const headers = Object.assign({ "Authorization": AUTH, "Accept": "application/json" }, opts.headers || {});
+    if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    const res = await fetch(BASE + path, { method: opts.method || "GET", headers, body: opts.body });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { data = { raw: text }; }
+    if (!res.ok) {
+      const msg = (data && (data.response_msg || data.error_text || data.response_code)) ||
+        (res.status + " " + res.statusText);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function money(v) {
+    const n = parseFloat(v);
+    const cur = (account && account.currency) || {};
+    const prefix = cur.currency_prefix_d || "";
+    if (isNaN(n)) return String(v == null ? "" : v);
+    return prefix + n.toFixed(4);
+  }
+  // Date format everywhere: DD-MM-YYYY (with HH:MM for message/transaction times).
+  function fmtDate(unix) {
+    const n = Number(unix);
+    if (!n) return "";
+    const d = new Date(n * 1000);
+    const pad = (x) => String(x).padStart(2, "0");
+    return pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear() +
+           " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function toUnix(dateStr, endOfDay) {
+    if (!dateStr) return "";
+    const t = Math.floor(new Date(dateStr + (endOfDay ? "T23:59:59" : "T00:00:00")).getTime() / 1000);
+    return isNaN(t) ? "" : t;
+  }
+  function pageFromUrl(u) {
+    if (!u) return null;
+    const m = /[?&]page=(\d+)/.exec(u);
+    return m ? Number(m[1]) : null;
+  }
+
+  // Build the ClickSend `q` param as "field:value" (value URL-encoded; colon kept
+  // literal, per the docs). Body is NOT a searchable field, so it's handled client-side.
+  function buildQ() {
+    const f = els.qField.value;
+    if (!f) return "";
+    const raw = (f === "status") ? els.qStatus.value : els.qValue.value.trim();
+    if (!raw) return "";
+    return f + ":" + encodeURIComponent(raw);
+  }
+  function orderBy() {
+    return els.orderField.value + ":" + els.orderDir.value;   // e.g. date:desc
+  }
+
+  // ---- loaders ----
+  async function loadAccount() {
+    const d = await api("/v3/account");
+    account = (d && d.data) ? d.data : d;
+  }
+  async function loadStats() {
+    try { const d = await api("/v3/statistics/sms"); stats = (d && d.data) ? d.data : d; }
+    catch (e) { stats = null; }
+  }
+
+  // Fetch a single history page — one API call.
+  async function loadHistoryPage(p) {
+    const df = toUnix(els.dateFrom.value, false);
+    const dto = toUnix(els.dateTo.value, true);
+    const q = buildQ();
+    curLimit = Number(els.limitSel.value) || 25;
+    const qs = "?date_from=" + encodeURIComponent(df) +
+               "&date_to=" + encodeURIComponent(dto) +
+               "&order_by=" + encodeURIComponent(orderBy()) +
+               "&page=" + p +
+               "&limit=" + curLimit +
+               (q ? ("&q=" + q) : "");
+    setStatus(SP + "Loading page " + p + "…");
+    const d = await api("/v3/sms/history" + qs);
+    const pg = (d && d.data) ? d.data : {};
+    messages = pg.data || [];
+    page = Number(pg.current_page) || p;
+    lastPage = Number(pg.last_page) || 1;
+    total = (pg.total != null) ? Number(pg.total) : messages.length;
+    nextUrl = pg.next_page_url || null;
+    prevUrl = pg.prev_page_url || null;
+    renderTable();
+    renderPager();
+    renderCards();
+    setStatus("Showing page " + page + " of " + lastPage + " (" + total + " total).", "ok");
+  }
+
+  function goPage(p) {
+    if (p < 1 || p > lastPage || p === page) return;
+    loadHistoryPage(p).catch(e => setStatus("Error: " + esc(e.message || String(e)), "err"));
+  }
+  function reloadFirstPage() {
+    loadHistoryPage(1).catch(e => setStatus("Error: " + esc(e.message || String(e)), "err"));
+  }
+
+  // ---- rendering ----
+  function statusBadge(m) {
+    const st = m.status || m.status_text || "";
+    const l = st.toLowerCase();
+    let cls = "";
+    if (/deliver|sent|success|complete/.test(l)) cls = " badge-success";
+    else if (/fail|error|undeliver|reject|cancel/.test(l)) cls = " badge-danger";
+    else if (/queue|pending|wait|schedul|sending/.test(l)) cls = " badge-warning";
+    else if (/receiv/.test(l)) cls = " badge-info";
+    return '<span class="badge' + cls + '"><span class="dot"></span>' + esc(st || "—") + "</span>";
+  }
+
+  // A single full-width message row in the history table (empty / loading / error states).
+  function tableNotice(iconName, title, text) {
+    els.histBody.innerHTML = '<tr data-empty><td colspan="5" class="t-primary"><div class="empty">' +
+      App.icon(iconName) + "<b>" + esc(title) + "</b>" + (text ? "<span>" + esc(text) + "</span>" : "") +
+      "</div></td></tr>";
+  }
+
+  function renderTable() {
+    if (!messages.length) { tableNotice("inbox", "No messages", "Try other filters or dates."); return; }
+    els.histBody.innerHTML = messages.map(m => {
+      const isIn = (m.direction || "").toLowerCase() === "in";
+      return '<tr class="' + (isIn ? "msg-in" : "") + '">' +
+        '<td data-label="Date" class="nowrap">' + esc(fmtDate(m.date)) + "</td>" +
+        '<td data-label="To">' + esc(m.to || "") + "</td>" +
+        '<td data-label="From" class="nowrap"><span>' + esc(m.from || m.sender || "") +
+          (isIn ? ' <span class="badge badge-warning">Inbound</span>' : "") + "</span></td>" +
+        '<td class="t-primary"><div class="msg-body">' + esc(m.body || "") + "</div></td>" +
+        '<td data-label="Status">' + statusBadge(m) + "</td>" +
+      "</tr>";
+    }).join("");
+  }
+
+  function renderPager() {
+    const info = total
+      ? ("Page " + page + " of " + lastPage + " · " + total + " messages · " + curLimit + "/page")
+      : "No messages";
+    els.pageInfo.textContent = info;
+    els.pageInfoTop.textContent = info;
+    const noPrev = !(prevUrl || page > 1);
+    const noNext = !(nextUrl || page < lastPage);
+    els.prevBtn.disabled = noPrev; els.prevBtnTop.disabled = noPrev;
+    els.nextBtn.disabled = noNext; els.nextBtnTop.disabled = noNext;
+  }
+
+  function renderCards() {
+    const cur = (account && account.currency && account.currency.currency_name_short) || "";
+    els.statTotal.textContent = total || "—";
+    els.statBalance.textContent = account ? money(account.balance) : "—";
+    els.statCurrency.textContent = cur;
+    const lt = lastTx;
+    els.statTx.textContent = lt ? ((lt.currency ? lt.currency + " " : "") + (lt.amount != null ? lt.amount : "—")) : "—";
+  }
+
+  // ---- recharge transactions ----
+  // Fetch one page; returns a self-contained pagination object (no shared state).
+  async function fetchTxPage(p) {
+    const d = await api("/v3/recharge/transactions?page=" + p + "&limit=" + TX_LIMIT);
+    const pg = (d && d.data) ? d.data : {};
+    const rows = pg.data || [];
+    return {
+      rows,
+      page: Number(pg.current_page) || p,
+      last: Number(pg.last_page) || 1,
+      total: (pg.total != null) ? Number(pg.total) : rows.length,
+      next: pg.next_page_url || null,
+      prev: pg.prev_page_url || null,
+    };
+  }
+
+  // Latest transaction for the card — always from page 1 (API returns newest first).
+  async function loadLastTx() {
+    const pg = await fetchTxPage(1);
+    lastTx = pg.rows.length
+      ? pg.rows.reduce((a, b) => ((Number(b.date) || 0) > (Number(a.date) || 0)) ? b : a, pg.rows[0])
+      : null;
+  }
+
+  function renderTxHtml(st) {
+    if (!st.rows.length) return '<div class="empty">' + App.icon("receipt") + "<b>No transactions</b></div>";
+    const body = st.rows.map(t =>
+      "<tr>" +
+        '<td class="t-primary nowrap"><span class="t-cell-main">' + esc(fmtDate(t.date)) + "</span></td>" +
+        '<td data-label="Invoice #">' + esc(t.invoice_number || "") + "</td>" +
+        '<td data-label="Amount" class="t-right nowrap">' + (t.currency ? esc(t.currency) + " " : "") +
+          esc(t.amount != null ? t.amount : "") + "</td>" +
+      "</tr>").join("");
+    const info = "Page " + st.page + " of " + st.last + " · " + st.total + " transactions";
+    const prevDis = !(st.prev || st.page > 1) ? "disabled" : "";
+    const nextDis = !(st.next || st.page < st.last) ? "disabled" : "";
+    return '<div class="row-between">' +
+        '<span class="small muted">' + info + "</span>" +
+        '<div class="row gap-sm">' +
+          '<button class="btn btn-sm" type="button" id="txPrev" ' + prevDis + ">" + App.icon("chevron-left") + "Previous</button>" +
+          '<button class="btn btn-sm" type="button" id="txNext" ' + nextDis + ">Next" + App.icon("chevron-right") + "</button>" +
+        "</div>" +
+      "</div>" +
+      '<div class="table-wrap tx-table"><table class="table table-stack table-compact">' +
+        '<thead><tr><th>Date</th><th>Invoice #</th><th class="t-right">Amount</th></tr></thead>' +
+        "<tbody>" + body + "</tbody></table></div>";
+  }
+
+  async function goTxPage(p, st) {
+    if (p < 1 || p > st.last) return;
+    const wrap = g("txWrap");
+    if (wrap) wrap.innerHTML = '<div class="empty"><span class="spinner spinner-lg"></span><span>Loading…</span></div>';
+    try {
+      Object.assign(st, await fetchTxPage(p));
+      if (st !== txState) return;   // dialog was closed / reopened meanwhile
+      const w = g("txWrap");
+      if (w) {
+        w.innerHTML = renderTxHtml(st);
+        const prev = g("txPrev");
+        const next = g("txNext");
+        if (prev) prev.onclick = () => goTxPage(pageFromUrl(st.prev) || (st.page - 1), st);
+        if (next) next.onclick = () => goTxPage(pageFromUrl(st.next) || (st.page + 1), st);
+      }
+    } catch (e) {
+      if (st !== txState) return;
+      const w = g("txWrap");
+      if (w) w.innerHTML = '<div class="alert alert-danger">' + App.icon("circle-alert") +
+        '<div class="alert-body">Error: ' + esc(e.message || String(e)) + "</div></div>";
+    }
+  }
+
+  function openTxModal() {
+    const st = { rows: [], page: 1, last: 1, total: 0, next: null, prev: null };
+    txState = st;
+    els.txModal.showModal();
+    goTxPage(1, st);
+  }
+
+  // ---- send ----
+  async function sendSms() {
+    const to = els.smsTo.value.trim();
+    const body = els.smsBody.value.trim();
+    const from = els.smsFrom.value.trim();
+    if (!to || !body) {
+      App.toast("Missing fields: enter a destination number and a message.", "warning");
+      (to ? els.smsBody : els.smsTo).focus();
+      return;
+    }
+    const payload = { messages: [Object.assign({ source: "YSRBSProposal", body, to, country: "US" }, from ? { from } : {})] };
+    els.smsSubmit.disabled = true;
+    els.smsSubmit.setAttribute("aria-busy", "true");
+    try {
+      const d = await api("/v3/sms/send", { method: "POST", body: JSON.stringify(payload) });
+      const m = (d && d.data && d.data.messages && d.data.messages[0]) || {};
+      const st = m.status || (d && d.response_code) || "SUCCESS";
+      const price = (m.message_price != null) ? (" · " + money(m.message_price)) : "";
+      const good = /success|queued|sent/i.test(String(st));
+      App.toast("Message " + st + " · To " + to + price, good ? "success" : "info");
+      els.smsBody.value = ""; els.smsHint.textContent = "";
+      await loadAccount();
+      await loadHistoryPage(1);
+    } catch (e) {
+      App.toast("Send failed: " + (e.message || String(e)), "error");
+    } finally {
+      els.smsSubmit.disabled = false;
+      els.smsSubmit.removeAttribute("aria-busy");
+    }
+  }
+
+  // ---- account status dialog ----
+  function kvList(pairs) {
+    const rows = pairs.filter(r => r[1] != null && r[1] !== "")
+      .map(r => "<dt>" + esc(r[0]) + "</dt><dd>" + esc(String(r[1])) + "</dd>")
+      .join("");
+    return '<dl class="kv">' + rows + "</dl>";
+  }
+  function showAccount() {
+    const a = account || {};
+    const cur = a.currency || {};
+    let html = '<div class="stack gap-sm"><h3>Account</h3>' + kvList([
+      ["Account name", a.account_name || a.username],
+      ["Username", a.username],
+      ["User ID", a.user_id],
+      ["Email", a.email],
+      ["Phone", a.phone],
+      ["Country", a.country],
+      ["Timezone", a.timezone],
+      ["Balance", money(a.balance) + " " + (cur.currency_name_short || "")],
+    ]) + "</div>";
+    if (stats && typeof stats === "object") {
+      const flat = Object.entries(stats).filter(([k, v]) => v != null && typeof v !== "object");
+      if (flat.length) html += '<div class="stack gap-sm"><h3>SMS statistics (usage)</h3>' + kvList(flat) + "</div>";
+    }
+    els.acctBody.innerHTML = html;
+    els.acctModal.showModal();
+  }
+
+  // ---- orchestration ----
+  async function loadAll() {
+    if (!USERNAME || !API_KEY) {
+      setStatus("ClickSend credentials are not configured (username / api_key).", "err");
+      tableNotice("plug", "ClickSend isn't configured", "Set the ClickSend username and API key in the server settings.");
+      return;
+    }
+    setStatus(SP + "Loading…");
+    els.refreshBtn.setAttribute("aria-busy", "true");
+    try {
+      await loadAccount();
+      renderCards();
+      await loadStats();
+      try { await loadLastTx(); } catch (e) { /* card shows — if unavailable */ }
+      await loadHistoryPage(1);
+    } catch (e) {
+      let msg = e.message || String(e);
+      if (/Failed to fetch/i.test(msg)) msg = "Network/CORS error, or the credentials are invalid.";
+      setStatus("Error: " + esc(msg), "err");
+      if (els.histBody.querySelector("[data-loading]")) tableNotice("circle-alert", "Couldn't load messages", msg);
+    } finally {
+      els.refreshBtn.removeAttribute("aria-busy");
+    }
+  }
+
+  // Toggle the q value control between a text box and the Status dropdown.
+  function syncQField() {
+    const isStatus = els.qField.value === "status";
+    els.qStatusWrap.hidden = !isStatus;
+    els.qValueWrap.hidden = isStatus;
+  }
+
+  function toggleSendPanel(show) {
+    els.sendPanel.hidden = !show;
+    els.sendBtn.setAttribute("aria-expanded", String(show));
+    if (show) els.smsTo.focus();
+  }
+
+  // ---- events ----
+  els.refreshBtn.addEventListener("click", loadAll);
+  els.statusBtn.addEventListener("click", showAccount);
+  els.sendBtn.addEventListener("click", () => toggleSendPanel(els.sendPanel.hidden));
+  els.sendClose.addEventListener("click", () => toggleSendPanel(false));
+  els.smsSubmit.addEventListener("click", sendSms);
+  els.txCard.addEventListener("click", openTxModal);
+  els.txModal.addEventListener("close", () => { txState = null; });
+
+  // Filters auto-apply — no Apply/Clear buttons. Text search is debounced.
+  const debounce = (fn, ms) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+  const debouncedReload = debounce(reloadFirstPage, 400);
+
+  els.qField.addEventListener("change", () => { syncQField(); reloadFirstPage(); });
+  els.qStatus.addEventListener("change", reloadFirstPage);
+  els.qValue.addEventListener("input", debouncedReload);
+  els.qValue.addEventListener("keydown", e => { if (e.key === "Enter") reloadFirstPage(); });
+  els.orderField.addEventListener("change", reloadFirstPage);
+  els.orderDir.addEventListener("change", reloadFirstPage);
+  els.limitSel.addEventListener("change", reloadFirstPage);
+  els.dateFrom.addEventListener("change", reloadFirstPage);
+  els.dateTo.addEventListener("change", reloadFirstPage);
+
+  const goPrev = () => goPage(pageFromUrl(prevUrl) || (page - 1));
+  const goNext = () => goPage(pageFromUrl(nextUrl) || (page + 1));
+  els.prevBtn.addEventListener("click", goPrev);
+  els.nextBtn.addEventListener("click", goNext);
+  els.prevBtnTop.addEventListener("click", goPrev);
+  els.nextBtnTop.addEventListener("click", goNext);
+
+  els.smsBody.addEventListener("input", () => {
+    const n = els.smsBody.value.length;
+    const parts = n ? Math.ceil(n / 160) : 0;
+    els.smsHint.textContent = n + " chars" + (parts > 1 ? (" · ~" + parts + " segments") : "");
+  });
+
+  els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+  window.addEventListener("scroll", () => { els.topBtn.hidden = window.scrollY <= 300; }, { passive: true });
+
+  // Auto-load on open.
+  loadAll();
+});
+</script>
+{% endblock %}

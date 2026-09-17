@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title %}Broadcast{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block head %}
+<style>
+  .input.mono { font-family: var(--mono); }
+  @media (min-width: 641px) { .input.mono { font-size: 13px; } }
+  .input[readonly] { background: var(--surface-2); }
+
+  /* Status · listeners · audio level */
+  .meta-grid { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 16px 32px; align-items: start; }
+  .meta-label { display: block; margin-bottom: 6px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .meta-value { display: flex; align-items: center; min-height: 30px; font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  @media (max-width: 640px) {
+    .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .meta-wide { grid-column: 1 / -1; }
+  }
+  #vuWrap { width: 100%; max-width: 320px; height: 12px; }
+  #vuBar { background: linear-gradient(90deg, var(--success), var(--warning), var(--danger)); transition: width .07s linear; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 640px) {
+    .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .controls .ml-auto { margin-left: 0; grid-column: 1 / -1; }
+  }
+
+  .steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; }
+  .steps li { padding-left: 4px; }
+  .steps li::marker { color: var(--muted); font-weight: 600; }
+
+  /* Result dialog (connection test, no-audio warning) */
+  #noticeDialog .modal-body > div:last-child { flex: 1; min-width: 0; }
+  .modal-icon.success { background: var(--success-soft); color: var(--success); }
+  .modal-icon.warning { background: var(--warning-soft); color: var(--warning); }
+  .result-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; color: var(--text); }
+  .result-list li { display: flex; align-items: flex-start; gap: 8px; }
+  .result-list .icon { margin-top: 3px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div class="titles">
+    <h1>Broadcast</h1>
+    <p class="page-sub">Live broadcast admin · share your device audio with listeners over WebRTC</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn" href="{{ public_url }}" target="_blank" rel="noopener">{% icon "external-link" %}Open listener page</a>
+  </div>
+</div>
+
+<div class="alert alert-warning">
+  {% icon "monitor" %}
+  <div class="alert-body">
+    <b>Desktop Chrome or Edge only</b>
+    When you click <strong>Start</strong>, pick a <strong>Tab</strong> and tick <strong>“Share tab audio”</strong> (any OS),
+    or <strong>Entire screen</strong> + <strong>“Share system audio”</strong> (Windows).
+    This shares your <strong>device audio, not your microphone</strong>. Keep this tab open while broadcasting.
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">{% icon "cast" %}<h2>Controls</h2></div>
+  <div class="card-body stack">
+    <div class="meta-grid">
+      <div>
+        <span class="meta-label">Status</span>
+        <div class="meta-value"><span class="badge" id="statusPill"><span class="dot"></span>Off air</span></div>
+      </div>
+      <div>
+        <span class="meta-label">Listeners</span>
+        <div class="meta-value"><b id="listenerCount">0</b></div>
+      </div>
+      <div class="meta-wide">
+        <span class="meta-label">Audio level</span>
+        <div class="meta-value"><div class="progress" id="vuWrap"><div class="progress-bar" id="vuBar"></div></div></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="label" for="publicUrl">Public link <span class="opt">share this</span></label>
+      <div class="input-group">
+        <input class="input mono" id="publicUrl" value="{{ public_url }}" readonly>
+        <button class="btn" type="button" id="copyUrlBtn" data-copy-target="#publicUrl">{% icon "copy" %}Copy</button>
+      </div>
+    </div>
+    <div class="small" id="msg" role="status" hidden></div>
+  </div>
+  <div class="card-foot controls">
+    <button class="btn btn-primary" type="button" id="startBtn">{% icon "radio-tower" %}Start</button>
+    <button class="btn" type="button" id="stopBtn" disabled>{% icon "square" %}Stop</button>
+    <button class="btn ml-auto" type="button" id="testBtn">{% icon "wifi" %}Test connection</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">{% icon "info" %}<h2>How it works</h2></div>
+  <div class="card-body">
+    <ol class="steps">
+      <li>Play your music in a browser tab (YouTube, Spotify web, a local file — anything).</li>
+      <li>Click <b>Start</b>, choose that tab and tick <b>Share tab audio</b>.</li>
+      <li>Send friends the <b>public link</b>. They tap <b>Listen</b> and hear your audio live.</li>
+      <li>Same Wi-Fi works out of the box. Remote friends connect too when routers allow (add a TURN server later for guaranteed remote).</li>
+    </ol>
+  </div>
+</div>
+
+<dialog class="modal" id="noticeDialog" aria-labelledby="noticeTitle">
+  <form method="dialog">
+    <div class="modal-body">
+      <div class="modal-icon" id="noticeIcon"></div>
+      <div>
+        <h2 id="noticeTitle"></h2>
+        <div class="muted" id="noticeText"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" value="ok">OK</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+  "use strict";
+  const CSRF = "{{ csrf_token }}";
+  const PEER = "admin";
+  const URLS = {
+    state: "{% url 'broadcast_state' %}",
+    live: "{% url 'broadcast_live' %}",
+    signal: "{% url 'broadcast_signal' %}",
+    poll: "{% url 'broadcast_poll' %}",
+  };
+  const byId = (id) => document.getElementById(id);
+  const setMsg = (m, kind) => {
+    const el = byId("msg");
+    el.className = "small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "muted");
+    el.innerHTML = m || "";
+    el.hidden = !m;
+  };
+  // Result popup: kind = success | error | warning
+  function notice(kind, title, html) {
+    const icons = { success: "circle-check", error: "circle-x", warning: "triangle-alert" };
+    byId("noticeIcon").className = "modal-icon " + (kind === "error" ? "danger" : kind);
+    byId("noticeIcon").innerHTML = App.icon(icons[kind] || "info");
+    byId("noticeTitle").textContent = title;
+    byId("noticeText").innerHTML = html;
+    byId("noticeDialog").showModal();
+  }
+
+  let stream = null, audioTrack = null, iceServers = [], running = false;
+  let cursor = 0, hb = null, pollTimer = null, audioCtx = null, analyser = null, rafId = null;
+  const pcs = {};         // peerId -> RTCPeerConnection
+  const pending = {};     // peerId -> queued ICE candidates
+
+  function post(url, body) {
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF }, body: JSON.stringify(body || {}) });
+  }
+  function signal(to, kind, data) {
+    return fetch(URLS.signal, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: PEER, to: to, kind: kind, data: data }) });
+  }
+
+  // Resolve ICE servers from a state payload. If the server passed a Metered
+  // config (because it can't fetch server-side), the browser fetches the TURN
+  // credentials directly (browsers aren't network-restricted like the server).
+  async function resolveIce(state) {
+    const base = [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+    const m = state && state.metered;
+    if (m && m.domain && m.apiKey) {
+      try {
+        const r = await fetch("https://" + m.domain + "/api/v1/turn/credentials?apiKey=" + encodeURIComponent(m.apiKey), { cache: "no-store" });
+        const list = await r.json();
+        if (Array.isArray(list) && list.length) return base.concat(list);
+      } catch (e) { /* fall through to server list */ }
+    }
+    return (state && state.iceServers) || base;
+  }
+  async function loadIce() { try { iceServers = await resolveIce(await (await fetch(URLS.state, { cache: "no-store" })).json()); } catch (e) {} }
+
+  function updateUI() {
+    const n = Object.keys(pcs).length;
+    byId("listenerCount").textContent = n;
+    byId("statusPill").className = "badge" + (running ? " badge-danger" : "");
+    byId("statusPill").innerHTML = running ? '<span class="status-dot live"></span>On air' : '<span class="dot"></span>Off air';
+    byId("startBtn").disabled = running;
+    byId("stopBtn").disabled = !running;
+  }
+
+  function makePc(peer) {
+    if (pcs[peer]) closePc(peer);
+    const pc = new RTCPeerConnection({ iceServers: iceServers });
+    // NOTE: the audio track is added in handle() AFTER setRemoteDescription(offer),
+    // so it binds to the offer's audio m-line and the answer is a proper sendonly.
+    pc.onicecandidate = (e) => { if (e.candidate) signal(peer, "candidate", e.candidate); };
+    pc.onconnectionstatechange = () => {
+      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) closePc(peer);
+      updateUI();
+    };
+    pcs[peer] = pc;
+    updateUI();
+    return pc;
+  }
+  function closePc(peer) { if (pcs[peer]) { try { pcs[peer].close(); } catch (e) {} delete pcs[peer]; delete pending[peer]; updateUI(); } }
+
+  async function handle(m) {
+    const from = m.from;
+    if (m.kind === "offer") {
+      const pc = makePc(from);
+      await pc.setRemoteDescription(JSON.parse(m.data));
+      try { pc.addTrack(audioTrack, stream); } catch (e) {}   // bind to the offer's audio m-line
+      const ans = await pc.createAnswer();
+      await pc.setLocalDescription(ans);
+      signal(from, "answer", pc.localDescription);
+      (pending[from] || []).forEach(c => { try { pc.addIceCandidate(c); } catch (e) {} });
+      pending[from] = [];
+    } else if (m.kind === "candidate") {
+      const pc = pcs[from];
+      const cand = JSON.parse(m.data);
+      if (pc && pc.remoteDescription) { try { await pc.addIceCandidate(cand); } catch (e) {} }
+      else { (pending[from] = pending[from] || []).push(cand); }
+    } else if (m.kind === "bye") {
+      closePc(from);
+    }
+  }
+
+  async function poll() {
+    let d; try { d = await (await fetch(URLS.poll + "?peer=" + PEER + "&after=" + cursor, { cache: "no-store" })).json(); } catch (e) { return; }
+    cursor = d.cursor;
+    for (const m of d.messages) { try { await handle(m); } catch (e) {} }
+  }
+
+  function setupVU() {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(stream);   // NOT connected to destination (no echo)
+      analyser = audioCtx.createAnalyser(); analyser.fftSize = 256;
+      src.connect(analyser);
+      const arr = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        if (!analyser) return;
+        analyser.getByteFrequencyData(arr);
+        let sum = 0; for (const v of arr) sum += v;
+        byId("vuBar").style.width = Math.min(100, (sum / arr.length / 140) * 100) + "%";
+        rafId = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch (e) {}
+  }
+
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    } catch (e) { setMsg("Screen/tab share was cancelled or blocked.", "err"); return; }
+
+    const aTracks = stream.getAudioTracks();
+    if (!aTracks.length) {
+      stream.getTracks().forEach(t => t.stop()); stream = null;
+      notice("warning", "No audio was shared",
+        'You must tick <strong>“Share tab audio”</strong> (or “Share system audio”) in the picker. Please click Start and try again.');
+      return;
+    }
+    audioTrack = aTracks[0];
+    stream.getVideoTracks().forEach(t => t.stop());     // we only need audio
+    audioTrack.addEventListener("ended", stop);         // user hit browser's "Stop sharing"
+
+    await loadIce();
+    setupVU();
+    running = true;
+    await post(URLS.live, { is_live: true });
+    hb = setInterval(() => post(URLS.live, { is_live: true }), 5000);
+    cursor = 0;
+    await poll();
+    pollTimer = setInterval(poll, 1000);
+    setMsg("You are on air. Share the public link.", "ok");
+    updateUI();
+  }
+
+  async function stop() {
+    running = false;
+    if (hb) clearInterval(hb); if (pollTimer) clearInterval(pollTimer);
+    Object.keys(pcs).forEach(p => { signal(p, "bye", {}); closePc(p); });
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; audioTrack = null;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (audioCtx) { try { audioCtx.close(); } catch (e) {} audioCtx = null; analyser = null; }
+    byId("vuBar").style.width = "0%";
+    try { await post(URLS.live, { is_live: false }); } catch (e) {}
+    setMsg("Broadcast stopped.", "");
+    updateUI();
+  }
+
+  // Diagnostic: gather ICE candidates and report whether STUN (srflx) and
+  // TURN (relay) actually work. relay = internet mode will connect through TURN.
+  async function testConnection() {
+    byId("testBtn").disabled = true;
+    setMsg('<span class="spinner"></span> Testing STUN/TURN…');
+    let servers = [];
+    try { servers = await resolveIce(await (await fetch(URLS.state, { cache: "no-store" })).json()); } catch (e) {}
+    const hasTurn = servers.some(s => (Array.isArray(s.urls) ? s.urls : [s.urls]).some(u => /^turns?:/.test(u)));
+    const pc = new RTCPeerConnection({ iceServers: servers });
+    let srflx = false, relay = false;
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return finish();
+      const t = e.candidate.candidate || "";
+      if (/ typ srflx /.test(t)) srflx = true;
+      if (/ typ relay /.test(t)) relay = true;
+    };
+    pc.createDataChannel("t");
+    await pc.setLocalDescription(await pc.createOffer());
+    let done = false;
+    const finish = () => {
+      if (done) return; done = true;
+      try { pc.close(); } catch (e) {}
+      byId("testBtn").disabled = false;
+      const item = (name, cls, label) => "<li>" + App.icon(name, "icon-sm " + cls) + "<span>" + label + "</span></li>";
+      const line = (ok, label) => item(ok ? "circle-check" : "circle-x", ok ? "text-success" : "text-danger", label);
+      const html = '<ul class="result-list">' + line(srflx, "STUN (find my public address)") +
+                   (hasTurn ? line(relay, "TURN relay (works across the internet)")
+                            : item("triangle-alert", "text-warning", "No TURN configured — only same-network / lenient routers will connect.")) +
+                   "</ul>";
+      notice(hasTurn ? (relay ? "success" : "error") : "warning", "Connection test", html);
+      setMsg("", "");
+    };
+    setTimeout(finish, 6000);
+  }
+  byId("testBtn").addEventListener("click", testConnection);
+
+  byId("startBtn").addEventListener("click", start);
+  byId("stopBtn").addEventListener("click", stop);
+  // If the tab is closed without Stop, the heartbeat stops and listeners see
+  // off-air within HEARTBEAT_TTL (~15s) — no explicit unload call needed.
+
+  updateUI();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+
+{% block layout %}
+<main class="bare">
+    <div class="card auth-card center">
+        {% if invalid %}
+        <div class="auth-brand">
+            <span class="modal-icon danger">{% icon "unlink" %}</span>
+            <h1>This link can't be used</h1>
+            <p class="muted">It expired, was already used, or a newer link replaced it. Sign in, then generate a fresh link from Profile.</p>
+        </div>
+        <a href="{% url 'login' %}" class="btn btn-primary btn-lg btn-block">{% icon "log-in" %}Go to sign in</a>
+        {% else %}
+        <div class="auth-brand">
+            <span class="spinner spinner-lg" role="status" aria-label="Signing in"></span>
+            <h1>Signing you in…</h1>
+        </div>
+        <form method="POST" id="magicForm">
+            {% csrf_token %}
+            <noscript><p class="help">JavaScript is off. Press Continue to sign in.</p></noscript>
+            <button type="submit" class="btn btn-primary btn-block">Continue</button>
+        </form>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}
+
+{% block script %}
+{% if not invalid %}
+<script>document.getElementById("magicForm").submit();</script>
+{% endif %}
+{% endblock %}

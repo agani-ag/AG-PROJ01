@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Telegram{% endblock %}
+
+{% block head %}
+<style>
+    .tg-kit { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+    .tg-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+    /* QR codes need a light background to scan, in both themes */
+    .tg-qr #qr { padding: 8px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); line-height: 0; }
+    .tg-steps h3 { margin-bottom: 6px; }
+    .tg-steps ol { margin: 0 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+    .tg-steps ol:last-child { margin-bottom: 0; }
+    .tg-test { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: end; }
+    @media (max-width: 720px) {
+        .tg-kit { grid-template-columns: minmax(0, 1fr); }
+        .tg-test { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 640px) { .tg-logs tr { display: flex; flex-direction: column; } .tg-logs td.t-primary { order: -1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Telegram</h1>
+        <p class="page-sub">
+            Our bot delivers partners' reports and messages to their own Telegram groups or chats.
+            A partner adds our bot to a group (or a person starts it), then sends us that chat id via the API.
+        </p>
+    </div>
+</div>
+
+<!-- Bot configuration -->
+<div class="card">
+    <div class="card-head" style="flex-wrap:wrap">
+        {% icon "bot" %}<h2 style="flex:1 1 auto">Bot configuration</h2>
+        {% if configured and cfg.telegram_bot_username %}
+            <span class="badge badge-success"><span class="dot"></span>Connected as @{{ cfg.telegram_bot_username }}</span>
+        {% elif configured %}
+            <span class="badge badge-warning">Token set, not verified</span>
+        {% else %}
+            <span class="badge">Not configured</span>
+        {% endif %}
+    </div>
+    <div class="card-body stack">
+        <form method="POST" action="{% url 'mobile_telegram_save' %}" class="field">
+            {% csrf_token %}
+            <label class="label" for="tg-token">Bot token <span class="opt">from @BotFather</span></label>
+            <div class="input-group">
+                <input type="text" id="tg-token" name="telegram_bot_token" class="input mono"
+                       value="{{ cfg.telegram_bot_token }}" autocomplete="off" spellcheck="false"
+                       placeholder="123456789:AAExampleBotTokenFromBotFather">
+                <button type="submit" class="btn btn-primary">{% icon "save" %}Save</button>
+            </div>
+            <span class="help">
+                Stored in the database (no env). Paste a different token any time to switch bots; we re-check it
+                and refresh the bot link below. Leave blank to disable the relay.
+            </span>
+        </form>
+        {% if configured %}
+        <div class="row">
+            <button type="button" id="btn-verify" class="btn btn-sm">{% icon "circle-check" %}Verify connection</button>
+            <span id="verify-out" class="small" role="status"></span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if configured %}
+<!-- Partner onboarding kit -->
+<div class="card">
+    <div class="card-head">{% icon "handshake" %}<h2>Give this to your partner</h2></div>
+    <div class="card-body stack">
+        <div class="tg-kit">
+            <div class="tg-qr">
+                {% if bot_link %}
+                <div id="qr"></div>
+                <a href="{{ bot_link }}" target="_blank" rel="noopener" class="break" style="font-weight:600">{{ bot_link }}</a>
+                <span class="help">Scan to open or add the bot</span>
+                {% else %}
+                <div class="empty" style="padding:16px 8px">{% icon "qr-code" %}<span>Verify the token to get the bot link and QR code.</span></div>
+                {% endif %}
+            </div>
+            <div class="tg-steps">
+                <h3>To send to a group</h3>
+                <ol>
+                    <li>Add <b>@{{ cfg.telegram_bot_username }}</b> to the Telegram group.</li>
+                    <li>Click <b>Discover chats</b> below. The group appears with its chat id.</li>
+                    <li>Send that <code>chat_id</code> to <code>POST /partner/v1/telegram/send</code>.</li>
+                </ol>
+                <h3>To send to one person</h3>
+                <ol>
+                    <li>The person opens the bot link or scans the QR code and taps <b>Start</b>.</li>
+                    <li>Click <b>Discover chats</b>. Their chat id appears.</li>
+                </ol>
+            </div>
+        </div>
+        <hr class="divider">
+        <div class="row">
+            <button type="button" id="btn-discover" class="btn btn-sm">{% icon "search" %}Discover chats</button>
+            <span class="help">Shows chats the bot saw in the last ~24h (no webhook needed).</span>
+        </div>
+        <div class="card" id="chats-card" hidden>
+            <div class="table-wrap">
+                <table class="table table-compact table-stack" id="chats-table">
+                    <thead><tr><th>Chat ID</th><th>Name / title</th><th>Type</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        <div id="discover-empty" class="small muted" role="status"></div>
+    </div>
+</div>
+
+<!-- Send test -->
+<div class="card">
+    <div class="card-head">{% icon "send" %}<h2>Send a test message</h2></div>
+    <form method="POST" action="{% url 'mobile_telegram_test' %}" class="card-body">
+        {% csrf_token %}
+        <div class="tg-test">
+            <div class="field">
+                <label class="label" for="tg-chat-id">Chat ID</label>
+                <input type="text" id="tg-chat-id" name="chat_id" class="input mono" placeholder="e.g. -1001234567890">
+            </div>
+            <div class="field">
+                <label class="label" for="tg-text">Message</label>
+                <input type="text" id="tg-text" name="text" class="input" placeholder="Test message">
+            </div>
+            <button type="submit" class="btn btn-primary">{% icon "send" %}Send test</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+<!-- Logs -->
+<div class="card">
+    <div class="card-head">
+        {% icon "scroll-text" %}<h2>Recent sends</h2>
+        <a href="{% url 'mobile_telegram' %}" class="btn btn-sm btn-ghost">{% icon "refresh-cw" %}Refresh</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack tg-logs">
+            <thead><tr><th>When</th><th>Chat ID</th><th>Message</th><th>Status</th><th>Source</th></tr></thead>
+            <tbody>
+                {% for l in logs %}
+                <tr>
+                    <td data-label="When" class="nowrap small">{{ l.created_at|date:"d M, H:i:s" }}</td>
+                    <td data-label="Chat ID"><code>{{ l.chat_id }}</code></td>
+                    <td class="t-primary"><span class="small">{{ l.text|truncatechars:70 }}</span></td>
+                    <td data-label="Status">
+                        <div>
+                            {% if l.status == "sent" %}<span class="badge badge-success"><span class="dot"></span>Sent</span>
+                            {% else %}<span class="badge badge-danger" title="{{ l.error }}"><span class="dot"></span>Failed</span>
+                            {% if l.error %}<div class="small text-danger truncate" style="max-width:220px" title="{{ l.error }}">{{ l.error }}</div>{% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td data-label="Source">{% if l.partner %}{{ l.partner.name }}{% else %}<span class="muted">Console</span>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="5"><div class="empty">{% icon "send" %}<b>No Telegram messages sent yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function () {
+    var botLink = "{{ bot_link|escapejs }}";
+    if (botLink && window.QRCode && document.getElementById("qr")) {
+        new QRCode(document.getElementById("qr"), { text: botLink, width: 148, height: 148 });
+    }
+
+    function note(el, text, cls) {
+        el.textContent = "";
+        var span = document.createElement("span");
+        span.className = cls || "";
+        span.textContent = text;
+        el.appendChild(span);
+    }
+
+    var verifyBtn = document.getElementById("btn-verify");
+    if (verifyBtn) {
+        verifyBtn.addEventListener("click", function () {
+            var out = document.getElementById("verify-out");
+            note(out, "Checking…", "muted");
+            verifyBtn.setAttribute("aria-busy", "true");
+            fetch("{% url 'mobile_telegram_verify' %}").then(function (r) { return r.json(); }).then(function (d) {
+                if (d.ok) note(out, "Connected as @" + d.username, "text-success");
+                else note(out, d.error || "Failed", "text-danger");
+            }).catch(function () { note(out, "Request failed", "text-danger"); })
+              .then(function () { verifyBtn.removeAttribute("aria-busy"); });
+        });
+    }
+
+    var discBtn = document.getElementById("btn-discover");
+    if (discBtn) {
+        discBtn.addEventListener("click", function () {
+            var card = document.getElementById("chats-card");
+            var tbody = document.querySelector("#chats-table tbody");
+            var empty = document.getElementById("discover-empty");
+            empty.textContent = "Looking…"; tbody.innerHTML = ""; card.hidden = true;
+            discBtn.setAttribute("aria-busy", "true");
+            fetch("{% url 'mobile_telegram_discover' %}").then(function (r) { return r.json(); }).then(function (d) {
+                var chats = (d.chats || []);
+                if (!chats.length) {
+                    empty.textContent = "No recent chats. Add the bot to a group (or tap Start), send a message there, then try again.";
+                    return;
+                }
+                empty.textContent = "";
+                chats.forEach(function (c) {
+                    var tr = document.createElement("tr");
+                    var idCell = document.createElement("td");
+                    idCell.className = "nowrap t-primary";
+                    var code = document.createElement("code");
+                    code.textContent = c.chat_id;
+                    var copyBtn = document.createElement("button");
+                    copyBtn.type = "button";
+                    copyBtn.className = "btn btn-ghost btn-icon btn-sm";
+                    copyBtn.title = "Copy chat id";
+                    copyBtn.setAttribute("aria-label", "Copy chat id");
+                    copyBtn.dataset.copy = String(c.chat_id);
+                    copyBtn.innerHTML = App.icon("copy");
+                    idCell.appendChild(code);
+                    idCell.appendChild(document.createTextNode(" "));
+                    idCell.appendChild(copyBtn);
+                    var titleCell = document.createElement("td");
+                    titleCell.dataset.label = "Name / title";
+                    titleCell.textContent = c.title || "";
+                    var typeCell = document.createElement("td");
+                    typeCell.dataset.label = "Type";
+                    var badge = document.createElement("span");
+                    badge.className = "badge";
+                    badge.textContent = c.type;
+                    typeCell.appendChild(badge);
+                    tr.appendChild(idCell); tr.appendChild(titleCell); tr.appendChild(typeCell);
+                    tbody.appendChild(tr);
+                });
+                card.hidden = false;
+            }).catch(function () { empty.textContent = "Request failed."; })
+              .then(function () { discBtn.removeAttribute("aria-busy"); });
+        });
+    }
+})();
+</script>
+{% endblock %}

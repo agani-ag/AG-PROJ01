@@ -1,0 +1,223 @@
+"""
+Admin-only management UI for the SyncUp mobile API.
+
+Login is the standard Django admin (/admin/) with a staff/superuser `User`.
+These screens manage the separate AppAccount world; see the plan §6.
+"""
+from django import forms
+from django.contrib import admin, messages
+
+from . import fcm
+from .models import (
+    AppAccount,
+    AppAuthToken,
+    AppConfig,
+    AppDevice,
+    AppLink,
+    AppNotificationLog,
+    AppReminder,
+    AppReminderReceipt,
+)
+
+
+# ----------------------------- Accounts + links ---------------------------- #
+class AppAccountForm(forms.ModelForm):
+    new_password = forms.CharField(
+        label="Set / reset password",
+        required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text="Enter a value to set (new account) or reset the password.",
+    )
+
+    class Meta:
+        model = AppAccount
+        fields = ["name", "email", "is_active"]
+
+    def clean_new_password(self):
+        pw = self.cleaned_data.get("new_password")
+        if not self.instance.pk and not pw:
+            raise forms.ValidationError("A password is required for a new account.")
+        if pw and len(pw) < 6:
+            raise forms.ValidationError("Password must be at least 6 characters.")
+        return pw
+
+    def save(self, commit=True):
+        account = super().save(commit=False)
+        raw = self.cleaned_data.get("new_password")
+        if raw:
+            account.set_password(raw)
+        if commit:
+            account.save()
+        return account
+
+
+class AppLinkInline(admin.TabularInline):
+    model = AppLink
+    extra = 1
+    fields = ["title", "url", "description", "icon", "is_active"]
+
+
+@admin.register(AppAccount)
+class AppAccountAdmin(admin.ModelAdmin):
+    form = AppAccountForm
+    list_display = ["name", "email", "is_active", "last_login", "created_at"]
+    list_filter = ["is_active"]
+    search_fields = ["name", "email"]
+    readonly_fields = ["last_login", "created_at", "updated_at"]
+    inlines = [AppLinkInline]
+    actions = ["send_test_push", "deactivate_accounts", "activate_accounts"]
+
+    @admin.action(description="Send a test push to selected accounts")
+    def send_test_push(self, request, queryset):
+        if not fcm.is_configured():
+            self.message_user(
+                request,
+                "FCM is not configured (set SYNCUP_FIREBASE_PROJECT_ID and "
+                "SYNCUP_FIREBASE_SA_FILE).",
+                level=messages.WARNING,
+            )
+            return
+        tokens = list(
+            AppDevice.objects.filter(account__in=queryset, is_active=True)
+            .values_list("fcm_token", flat=True)
+        )
+        result = fcm.push(tokens, "SyncUp", "This is a test notification.", source="test")
+        if result.status == "error":
+            self.message_user(request, f"Push failed: {result.error}", level=messages.ERROR)
+        else:
+            self.message_user(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
+
+    @admin.action(description="Deactivate selected accounts")
+    def deactivate_accounts(self, request, queryset):
+        n = queryset.update(is_active=False)
+        self.message_user(request, f"{n} account(s) deactivated.")
+
+    @admin.action(description="Activate selected accounts")
+    def activate_accounts(self, request, queryset):
+        n = queryset.update(is_active=True)
+        self.message_user(request, f"{n} account(s) activated.")
+
+
+@admin.register(AppLink)
+class AppLinkAdmin(admin.ModelAdmin):
+    list_display = ["title", "account", "url", "is_active"]
+    list_filter = ["is_active"]
+    search_fields = ["title", "url", "account__email"]
+    list_editable = ["is_active"]
+
+
+# ----------------------------- Devices ------------------------------------- #
+@admin.register(AppDevice)
+class AppDeviceAdmin(admin.ModelAdmin):
+    list_display = ["account", "platform", "app_version", "last_seen", "is_active"]
+    list_filter = ["platform", "is_active"]
+    search_fields = ["account__email", "device_id"]
+    readonly_fields = ["account", "device_id", "fcm_token", "platform", "app_version", "last_seen"]
+    actions = ["deactivate_devices"]
+
+    def has_add_permission(self, request):
+        return False  # devices self-register via the API
+
+    @admin.action(description="Deactivate selected devices")
+    def deactivate_devices(self, request, queryset):
+        n = queryset.update(is_active=False)
+        self.message_user(request, f"{n} device(s) deactivated.")
+
+
+# ----------------------------- Tokens (read-only) -------------------------- #
+@admin.register(AppAuthToken)
+class AppAuthTokenAdmin(admin.ModelAdmin):
+    list_display = ["account", "key", "created_at", "last_used_at", "revoked"]
+    list_filter = ["revoked"]
+    search_fields = ["account__email", "key"]
+    readonly_fields = ["account", "key", "created_at", "last_used_at", "expires_at"]
+    actions = ["revoke_tokens"]
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.action(description="Revoke selected tokens")
+    def revoke_tokens(self, request, queryset):
+        n = queryset.update(revoked=True)
+        self.message_user(request, f"{n} token(s) revoked.")
+
+
+# ----------------------------- Config (singleton) -------------------------- #
+@admin.register(AppConfig)
+class AppConfigAdmin(admin.ModelAdmin):
+    list_display = ["__str__", "min_supported_version", "announcement_active", "updated_at"]
+
+    def has_add_permission(self, request):
+        return not AppConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+# ----------------------------- Push composer / log ------------------------- #
+@admin.register(AppNotificationLog)
+class AppNotificationLogAdmin(admin.ModelAdmin):
+    list_display = ["title", "source", "status", "account", "sent_at", "devices", "success_count", "fail_count"]
+    list_filter = ["source", "status"]
+    search_fields = ["title", "body", "account__email"]
+    readonly_fields = ["source", "status", "partner", "link", "data", "image_url", "sent_at", "devices",
+                       "success_count", "fail_count", "error"]
+
+    def get_fields(self, request, obj=None):
+        if obj is None:  # compose screen
+            return ["account", "title", "body"]
+        return ["source", "status", "account", "partner", "link", "title", "body", "data", "image_url",
+                "sent_at", "devices", "success_count", "fail_count", "error"]
+
+    def save_model(self, request, obj, form, change):
+        # Only send on creation; editing an existing log never re-sends.
+        if change:
+            super().save_model(request, obj, form, change)
+            return
+        devices = AppDevice.objects.filter(is_active=True)
+        if obj.account:
+            devices = devices.filter(account=obj.account)
+        tokens = list(devices.values_list("fcm_token", flat=True))
+        # push() fills in and saves this very row, so the compose screen's row is the log entry.
+        result = fcm.push(tokens, obj.title, obj.body, source="admin", account=obj.account,
+                          data=obj.data or None, log=obj)
+        if result.status == "not_configured":
+            self.message_user(
+                request,
+                "Saved, but NOT sent — FCM is not configured "
+                "(set SYNCUP_FIREBASE_PROJECT_ID and SYNCUP_FIREBASE_SA_FILE).",
+                level=messages.WARNING,
+            )
+        elif result.status == "error":
+            self.message_user(request, f"Saved, but push failed: {result.error}", level=messages.ERROR)
+        else:
+            self.message_user(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
+
+
+# ----------------------------- Reminders (device-fired) -------------------- #
+# Reminders are pulled by the app (login / app-open / daily sync) and fired on-device
+# via local alarms — no push is sent when they're created or edited.
+@admin.register(AppReminder)
+class AppReminderAdmin(admin.ModelAdmin):
+    list_display = ["title", "delivery", "account", "scheduled_at", "recurrence", "status", "is_active"]
+    list_filter = ["delivery", "status", "is_active", "recurrence"]
+    search_fields = ["title", "body", "account__email"]
+    list_editable = ["is_active"]
+    # Send state is owned by the cron dispatcher — surfaced here, never hand-edited.
+    readonly_fields = ["created_at", "updated_at", "status", "claimed_at", "sent_at",
+                       "success_count", "fail_count", "attempts", "fires_done", "last_error"]
+    fields = ["account", "delivery", "title", "body", "custom_url", "image_url",
+              "scheduled_at", "recurrence", "is_active",
+              "status", "sent_at", "success_count", "fail_count", "attempts", "fires_done",
+              "claimed_at", "last_error", "created_at", "updated_at"]
+
+
+@admin.register(AppReminderReceipt)
+class AppReminderReceiptAdmin(admin.ModelAdmin):
+    list_display = ["reminder", "account", "device_id", "synced_at", "fired_at", "updated_at"]
+    list_filter = ["fired_at", "synced_at"]
+    search_fields = ["reminder__title", "account__email", "device_id"]
+    readonly_fields = ["reminder", "account", "device_id", "synced_at", "fired_at", "updated_at"]
+
+    def has_add_permission(self, request):
+        return False  # created by the app via the ack endpoint

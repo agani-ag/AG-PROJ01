@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Remote config{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Remote config</h1>
+        <p class="page-sub">Firebase project <code>{{ project_id|default:"not set" }}</code></p>
+    </div>
+</div>
+
+{% if not_configured %}
+<div class="alert alert-warning">
+    {% icon "triangle-alert" %}
+    <div class="alert-body"><b>Firebase isn't set up</b>Set <code>FIREBASE_PROJECT_ID</code> and <code>SERVICE_ACCOUNT_FILE</code>.</div>
+</div>
+{% else %}
+
+{% if error %}
+<div class="alert alert-danger">
+    {% icon "circle-alert" %}
+    <div class="alert-body">
+        <b>Couldn't read Remote Config</b>
+        <span class="break">{{ error }}</span>
+        <p class="small" style="margin-top:4px">The service account may need the <b style="display:inline">Firebase Remote Config Admin</b> (or Editor) role.</p>
+    </div>
+</div>
+{% endif %}
+
+<form method="POST" class="card">
+    {% csrf_token %}
+    <div class="card-head">{% icon "cloud-cog" %}<h2>API base URL</h2></div>
+    <div class="card-body form">
+        <dl class="kv">
+            <dt>Parameter</dt>
+            <dd><code>{{ key }}</code></dd>
+            <dt>Current published value</dt>
+            <dd class="row gap-sm" style="flex-wrap:nowrap;align-items:flex-start">{% icon "link" "icon-sm faint" %}<span class="mono break">{{ current|default:'(not set)' }}</span></dd>
+        </dl>
+
+        <div class="field">
+            <label class="label" for="rc-value">New base URL</label>
+            <input type="url" name="value" id="rc-value" class="input"
+                   placeholder="https://your-test-host/app/v1/"
+                   value="{{ current|default:'' }}" required>
+            <span class="help">
+                Include the full API prefix and a trailing slash, e.g.
+                <code>https://abc123.ngrok.io/app/v1/</code> (testing) or
+                <code>https://api.yourdomain.com/app/v1/</code> (production).
+            </span>
+        </div>
+    </div>
+    <div class="card-foot row">
+        <button type="submit" class="btn btn-primary">{% icon "cloud-upload" %}Publish to Remote Config</button>
+        <a href="{% url 'mobile_dashboard' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+</form>
+
+<div class="alert">
+    {% icon "info" %}
+    <div class="alert-body">
+        Publishing updates the live Remote Config immediately. The app reads it on its next
+        <code>fetchAndActivate()</code>. Change it any time: set a test URL now, production later.
+    </div>
+</div>
+{% endif %}
+{% endblock %}

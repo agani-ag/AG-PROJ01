@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Accounts</h1>
+        <p class="page-sub">People who can sign in to the SyncUp app</p>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mobile_account_add' %}" class="btn btn-primary">{% icon "plus" %}New account</a>
+    </div>
+</div>
+
+<div class="card" data-table>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search accounts</span>
+            {% icon "search" %}
+            <input class="input" type="search" id="account-search" placeholder="Search name or email" data-table-search autocomplete="off">
+        </label>
+        {# Origin filter — All / Admin-created / one partner. Server-side; submits on change. #}
+        <form method="get" class="row gap-sm">
+            <label for="partner-filter" class="small muted row gap-sm">{% icon "funnel" "icon-sm" %}Source</label>
+            <select name="partner" id="partner-filter" class="input input-sm" style="width:auto" onchange="this.form.submit()">
+                <option value="" {% if not selected_partner %}selected{% endif %}>All accounts ({{ total_count }})</option>
+                <option value="admin" {% if selected_partner == 'admin' %}selected{% endif %}>Admin-created ({{ admin_count }})</option>
+                {% if partners %}
+                <optgroup label="Partners">
+                    {% for p in partners %}
+                    <option value="{{ p.id }}" {% if selected_partner == p.id|stringformat:'s' %}selected{% endif %}>{{ p.name }} ({{ p.user_count }})</option>
+                    {% endfor %}
+                </optgroup>
+                {% endif %}
+            </select>
+            {% if selected_partner %}<a href="{% url 'mobile_accounts' %}" class="btn btn-ghost btn-sm">{% icon "x" %}Clear</a>{% endif %}
+            <noscript><button class="btn btn-sm" type="submit">Apply</button></noscript>
+        </form>
+    </div>
+
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Account</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th data-sort="num" class="t-right">Links</th>
+                    <th data-sort="num" class="t-right">Devices</th>
+                    <th data-sort="text">Last login</th>
+                    <th class="t-hide-sm"><span class="sr-only">Open</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in accounts %}
+                <tr data-href="{% url 'mobile_account_edit' a.id %}">
+                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a><div class="t-cell-sub">{{ a.email }}</div></td>
+                    <td data-label="Source">
+                        {% if a.partner_id %}<span class="badge badge-info" title="Provisioned via Partner API">{% icon "plug" %}{{ a.partner.name }}</span>
+                        {% else %}<span class="badge" title="Created in the admin">Admin</span>{% endif %}
+                    </td>
+                    <td data-label="Status">
+                        {% if a.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
+                    </td>
+                    <td data-label="Links" class="t-right t-hide-sm">{{ a.link_count }}</td>
+                    <td data-label="Devices" class="t-right t-hide-sm">{{ a.device_count }}</td>
+                    <td data-label="Last login" data-value="{{ a.last_login|date:'c' }}" class="nowrap">{{ a.last_login|date:"d M Y, H:i"|default:"—" }}</td>
+                    <td class="t-right t-hide-sm">{% icon "chevron-right" "icon-sm faint" %}</td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="7"><div class="empty">{% icon "users" %}<b>No accounts{% if selected_partner %} from this source{% endif %}</b>{% if not selected_partner %}<a class="btn btn-primary btn-sm" href="{% url 'mobile_account_add' %}">{% icon "plus" %}New account</a>{% endif %}</div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>
+            {% icon "search" %}
+            <b>No accounts match "<span data-query></span>"</b>
+            <span>Try part of the name or email.</span>
+        </div>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
+{% endblock %}

@@ -29,6 +29,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
+# Standard setting for running behind a TLS-terminating proxy (Cloudflare tunnel in dev,
+# PythonAnywhere in prod): trust X-Forwarded-Proto so request.scheme is "https". Without it,
+# the chat page (loaded over https in the WebView) fails CSRF when POSTing a message, because
+# Django thinks the request is http. Verified on the emulator.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 # Application definition
 
@@ -39,12 +45,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework',
-    'objectbank',
+    'django.contrib.humanize',
+    'syncup.apps.SyncupConfig',
+    'mobileapi.apps.MobileapiConfig',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # compress API/HTML responses (OkHttp auto-decompresses)
+    'main.middleware.StaticNotFoundMiddleware',  # plain 404 page; must stay above CommonMiddleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -54,17 +63,6 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'main.urls'
-
-# DRF Configuration
-REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
-    ],
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
-    ],
-}
 
 TEMPLATES = [
     {
@@ -76,7 +74,10 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'syncup.context_processors.admin_shell',
             ],
+            # {% icon %} and {% nav_active %} are available in every template without {% load %}.
+            'builtins': ['syncup.templatetags.ui'],
         },
     },
 ]
@@ -90,7 +91,7 @@ WSGI_APPLICATION = 'main.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'maincore.sqlite3',
+        'NAME': BASE_DIR / 'ag-proj01.sqlite3',
     }
 }
 
@@ -141,3 +142,47 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUPS = [
     int(x) for x in os.getenv("TELEGRAM_GROUPS", "").split(",") if x
 ]
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+
+# WebRTC (Live Broadcast). STUN is always used (free). Set TURN only when you need
+# reliable connections across the internet (strict/mobile NATs). Leave unset for LAN.
+# Preferred: Metered free tier — set METERED_DOMAIN + METERED_API_KEY (the server
+# fetches fresh TURN credentials automatically). Otherwise a static WEBRTC_TURN_* set.
+METERED_DOMAIN = os.getenv("METERED_DOMAIN", "")       # e.g. yourapp.metered.live
+METERED_API_KEY = os.getenv("METERED_API_KEY", "")
+WEBRTC_TURN_URL = os.getenv("WEBRTC_TURN_URL", "")     # e.g. turn:turn.example.com:3478
+WEBRTC_TURN_USER = os.getenv("WEBRTC_TURN_USER", "")
+WEBRTC_TURN_CRED = os.getenv("WEBRTC_TURN_CRED", "")
+
+# Shared secret for the /cron/ endpoints called by the external cron service. Sent as an
+# X-Cron-Key header (or ?key= for services that can't set headers). Unset = endpoints closed.
+CRON_KEY = os.getenv("CRON_KEY")
+# How often that service calls /cron/push/dispatch. Bounds how late a server-sent push can be,
+# and is the floor for a "Repeat N times" push. Change the service's schedule and this together.
+CRON_DISPATCH_INTERVAL_MINUTES = int(os.getenv("CRON_DISPATCH_INTERVAL_MINUTES", "15"))
+
+# Media files (Uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Allow larger JSON / multipart bodies for media catalog & chunk uploads
+DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024   # 10 MB (chunks streamed to disk above this)
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
+
+# Cloudinary cloud storage — optional. Set CLOUDINARY_CLOUD_NAME to enable.
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "syncup")
+USE_CLOUD_STORAGE = bool(CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+
+# Cloudinary unsigned upload preset (gallery page + mobile push/reminder image widget) and
+# the base asset tag the gallery lists by.
+CLOUDINARY_UPLOAD_PRESET = os.getenv("CLOUDINARY_UPLOAD_PRESET", "syncup_unsigned")
+CLOUDINARY_FOLDER_PREFIX = os.getenv("CLOUDINARY_FOLDER_PREFIX", "devices")
+
+# ClickSend SMS API credentials
+CLICKSEND_USERNAME = os.getenv("CLICKSEND_USERNAME")
+CLICKSEND_API_KEY = os.getenv("CLICKSEND_API_KEY")

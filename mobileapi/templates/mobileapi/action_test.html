@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Verify test{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Verify test</h1>
+        <p class="page-sub">Send an <b>OTP</b>, <b>code entry</b>, <b>select-a-number</b>, <b>info notice</b> or <b>approve/reject</b> prompt to a user's phone to test the flow yourself, before a partner uses the API.</p>
+    </div>
+</div>
+
+<form method="POST" class="card">
+    {% csrf_token %}
+    <div class="card-head">{% icon "send" %}<h2>Send a prompt</h2></div>
+    <div class="card-body form">
+        <div class="form-grid">
+            <div class="field">
+                <label class="label" for="account">Send to (user)</label>
+                <select name="account" id="account" class="input" required>
+                    <option value="">— choose a user —</option>
+                    {% for a in accounts %}
+                    <option value="{{ a.id }}">{{ a.name }} &lt;{{ a.email }}&gt;</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field">
+                <label class="label" for="type">Type</label>
+                <select name="type" id="type" class="input" required>
+                    <option value="otp">OTP deliver (show a code)</option>
+                    <option value="code">Code entry (user types a code)</option>
+                    <option value="number">Select a number</option>
+                    <option value="notice">Info notice (read + acknowledge)</option>
+                    <option value="approve">Approve / Reject (yes-no decision)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-grid" id="p-otp">
+            <div class="field">
+                <label class="label" for="otp-code">OTP code to show</label>
+                <input type="text" name="code" id="otp-code" class="input" placeholder="e.g. 483920">
+            </div>
+        </div>
+        <div class="form-grid" id="p-code" hidden>
+            <div class="field">
+                <label class="label" for="code-length">Number of digits</label>
+                <input type="number" name="length" id="code-length" class="input" value="6" min="3" max="10">
+            </div>
+        </div>
+        <div class="form-grid" id="p-number" hidden>
+            <div class="field">
+                <label class="label" for="numbers">Numbers <span class="opt">comma-separated</span></label>
+                <input type="text" name="numbers" id="numbers" class="input" placeholder="e.g. 12, 45, 78">
+                <span class="help">The user taps one. You decide which is "correct" (the partner does this normally).</span>
+            </div>
+        </div>
+        <div class="form-grid" id="p-notice" hidden>
+            <div class="field span-2">
+                <label class="label" for="notice-body">Notice body <span class="opt">the user must scroll through all of it</span></label>
+                <textarea name="body" id="notice-body" class="input" rows="4"
+                          placeholder="The full message the user reads before acknowledging…"></textarea>
+            </div>
+            <div class="field">
+                <label class="label" for="cta-url">CTA link <span class="opt">optional, https://</span></label>
+                <input type="text" name="cta_url" id="cta-url" class="input" placeholder="https://example.com/details">
+                <span class="help">Shown as a button that opens in the in-app browser.</span>
+            </div>
+            <div class="field">
+                <label class="label" for="cta-label">CTA button label</label>
+                <input type="text" name="cta_label" id="cta-label" class="input" placeholder="View details">
+            </div>
+        </div>
+        <div class="form-grid" id="p-approve" hidden>
+            <div class="field">
+                <label class="label" for="approve-label">Approve button label</label>
+                <input type="text" name="approve_label" id="approve-label" class="input" placeholder="Approve" maxlength="24">
+            </div>
+            <div class="field">
+                <label class="label" for="reject-label">Reject button label</label>
+                <input type="text" name="reject_label" id="reject-label" class="input" placeholder="Reject" maxlength="24">
+            </div>
+            <span class="help span-2">Put the decision itself in the title or message below (e.g. "Approve RS 5000 to ABC?").</span>
+        </div>
+
+        <div class="form-grid">
+            <div class="field">
+                <label class="label" for="prompt-title">Title <span class="opt">optional</span></label>
+                <input type="text" name="title" id="prompt-title" class="input" placeholder="Verification">
+            </div>
+            <div class="field">
+                <label class="label" for="prompt-message">Message <span class="opt">optional</span></label>
+                <input type="text" name="message" id="prompt-message" class="input">
+            </div>
+        </div>
+    </div>
+    <div class="card-foot row">
+        <button type="submit" class="btn btn-primary">{% icon "send" %}Send prompt</button>
+    </div>
+</form>
+
+<div class="card" data-table>
+    <div class="card-head">
+        {% icon "list-checks" %}<h2>Recent prompts</h2>
+        <a href="{% url 'mobile_action_test' %}" class="btn btn-sm">{% icon "refresh-cw" %}Refresh</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">When</th>
+                    <th data-sort="text">User</th>
+                    <th>Type</th>
+                    <th data-sort="num" class="t-right">Sent</th>
+                    <th>Status</th>
+                    <th>Response</th>
+                    <th>Source</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recent %}
+                <tr>
+                    <td data-label="When" data-value="{{ r.created_at|date:'c' }}" class="nowrap t-hide-sm">{{ r.created_at|date:"d M, H:i:s" }}</td>
+                    <td class="t-primary">
+                        <div class="t-cell-main break">{{ r.account.email }}</div>
+                        <div class="t-cell-sub sm-only">{{ r.created_at|date:"d M, H:i:s" }}</div>
+                    </td>
+                    <td data-label="Type"><span class="badge">{{ r.get_action_type_display }}</span></td>
+                    <td data-label="Sent to devices" class="t-right">{{ r.delivered }}</td>
+                    <td data-label="Status">
+                        {% if r.status == "completed" %}<span class="badge badge-success"><span class="dot"></span>Completed</span>
+                        {% elif r.status == "expired" %}<span class="badge">Expired</span>
+                        {% else %}<span class="badge badge-warning"><span class="dot"></span>Pending</span>{% endif %}
+                    </td>
+                    <td data-label="Response">{% if r.response %}<code>{{ r.response.value }}</code>{% else %}<span class="faint">—</span>{% endif %}</td>
+                    <td data-label="Source">{% if r.partner %}{{ r.partner.name }}{% else %}<span class="muted">Test</span>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="7"><div class="empty">{% icon "flask-conical" %}<b>No prompts yet</b><span>Prompts you send appear here with the user's response.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+    .sm-only { display: none; }
+    @media (max-width: 640px) { .sm-only { display: block; } }
+</style>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var t = document.getElementById("type");
+    var panels = ["otp", "code", "number", "notice", "approve"];
+    function sync() {
+        panels.forEach(function (name) { document.getElementById("p-" + name).hidden = t.value !== name; });
+    }
+    t.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

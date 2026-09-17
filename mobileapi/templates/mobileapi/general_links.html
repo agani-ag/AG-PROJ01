@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}General links{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>General links</h1>
+        <p class="page-sub">Shown to every user whose account has <b>“Show general links”</b> turned on. No per-user setup: add once, everyone sees it.</p>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mobile_general_link_add' %}" class="btn btn-primary">{% icon "plus" %}Add general link</a>
+    </div>
+</div>
+
+<div class="card" data-table>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search general links</span>
+            {% icon "search" %}
+            <input class="input" type="search" id="general-link-search" placeholder="Search title or URL" data-table-search autocomplete="off">
+        </label>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Title</th>
+                    <th data-sort="text">URL</th>
+                    <th>Status</th>
+                    <th class="t-right"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for link in links %}
+                <tr>
+                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_general_link_edit' link.id %}">{{ link.title }}</a></td>
+                    <td data-label="URL"><span class="truncate muted url-cell" title="{{ link.url }}">{{ link.url }}</span></td>
+                    <td data-label="Status">
+                        {% if link.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% else %}<span class="badge">Inactive</span>{% endif %}
+                    </td>
+                    <td class="t-right">
+                        <div class="row gap-sm actions">
+                            <a href="{% url 'mobile_general_link_edit' link.id %}" class="btn btn-sm">{% icon "pencil" %}Edit</a>
+                            <form method="POST" action="{% url 'mobile_link_delete' link.id %}"
+                                  data-confirm="Delete this general link for everyone?" data-confirm-text="“{{ link.title }}” disappears for all users."
+                                  data-confirm-button="Delete link" data-danger>
+                                {% csrf_token %}
+                                <button class="btn btn-sm btn-icon text-danger" type="submit" title="Delete" aria-label="Delete {{ link.title }}">{% icon "trash" %}</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="4"><div class="empty">{% icon "link-2" %}<b>No general links yet</b><a class="btn btn-primary btn-sm" href="{% url 'mobile_general_link_add' %}">{% icon "plus" %}Add general link</a></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>{% icon "search" %}<b>No general links match "<span data-query></span>"</b></div>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+    .url-cell { display: block; max-width: 420px; }
+    .actions { justify-content: flex-end; flex-wrap: nowrap; }
+    @media (max-width: 640px) {
+        .url-cell { max-width: 100%; }
+        .table-stack td .actions { width: 100%; padding-top: 6px; }
+    }
+</style>
+{% endblock %}

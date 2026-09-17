@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}{% if editing %}Edit reminder{% else %}Reminders{% endif %}{% endblock %}
+
+{% block head %}
+<style>
+    /* Number + unit pair: the unit select closes the group on the right */
+    .interval-group .input + .input { flex: 0 0 auto; width: auto; margin-left: -1px; border-radius: 0 var(--radius) var(--radius) 0; }
+    .cron-facts { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+    .delivery-cell { align-items: flex-start; }
+    /* Phones: the title leads each row card */
+    @media (max-width: 640px) {
+        .reminder-table tr { display: flex; flex-direction: column; }
+        .reminder-table td.t-primary { order: -1; }
+        .reminder-table td.t-actions { justify-content: flex-start; padding-top: 8px; }
+        .reminder-table .delivery-cell { align-items: flex-end; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        {% if editing %}<a class="back" href="{% url 'mobile_reminders' %}">{% icon "arrow-left" "icon-sm" %}Reminders</a>{% endif %}
+        <h1>{% if editing %}Edit reminder{% else %}Reminders{% endif %}</h1>
+        <p class="page-sub">
+            Two ways to deliver: <b>Reminder</b> is fired by the phone's own alarm (exact, works offline);
+            <b>Push</b> is sent from the server on the next cron run.
+        </p>
+    </div>
+</div>
+
+{% if cron_configured %}
+<div class="alert">
+    {% icon "clock" %}
+    <div class="alert-body cron-facts">
+        <span>Cron every <b style="display:inline">{{ cron_interval_minutes }} min</b></span>
+        <span>Last run:
+            {% if cron_last_run %}<b style="display:inline">{{ cron_last_run|date:"d M Y, H:i" }}</b>
+            {% else %}<span class="text-danger">never</span>{% endif %}
+        </span>
+        <span>Queued pushes: <b style="display:inline">{{ pending_push_count }}</b></span>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    {% icon "triangle-alert" %}
+    <div class="alert-body">
+        <b>CRON_KEY is not set</b>
+        The /cron/ endpoints are closed, so no server push will ever be sent. Reminders fired by the phone still work.
+    </div>
+</div>
+{% endif %}
+
+<form method="POST"
+      action="{% if editing %}{% url 'mobile_reminder_edit' editing.id %}{% else %}{% url 'mobile_reminders' %}{% endif %}"
+      class="card" id="reminder-form">
+    {% csrf_token %}
+    <div class="card-head">
+        {% if editing %}{% icon "square-pen" %}<h2>Edit “{{ editing.title }}”</h2>{% else %}{% icon "plus" %}<h2>New reminder</h2>{% endif %}
+    </div>
+    <div class="card-body form">
+        {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        <div class="form-grid">
+            <div class="field{% if form.account.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.account.id_for_label }}">Send to</label>
+                {{ form.account }}
+                {% for e in form.account.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Leave as “All accounts” to broadcast to everyone.</span>
+            </div>
+            <div class="field{% if form.delivery.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.delivery.id_for_label }}">Delivery</label>
+                {{ form.delivery }}
+                {% for e in form.delivery.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help" id="delivery-help"></span>
+            </div>
+        </div>
+        <div class="field{% if form.title.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.title.id_for_label }}">Title</label>
+            {{ form.title }}
+            {% for e in form.title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+        <div class="field{% if form.body.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.body.id_for_label }}">Message</label>
+            {{ form.body }}
+            {% for e in form.body.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+        <div class="form-grid">
+            <div class="field">
+                <label class="label" for="reminder-url-pick">Pick from existing user URLs</label>
+                <select class="input" id="reminder-url-pick"
+                        onchange="if(this.value){document.getElementById('id_custom_url').value=this.value;}">
+                    <option value="">Choose a URL to fill the box below</option>
+                    {% for u in all_urls %}
+                    <option value="{{ u.url }}">{{ u.label }}</option>
+                    {% endfor %}
+                </select>
+                <span class="help">Distinct URLs across all users. Selecting one fills the custom URL box.</span>
+            </div>
+            <div class="field{% if form.custom_url.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.custom_url.id_for_label }}">…or a custom URL on tap <span class="opt">optional</span></label>
+                {{ form.custom_url }}
+                {% for e in form.custom_url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Any HTTPS URL (campaign, form, page). Works for broadcasts. Opens inside the app.</span>
+            </div>
+        </div>
+        <div class="field{% if form.image_url.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.image_url.id_for_label }}">Image URL <span class="opt">optional</span></label>
+            {{ form.image_url }}
+            {% for e in form.image_url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            <span class="help">HTTPS image shown in the expanded notification (about 2:1, e.g. 1024×512, under ~1 MB).</span>
+            {% include "mobileapi/_cloudinary_widget.html" %}
+        </div>
+        <div class="form-grid">
+            <div class="field{% if form.scheduled_at.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.scheduled_at.id_for_label }}">When (IST)</label>
+                {{ form.scheduled_at }}
+                {% for e in form.scheduled_at.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">First fire time. Times are Indian Standard Time.</span>
+            </div>
+            <div class="field{% if form.recurrence.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.recurrence.id_for_label }}">Repeat</label>
+                {{ form.recurrence }}
+                {% for e in form.recurrence.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+        <div class="form-grid" id="repeat-n-fields">
+            <div class="field{% if form.interval_value.errors or form.interval_unit.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.interval_value.id_for_label }}">{{ form.interval_value.label }}</label>
+                <div class="input-group interval-group">
+                    {{ form.interval_value }}
+                    {{ form.interval_unit }}
+                </div>
+                {% for e in form.interval_value.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                {% for e in form.interval_unit.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">
+                    Time between fires. <b id="interval-min-note">Minimum 15 minutes.</b>
+                    Longer intervals (hourly, daily) are the most reliable.
+                </span>
+            </div>
+            <div class="field{% if form.repeat_count.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.repeat_count.id_for_label }}">{{ form.repeat_count.label }}</label>
+                {{ form.repeat_count }}
+                {% for e in form.repeat_count.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Total number of fires, then it stops.</span>
+            </div>
+        </div>
+        <div class="switch-row" style="padding-bottom:0">
+            <div class="text"><b>Active</b><span class="help">Turn off to pause it without deleting it.</span></div>
+            <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
+        </div>
+    </div>
+    <div class="card-foot row">
+        <button type="submit" class="btn btn-primary">{% icon "check" %}{% if editing %}Save changes{% else %}Create reminder{% endif %}</button>
+        {% if editing %}
+        <a href="{% url 'mobile_reminders' %}" class="btn btn-ghost">Cancel edit</a>
+        {% endif %}
+    </div>
+</form>
+
+<div class="card" data-table>
+    <div class="card-head">{% icon "calendar-clock" %}<h2>All notifications</h2></div>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search notifications</span>
+            {% icon "search" %}
+            <input class="input" type="search" placeholder="Search title, message or account" data-table-search autocomplete="off">
+        </label>
+    </div>
+    <div class="table-wrap" style="position:relative">
+        <table class="table table-stack reminder-table">
+            <thead>
+                <tr>
+                    <th data-sort="text">Notification</th><th data-sort="text">Target</th><th data-sort="text">When (IST)</th>
+                    <th>Delivery</th><th>Status</th>
+                    <th class="t-right"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reminders %}
+                <tr>
+                    <td class="t-primary">
+                        <div class="t-cell-main">{{ r.title }}</div>
+                        <div class="t-cell-sub truncate" style="max-width:180px" title="{{ r.body }}">{{ r.body }}</div>
+                    </td>
+                    <td data-label="Target">
+                        <div style="min-width:0">
+                            <div class="truncate" style="max-width:180px" title="{{ r.account.email|default:'All accounts' }}">{{ r.account.email|default:"All accounts" }}</div>
+                            {% if r.link %}<div class="small muted truncate" style="max-width:180px" title="Opens link: {{ r.link.title }}">{% icon "link-2" "icon-sm" %} {{ r.link.title }}</div>{% endif %}
+                        </div>
+                    </td>
+                    <td data-label="When (IST)" data-value="{{ r.scheduled_at|date:'c' }}" class="nowrap">
+                        <div>{{ r.scheduled_at|date:"d M Y, H:i" }}<div class="small muted">Repeat: {{ r.get_recurrence_display }}</div></div>
+                    </td>
+                    <td data-label="Delivery">
+                        {% comment %}Delivery is tracked differently per mode: device rows get a
+                           per-device receipt, cron rows get FCM success/fail counts.{% endcomment %}
+                        <div class="stack delivery-cell" style="gap:4px">
+                            {% if r.delivery == "cron" %}
+                                <span class="badge badge-accent" title="Sent from the server via FCM">{% icon "server" %}Push</span>
+                                {% if r.sent_at %}
+                                <div class="row" style="gap:4px">
+                                    <span class="badge badge-success">{{ r.success_count }} sent</span>
+                                    {% if r.fail_count %}<span class="badge badge-danger">{{ r.fail_count }} failed</span>{% endif %}
+                                </div>
+                                <span class="small muted nowrap">last {{ r.sent_at|date:"d M, H:i" }}</span>
+                                {% else %}
+                                <span class="small muted">not sent yet</span>
+                                {% endif %}
+                                {% if r.last_error %}
+                                <div class="small text-danger truncate" style="max-width:160px" title="{{ r.last_error }}">{{ r.last_error }}</div>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge" title="Fired by the phone's local alarm">{% icon "smartphone" %}Reminder</span>
+                                <a href="{% url 'mobile_reminder_receipts' r.id %}" class="row" style="gap:4px;display:inline-flex;flex-wrap:nowrap" title="See which devices">
+                                    <span class="badge badge-info">{{ r.synced_count }} synced</span>
+                                    <span class="badge badge-success">{{ r.fired_count }} shown</span>
+                                </a>
+                                {% if r.last_fired %}<span class="small muted nowrap">last {{ r.last_fired|date:"d M, H:i" }}</span>{% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td data-label="Status">
+                        {% if not r.is_active %}
+                        <span class="badge">{% icon "pause" %}Paused</span>
+                        {% elif r.delivery == "cron" %}
+                            {% if r.status == "sent" %}<span class="badge badge-accent">Sent</span>
+                            {% elif r.status == "sending" %}<span class="badge badge-warning">Sending</span>
+                            {% elif r.status == "failed" %}<span class="badge badge-danger">Failed</span>
+                            {% elif r.status == "expired" %}<span class="badge">Expired</span>
+                            {% else %}<span class="badge badge-success"><span class="dot"></span>Queued</span>{% endif %}
+                        {% else %}
+                        <span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% endif %}
+                    </td>
+                    <td class="t-right t-actions">
+                        <div class="row" style="gap:6px;flex-wrap:nowrap;justify-content:flex-end">
+                            <a href="{% url 'mobile_reminder_edit' r.id %}" class="btn btn-sm btn-icon" title="Edit" aria-label="Edit {{ r.title }}">{% icon "pencil" %}</a>
+                            <form method="POST" action="{% url 'mobile_reminder_toggle' r.id %}">
+                                {% csrf_token %}
+                                {% if r.is_active %}
+                                <button type="submit" class="btn btn-sm btn-icon" title="Pause" aria-label="Pause">{% icon "pause" %}</button>
+                                {% else %}
+                                <button type="submit" class="btn btn-sm btn-icon" title="Resume" aria-label="Resume">{% icon "play" %}</button>
+                                {% endif %}
+                            </form>
+                            <form method="POST" action="{% url 'mobile_reminder_delete' r.id %}"
+                                  data-confirm="Delete this reminder?" data-confirm-text="“{{ r.title }}” will be removed. This can't be undone."
+                                  data-confirm-button="Delete" data-danger>
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-icon text-danger" title="Delete" aria-label="Delete">{% icon "trash" %}</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="6"><div class="empty">{% icon "calendar-clock" %}<b>No notifications yet</b><span>Create one with the form above.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>{% icon "search" %}<b>No notifications match "<span data-query></span>"</b></div>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var rec  = document.getElementById("{{ form.recurrence.id_for_label }}");
+    var del  = document.getElementById("{{ form.delivery.id_for_label }}");
+    var box  = document.getElementById("repeat-n-fields");
+    var help = document.getElementById("delivery-help");
+    var note = document.getElementById("interval-min-note");
+    var cronMins = {{ cron_interval_minutes|default:15 }};
+    function sync() {
+        var isCron = del && del.value === "cron";
+        if (box) { box.hidden = !(rec && rec.value === "interval"); }
+        if (help) {
+            help.textContent = isCron
+                ? "Sent from the server on the next cron run, up to " + cronMins +
+                  " min after the time below. Never synced to the phone, so it can't fire twice."
+                : "The phone sets a local alarm and fires it exactly on time, even offline.";
+        }
+        if (note) {
+            // A server push can't repeat faster than the cron ticks.
+            note.textContent = isCron
+                ? "Minimum " + cronMins + " minutes (the cron interval)."
+                : "Minimum 15 minutes.";
+        }
+    }
+    [rec, del].forEach(function (el) { if (el) el.addEventListener("change", sync); });
+    sync();
+})();
+</script>
+{% endblock %}

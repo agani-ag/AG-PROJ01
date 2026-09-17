@@ -1,0 +1,64 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-icons="{% static 'icons.svg' %}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {# Apply a saved light/dark choice before first paint (no flash). #}
+    <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {# Status-bar colour for the app WebView: matches the top bar (--surface). #}
+    {% include "mobileapi/_theme_color.html" with light="#ffffff" dark="#131a26" %}
+    <title>{% block title %}SyncUp{% endblock %} · SyncUp</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+{% block layout %}
+<div class="{% if user.is_superuser %}shell{% else %}main{% endif %}">
+    {% if user.is_superuser %}
+    {% include "_sidebar.html" %}
+    <div class="scrim"></div>
+    <div class="main">
+    {% endif %}
+        <header class="topbar">
+            {% if user.is_superuser %}
+            <button class="btn btn-ghost btn-icon nav-toggle" type="button" data-nav-toggle aria-label="Open menu">{% icon "menu" %}</button>
+            <div class="crumb" id="crumb"></div>
+            <div class="spacer"></div>
+            <button class="jump-btn" type="button" data-palette aria-label="Jump to page">{% icon "search" "icon-sm" %}<span>Jump to…</span><kbd>Ctrl K</kbd></button>
+            {% else %}
+            <a class="brand" href="{% url 'home' %}"><span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp</a>
+            <div class="spacer"></div>
+            {% endif %}
+            <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme">{% icon "monitor" %}</button>
+            {% if not user.is_authenticated %}
+            <a class="btn btn-sm btn-primary" href="{% url 'login' %}">{% icon "log-in" %}Sign in</a>
+            {% endif %}
+        </header>
+
+        <main class="page {% block page_class %}{% endblock %}">
+            {% include "_messages.html" %}
+            {% block content %}{% endblock %}
+        </main>
+    {% if user.is_superuser %}
+    </div>
+    {% endif %}
+</div>
+
+{% if user.is_superuser %}
+<dialog class="palette" id="palette" aria-label="Jump to page">
+    <div class="palette-input">{% icon "search" %}<input id="palette-q" placeholder="Jump to a page…" autocomplete="off"><kbd>Esc</kbd></div>
+    <ul class="palette-list"></ul>
+</dialog>
+{% endif %}
+{% endblock %}
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+{% if messages %}
+<script type="application/json" id="django-messages">[{% for m in messages %}{"text": "{{ m|escapejs }}", "level": "{{ m.level_tag|escapejs }}"}{% if not forloop.last %}, {% endif %}{% endfor %}]</script>
+{% endif %}
+{# Loaded at the end of <body> (not render-blocking) and before page scripts, so they can use window.App directly. #}
+<script src="{% static 'js/app.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

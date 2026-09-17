@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Profile</h1>
+        <p class="page-sub">Signed in as <b>{{ user.username }}</b></p>
+    </div>
+</div>
+
+<form method="POST" class="card" autocomplete="off">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="profile">
+    <div class="card-head">{% icon "user-round" %}<h2>Account</h2></div>
+    <div class="card-body form">
+        <div class="field{% if form.name.errors %} invalid{% endif %}">
+            <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+            {{ form.name }}
+            {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+
+        <div class="form-grid">
+            <div class="field{% if form.new_password.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.new_password.id_for_label }}">New password <span class="opt">optional</span></label>
+                <div class="input-group">
+                    {{ form.new_password }}
+                    <button class="btn btn-icon" type="button" data-reveal="#{{ form.new_password.id_for_label }}" aria-label="Show">{% icon "eye" %}</button>
+                </div>
+                {% for e in form.new_password.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Leave blank to keep your current password.</span>
+            </div>
+
+            <div class="field{% if form.new_pin.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.new_pin.id_for_label }}">
+                    New PIN
+                    {% if has_pin %}<span class="badge badge-success"><span class="dot"></span>PIN is set</span>
+                    {% else %}<span class="badge badge-danger"><span class="dot"></span>No PIN</span>{% endif %}
+                </label>
+                <div class="input-group">
+                    {{ form.new_pin }}
+                    <button class="btn btn-icon" type="button" data-reveal="#{{ form.new_pin.id_for_label }}" aria-label="Show">{% icon "eye" %}</button>
+                </div>
+                {% for e in form.new_pin.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">5 letters or digits, for PIN sign-in. Leave blank to keep {% if has_pin %}your current PIN{% else %}PIN sign-in off{% endif %}.</span>
+            </div>
+        </div>
+    </div>
+    <div class="card-foot row">
+        <button type="submit" class="btn btn-primary">{% icon "check" %}Save profile</button>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-head">{% icon "link" %}<h2>One-time sign-in link</h2></div>
+    <div class="card-body stack" style="gap:12px">
+        <p class="muted">Open the link in any browser to sign in. It works <b>once</b> and expires in <b>{{ link_ttl_minutes }} minutes</b>. A new link cancels the previous one.</p>
+        {% if magic_link %}
+        <div class="field">
+            <label class="label" for="magicLink">Your link</label>
+            <div class="input-group">
+                <input type="text" class="input mono" id="magicLink" value="{{ magic_link }}" readonly>
+                <button type="button" class="btn" data-copy-target="#magicLink">{% icon "copy" %}Copy</button>
+            </div>
+            <span class="error">{% icon "triangle-alert" "icon-sm" %}Copy it now. Only a fingerprint is stored, so it can't be shown again.</span>
+        </div>
+        {% endif %}
+        <form method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="link">
+            <button type="submit" class="btn {% if not magic_link %}btn-primary{% endif %}">{% icon "zap" %}{% if magic_link %}Generate a new link{% else %}Generate link{% endif %}</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

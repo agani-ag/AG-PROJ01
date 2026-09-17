@@ -16,9 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
+from mobileapi import views as mobile_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('objectbank.urls')),
-    path('api/', include('objectbank.api_urls')),
-]
+    path('app/v1/', include('mobileapi.urls')),          # mobile JSON API
+    path('mobile/', include('mobileapi.admin_urls')),    # mobile HTML admin (superuser)
+    path('cron/', include('mobileapi.cron_urls')),       # external cron service (shared-secret)
+    path('partner/v1/', include('mobileapi.partner_urls')),  # partner provisioning API (API key)
+    path('chat/', include('mobileapi.chat_urls')),       # user↔admin web chat (opened in the app WebView)
+    # Public privacy policy page — use this URL in Play Console → App content.
+    path('privacy/', mobile_views.privacy_policy, name='privacy_policy'),
+    path('', include('syncup.urls')),
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

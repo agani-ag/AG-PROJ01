@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}Push notifications{% endblock %}
+
+{% block head %}
+<style>
+    /* Live notification preview (Android-style card) */
+    .push-phone { background: var(--surface-2); border-radius: 0; }
+    .notif { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px 14px; box-shadow: var(--shadow-sm); }
+    .notif-top { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .notif-app { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
+    .notif-app .icon { width: 11px; height: 11px; stroke-width: 2.6; }
+    .notif-title { margin-top: 6px; font-weight: 600; overflow-wrap: anywhere; }
+    .notif-body { color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .notif-title:empty::before { content: "Title"; color: var(--faint); font-weight: 400; }
+    .notif-body:empty::before { content: "Message"; color: var(--faint); }
+    .notif-img { display: block; width: 100%; margin-top: 10px; aspect-ratio: 2 / 1; object-fit: cover; border-radius: 10px; background: var(--surface-2); }
+    /* Phones: the title leads each row card */
+    @media (max-width: 640px) { .table-stack.lead-primary tr { display: flex; flex-direction: column; } .table-stack.lead-primary td.t-primary { order: -1; } }
+    .notif-img-missing { margin-top: 10px; aspect-ratio: 2 / 1; border-radius: 10px; display: grid; place-items: center; align-content: center; gap: 4px; font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px dashed var(--border-strong); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Push notifications</h1>
+        <p class="page-sub">Send a notification to the SyncUp app through Firebase Cloud Messaging</p>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mobile_push_log' %}" class="btn">{% icon "scroll-text" %}Push log</a>
+    </div>
+</div>
+
+{% if not fcm_configured %}
+<div class="alert alert-warning">
+    {% icon "triangle-alert" %}
+    <div class="alert-body"><b>FCM isn't configured</b>Messages will be logged but not sent.</div>
+</div>
+{% endif %}
+
+<form method="POST" class="split" id="push-form">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-head">{% icon "bell-ring" %}<h2>Message</h2></div>
+        <div class="card-body form">
+            <div class="field{% if form.account.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.account.id_for_label }}">Send to</label>
+                {{ form.account }}
+                {% for e in form.account.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Leave as “All devices” to broadcast.</span>
+            </div>
+            <div class="field{% if form.title.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.title.id_for_label }}">Title <span class="counter" id="title-count" aria-hidden="true"></span></label>
+                {{ form.title }}
+                {% for e in form.title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.body.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.body.id_for_label }}">Message</label>
+                {{ form.body }}
+                {% for e in form.body.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="form-grid">
+                <div class="field">
+                    <label class="label" for="push-url-pick">Pick from existing user URLs</label>
+                    <select class="input" id="push-url-pick"
+                            onchange="if(this.value){document.getElementById('id_link_url').value=this.value;}">
+                        <option value="">Choose a URL to fill the box below</option>
+                        {% for u in all_urls %}
+                        <option value="{{ u.url }}">{{ u.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="help">Distinct URLs across all users. Selecting one fills the URL box.</span>
+                </div>
+                <div class="field{% if form.link_url.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.link_url.id_for_label }}">Open URL on tap <span class="opt">optional</span></label>
+                    {{ form.link_url }}
+                    {% for e in form.link_url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    <span class="help">HTTPS campaign or form URL. Opens inside the app when tapped.</span>
+                </div>
+            </div>
+            <div class="field{% if form.image_url.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.image_url.id_for_label }}">Image URL <span class="opt">optional</span></label>
+                {{ form.image_url }}
+                {% for e in form.image_url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">HTTPS image shown in the expanded notification (about 2:1, e.g. 1024×512).</span>
+                {% include "mobileapi/_cloudinary_widget.html" %}
+            </div>
+
+            <details class="disclosure" id="fcm-advanced">
+                <summary>{% icon "sliders-horizontal" %}Advanced FCM options{% icon "chevron-down" "chev" %}</summary>
+                <div class="disclosure-body">
+                    <p class="help">
+                        These map to FCM's Android options and apply when the app is <b>backgrounded</b>
+                        (the system draws the notification). On Android 8+, sound and importance are ultimately
+                        governed by the app's notification channel. Fields below are pre-filled from your master defaults.
+                    </p>
+                    <div class="form-grid form-grid-3">
+                        <div class="field{% if form.fcm_priority.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_priority.id_for_label }}">{{ form.fcm_priority.label }}</label>
+                            {{ form.fcm_priority }}
+                            {% for e in form.fcm_priority.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        </div>
+                        <div class="field{% if form.fcm_sound.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_sound.id_for_label }}">{{ form.fcm_sound.label }}</label>
+                            {{ form.fcm_sound }}
+                            {% for e in form.fcm_sound.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        </div>
+                        <div class="field{% if form.fcm_color.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_color.id_for_label }}">{{ form.fcm_color.label }}</label>
+                            {{ form.fcm_color }}
+                            {% for e in form.fcm_color.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        </div>
+                        <div class="field{% if form.fcm_notification_priority.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_notification_priority.id_for_label }}">{{ form.fcm_notification_priority.label }}</label>
+                            {{ form.fcm_notification_priority }}
+                            {% for e in form.fcm_notification_priority.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        </div>
+                        <div class="field{% if form.fcm_visibility.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_visibility.id_for_label }}">{{ form.fcm_visibility.label }}</label>
+                            {{ form.fcm_visibility }}
+                            {% for e in form.fcm_visibility.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        </div>
+                        <div class="field{% if form.fcm_ttl_hours.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_ttl_hours.id_for_label }}">{{ form.fcm_ttl_hours.label }}</label>
+                            {{ form.fcm_ttl_hours }}
+                            {% for e in form.fcm_ttl_hours.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            <span class="help">{{ form.fcm_ttl_hours.help_text }}</span>
+                        </div>
+                    </div>
+
+                    <div class="field{% if form.fcm_collapse_tag.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.fcm_collapse_tag.id_for_label }}">{{ form.fcm_collapse_tag.label }}</label>
+                        {{ form.fcm_collapse_tag }}
+                        {% for e in form.fcm_collapse_tag.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        <span class="help">{{ form.fcm_collapse_tag.help_text }}</span>
+                    </div>
+
+                    <div class="form-grid form-grid-3">
+                        <div class="field{% if form.fcm_notification_count.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_notification_count.id_for_label }}">{{ form.fcm_notification_count.label }}</label>
+                            {{ form.fcm_notification_count }}
+                            {% for e in form.fcm_notification_count.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            <span class="help">{{ form.fcm_notification_count.help_text }}</span>
+                        </div>
+                        <div class="field{% if form.fcm_analytics_label.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_analytics_label.id_for_label }}">{{ form.fcm_analytics_label.label }}</label>
+                            {{ form.fcm_analytics_label }}
+                            {% for e in form.fcm_analytics_label.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            <span class="help">{{ form.fcm_analytics_label.help_text }}</span>
+                        </div>
+                        <div class="field{% if form.fcm_event_time.errors %} invalid{% endif %}">
+                            <label class="label" for="{{ form.fcm_event_time.id_for_label }}">{{ form.fcm_event_time.label }}</label>
+                            {{ form.fcm_event_time }}
+                            {% for e in form.fcm_event_time.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            <span class="help">{{ form.fcm_event_time.help_text }}</span>
+                        </div>
+                    </div>
+
+                    <div class="field{% if form.fcm_ticker.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.fcm_ticker.id_for_label }}">{{ form.fcm_ticker.label }}</label>
+                        {{ form.fcm_ticker }}
+                        {% for e in form.fcm_ticker.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+
+                    <div>
+                        <div class="switch-row">
+                            <div class="text"><b>{{ form.fcm_sticky.label }}</b></div>
+                            <label class="switch">{{ form.fcm_sticky }}<span class="track"></span><span class="sr-only">{{ form.fcm_sticky.label }}</span></label>
+                        </div>
+                        <div class="switch-row">
+                            <div class="text"><b>{{ form.fcm_local_only.label }}</b></div>
+                            <label class="switch">{{ form.fcm_local_only }}<span class="track"></span><span class="sr-only">{{ form.fcm_local_only.label }}</span></label>
+                        </div>
+                        <div class="switch-row">
+                            <div class="text"><b>{{ form.fcm_restrict_package.label }}</b></div>
+                            <label class="switch">{{ form.fcm_restrict_package }}<span class="track"></span><span class="sr-only">{{ form.fcm_restrict_package.label }}</span></label>
+                        </div>
+                    </div>
+
+                    <div class="field{% if form.fcm_vibrate.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.fcm_vibrate.id_for_label }}">{{ form.fcm_vibrate.label }}</label>
+                        {{ form.fcm_vibrate }}
+                        {% for e in form.fcm_vibrate.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        <span class="help">{{ form.fcm_vibrate.help_text }}</span>
+                    </div>
+
+                    <div class="stack gap-sm">
+                        <div class="form-grid form-grid-3">
+                            <div class="field{% if form.fcm_led_color.errors %} invalid{% endif %}">
+                                <label class="label" for="{{ form.fcm_led_color.id_for_label }}">{{ form.fcm_led_color.label }}</label>
+                                {{ form.fcm_led_color }}
+                                {% for e in form.fcm_led_color.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            </div>
+                            <div class="field{% if form.fcm_led_on_ms.errors %} invalid{% endif %}">
+                                <label class="label" for="{{ form.fcm_led_on_ms.id_for_label }}">{{ form.fcm_led_on_ms.label }}</label>
+                                {{ form.fcm_led_on_ms }}
+                                {% for e in form.fcm_led_on_ms.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            </div>
+                            <div class="field{% if form.fcm_led_off_ms.errors %} invalid{% endif %}">
+                                <label class="label" for="{{ form.fcm_led_off_ms.id_for_label }}">{{ form.fcm_led_off_ms.label }}</label>
+                                {{ form.fcm_led_off_ms }}
+                                {% for e in form.fcm_led_off_ms.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                            </div>
+                        </div>
+                        <span class="help">LED color and blink timing (channel-governed on Android 8+).</span>
+                    </div>
+
+                    <div class="field{% if form.fcm_raw_json.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.fcm_raw_json.id_for_label }}">{{ form.fcm_raw_json.label }}</label>
+                        {{ form.fcm_raw_json }}
+                        {% for e in form.fcm_raw_json.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        <span class="help">{{ form.fcm_raw_json.help_text }}</span>
+                    </div>
+
+                    <label class="check">{{ form.fcm_save_defaults }} {{ form.fcm_save_defaults.label }}</label>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <div class="stack sticky">
+        <div class="card">
+            <div class="card-head">{% icon "smartphone" %}<h2>Preview</h2><span class="small faint">Android</span></div>
+            <div class="card-body push-phone" aria-hidden="true">
+                <div class="notif">
+                    <div class="notif-top"><span class="notif-app">{% icon "refresh-cw" %}</span>SyncUp · now</div>
+                    <div class="notif-title" id="pv-title"></div>
+                    <div class="notif-body" id="pv-body"></div>
+                    <img class="notif-img" id="pv-img" alt="" hidden>
+                    <div class="notif-img-missing" id="pv-img-missing" hidden>{% icon "image" %}<span>Image can't be loaded</span></div>
+                </div>
+            </div>
+            <div class="card-foot stack" style="gap:10px">
+                <div class="row small muted" style="flex-wrap:nowrap">{% icon "users" "icon-sm" %}<span class="truncate">Sends to <b id="pv-target"></b></span></div>
+                <button type="submit" class="btn btn-primary btn-lg btn-block">{% icon "send" %}Send notification</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-head">
+        {% icon "clock" %}<h2>Recent sends</h2>
+        <a href="{% url 'mobile_push_log' %}" class="small">View all in push log</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack lead-primary">
+            <thead><tr><th>When</th><th>Target</th><th>Title</th><th>Message</th><th>Result</th></tr></thead>
+            <tbody>
+                {% for n in logs %}
+                <tr>
+                    <td data-label="When" class="nowrap small">{{ n.sent_at|date:"d M, H:i" }}</td>
+                    <td data-label="Target"><span class="truncate" style="display:block;max-width:220px" title="{{ n.target_label }}">{{ n.target_label }}</span></td>
+                    <td class="t-primary"><span class="t-cell-main">{{ n.title }}</span></td>
+                    <td data-label="Message" class="t-hide-sm"><span class="truncate muted" style="display:block;max-width:260px" title="{{ n.body }}">{{ n.body }}</span></td>
+                    <td data-label="Result" class="nowrap">
+                        <span class="row gap-sm" style="display:inline-flex;flex-wrap:nowrap">
+                            <span class="badge{% if n.success_count %} badge-success{% endif %}" title="Delivered">{% icon "check" %}{{ n.success_count }}</span>
+                            <span class="badge{% if n.fail_count %} badge-danger{% endif %}" title="Failed">{% icon "x" %}{{ n.fail_count }}</span>
+                        </span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="5"><div class="empty">{% icon "bell" %}<b>Nothing sent yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var form = document.getElementById("push-form");
+    var account = document.getElementById("{{ form.account.id_for_label }}");
+    var title = document.getElementById("{{ form.title.id_for_label }}");
+    var body = document.getElementById("{{ form.body.id_for_label }}");
+    var image = document.getElementById("{{ form.image_url.id_for_label }}");
+    var pvTitle = document.getElementById("pv-title"), pvBody = document.getElementById("pv-body");
+    var pvImg = document.getElementById("pv-img"), pvMissing = document.getElementById("pv-img-missing");
+    var pvTarget = document.getElementById("pv-target"), counter = document.getElementById("title-count");
+    var maxLen = title.getAttribute("maxlength");
+
+    // Open the advanced section if the server flagged an error inside it.
+    if (document.querySelector("#fcm-advanced .field.invalid")) document.getElementById("fcm-advanced").open = true;
+
+    function syncText() {
+        pvTitle.textContent = title.value;
+        pvBody.textContent = body.value;
+        counter.textContent = title.value.length + (maxLen ? " / " + maxLen : "");
+        var opt = account.options[account.selectedIndex];
+        pvTarget.textContent = opt ? opt.text : "";
+    }
+    var imgTimer;
+    function syncImage() {
+        clearTimeout(imgTimer);
+        imgTimer = setTimeout(function () {
+            var url = image.value.trim();
+            pvMissing.hidden = true;
+            if (!/^https:\/\/\S+$/i.test(url)) { pvImg.hidden = true; pvImg.removeAttribute("src"); return; }
+            if (pvImg.getAttribute("src") !== url) pvImg.src = url;
+            pvImg.hidden = false;
+        }, 350);
+    }
+    pvImg.addEventListener("error", function () { if (pvImg.getAttribute("src")) { pvImg.hidden = true; pvMissing.hidden = false; } });
+
+    form.addEventListener("input", syncText);
+    form.addEventListener("change", syncText);
+    image.addEventListener("input", syncImage);
+    image.addEventListener("change", syncImage);
+    syncText();
+    syncImage();
+
+    // A broadcast reaches every device at once: confirm before sending.
+    form.addEventListener("submit", function (e) {
+        if (account.value || form.dataset.confirmed) return;
+        e.preventDefault();
+        var submitter = e.submitter;
+        App.confirm({
+            title: "Send to all devices?",
+            text: "Everyone with the app gets “" + (title.value.trim() || "this notification") + "” right away.",
+            confirmText: "Send to everyone"
+        }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.confirmed = "1";
+            form.requestSubmit ? form.requestSubmit(submitter) : form.submit();
+        });
+    });
+    window.addEventListener("pageshow", function () { delete form.dataset.confirmed; });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Reminder delivery{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_reminders' %}">{% icon "arrow-left" "icon-sm" %}Reminders</a>
+        <h1>Delivery detail</h1>
+        <p class="page-sub">“{{ reminder.title }}” · {{ reminder.account.email|default:"All accounts (broadcast)" }}</p>
+    </div>
+</div>
+
+<div class="card" data-table>
+    <div class="card-head">{% icon "smartphone" %}<h2>Devices</h2></div>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search devices</span>
+            {% icon "search" %}
+            <input class="input" type="search" placeholder="Search account, device ID or platform" data-table-search autocomplete="off">
+        </label>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Account</th><th>Device</th><th data-sort="text">Platform</th>
+                    <th data-sort="text">Synced at</th><th data-sort="text">Shown at</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="t-primary"><span class="t-cell-main break">{{ row.account }}</span></td>
+                    <td data-label="Device">
+                        <span class="mono small muted truncate" style="display:block;max-width:200px" title="{{ row.device_id }}">{{ row.device_id }}</span>
+                    </td>
+                    <td data-label="Platform">
+                        <span>{{ row.platform|default:"—" }}{% if row.app_version %} <span class="small muted">v{{ row.app_version }}</span>{% endif %}</span>
+                    </td>
+                    <td data-label="Synced at" data-value="{{ row.synced_at|date:'c' }}">
+                        {% if row.synced_at %}<span class="badge badge-info">{{ row.synced_at|date:"d M, H:i" }}</span>
+                        {% else %}<span class="faint">—</span>{% endif %}
+                    </td>
+                    <td data-label="Shown at" data-value="{{ row.fired_at|date:'c' }}">
+                        {% if row.fired_at %}<span class="badge badge-success">{{ row.fired_at|date:"d M, H:i" }}</span>
+                        {% else %}<span class="muted small">not shown</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="5"><div class="empty">{% icon "smartphone" %}<b>No devices have synced this reminder yet</b></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>{% icon "search" %}<b>No devices match "<span data-query></span>"</b></div>
+    </div>
+    <div class="table-foot"><span data-table-count>{{ rows|length }} total</span></div>
+</div>
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Partners{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Partners</h1>
+        <p class="page-sub">Partners provision their own users &amp; links via the API (<code>/partner/v1/</code>) using an API key. Each partner sees only its own users.</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-primary" data-open-dialog="#new-partner">{% icon "plus" %}New partner</button>
+    </div>
+</div>
+
+{# A new API key is only ever shown in the success message. Keep it on the page (the toast closes itself) so it can be copied. #}
+{% for m in messages %}{% if m.level_tag == "success" and "API key" in m.message %}
+<div class="alert alert-success" data-key-alert>
+    {% icon "key-round" %}
+    <div class="alert-body stack" style="gap:8px">
+        <div><b>Copy the API key now</b><span class="break">{{ m }}</span></div>
+        <div class="row gap-sm" data-key-actions></div>
+    </div>
+    <button type="button" class="btn btn-ghost btn-icon btn-sm" data-dismiss aria-label="Dismiss">{% icon "x" %}</button>
+</div>
+{% endif %}{% endfor %}
+
+<div class="card" data-table>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search partners</span>
+            {% icon "search" %}
+            <input class="input" type="search" id="partner-search" placeholder="Search name or contact" data-table-search autocomplete="off">
+        </label>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Partner</th>
+                    <th>Signing secret</th>
+                    <th data-sort="num" class="t-right">Users</th>
+                    <th data-sort="text">Last used</th>
+                    <th>Status</th>
+                    <th class="t-right"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in partners %}
+                <tr>
+                    <td class="t-primary">
+                        <div class="t-cell-main">{{ p.name }}</div>
+                        <div class="t-cell-sub">{{ p.contact_email|default:"No contact email" }}</div>
+                    </td>
+                    <td data-label="Signing secret">
+                        {% if p.signing_secret %}
+                        <span class="row gap-sm secret">
+                            <code class="small truncate" title="{{ p.signing_secret }}">{{ p.signing_secret }}</code>
+                            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="{{ p.signing_secret }}" title="Copy signing secret" aria-label="Copy signing secret for {{ p.name }}">{% icon "copy" %}</button>
+                        </span>
+                        {% else %}<span class="faint">Not set</span>{% endif %}
+                    </td>
+                    <td data-label="Users" class="t-right">{{ p.user_count }}</td>
+                    <td data-label="Last used" data-value="{{ p.last_used_at|date:'c' }}" class="nowrap">{% if p.last_used_at %}{{ p.last_used_at|date:"d M Y, H:i" }}{% else %}<span class="faint">Never</span>{% endif %}</td>
+                    <td data-label="Status">
+                        {% if p.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% else %}<span class="badge">Disabled</span>{% endif %}
+                    </td>
+                    <td class="t-right">
+                        <div class="row gap-sm actions">
+                            <form method="POST" action="{% url 'mobile_partner_regenerate' p.id %}"
+                                  data-confirm="Regenerate the API key for {{ p.name }}?" data-confirm-text="The current key stops working immediately. The new key is shown once."
+                                  data-confirm-button="Regenerate key" data-danger>
+                                {% csrf_token %}
+                                <button class="btn btn-sm" type="submit" title="Regenerate API key" aria-label="Regenerate API key for {{ p.name }}">{% icon "key-round" %}<span class="regen-label">Regenerate key</span></button>
+                            </form>
+                            <form method="POST" action="{% url 'mobile_partner_toggle' p.id %}">
+                                {% csrf_token %}
+                                {% if p.is_active %}
+                                <button class="btn btn-sm text-danger" type="submit">{% icon "ban" %}Disable</button>
+                                {% else %}
+                                <button class="btn btn-sm" type="submit">{% icon "power" %}Enable</button>
+                                {% endif %}
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="6"><div class="empty">{% icon "handshake" %}<b>No partners yet</b><button type="button" class="btn btn-primary btn-sm" data-open-dialog="#new-partner">{% icon "plus" %}New partner</button></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>{% icon "search" %}<b>No partners match "<span data-query></span>"</b></div>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
+
+<dialog class="modal" id="new-partner" aria-labelledby="new-partner-title">
+    <form method="POST">
+        {% csrf_token %}
+        <div class="modal-head">
+            {% icon "handshake" %}<h2 id="new-partner-title">New partner</h2>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+        </div>
+        <div class="modal-content">
+            <div class="field">
+                <label class="label" for="partner-name">Partner name</label>
+                <input type="text" name="name" id="partner-name" class="input" required>
+            </div>
+            <div class="field">
+                <label class="label" for="partner-contact">Contact email <span class="opt">optional</span></label>
+                <input type="email" name="contact_email" id="partner-contact" class="input">
+            </div>
+            <div class="alert alert-warning">
+                {% icon "triangle-alert" %}
+                <div class="alert-body">The API key is generated and shown <b style="display:inline">once</b> on creation, so copy it then. It can't be recovered, only regenerated.</div>
+            </div>
+        </div>
+        <div class="modal-foot bordered">
+            <button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="submit" class="btn btn-primary">{% icon "plus" %}Create partner</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block head %}
+<style>
+    /* Contain the absolutely-positioned .sr-only header text, else it widens the page when the table scrolls. */
+    .table-wrap { position: relative; }
+    .secret { flex-wrap: nowrap; }
+    .secret code { max-width: 160px; }
+    .actions { justify-content: flex-end; flex-wrap: nowrap; }
+    @media (min-width: 641px) and (max-width: 1240px) {
+        .regen-label { display: none; }  /* icon-only where the table is tight */
+    }
+    @media (max-width: 640px) {
+        .secret { min-width: 0; }
+        .secret code { max-width: 170px; }
+        .table-stack td .actions { width: 100%; padding-top: 6px; flex-wrap: wrap; }
+    }
+</style>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    // Add a copy button for each API key found in a "shown once" message.
+    document.querySelectorAll("[data-key-alert]").forEach(function (alert) {
+        var keys = alert.querySelector(".break").textContent.match(/\bsk_[A-Za-z0-9_-]+/g) || [];
+        var actions = alert.querySelector("[data-key-actions]");
+        keys.forEach(function (key) {
+            var b = document.createElement("button");
+            b.type = "button"; b.className = "btn btn-sm";
+            b.setAttribute("data-copy", key);
+            b.innerHTML = App.icon("copy") + "Copy API key";
+            actions.appendChild(b);
+        });
+        if (!keys.length) actions.remove();
+    });
+})();
+</script>
+{% endblock %}

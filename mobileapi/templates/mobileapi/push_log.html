@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Push log{% endblock %}
+
+{% block head %}
+<style>
+    .section-label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+    .log-filters select.input { width: auto; min-width: 0; flex: 1 1 140px; max-width: 220px; }
+    @media (max-width: 640px) { .log-filters select.input { max-width: none; } }
+    .log-note > summary { cursor: pointer; list-style: none; }
+    .log-note > summary::-webkit-details-marker { display: none; }
+    .log-note > summary .chev { width: 14px; height: 14px; color: var(--faint); vertical-align: -2px; transition: transform .15s; }
+    .log-note[open] > summary .chev { transform: rotate(180deg); }
+    .log-note .kv { margin-top: 10px; font-size: 12.5px; }
+    /* Phones: the notification leads each row card */
+    @media (max-width: 640px) { .log-table tr { display: flex; flex-direction: column; } .log-table td.t-primary { order: -1; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Push log</h1>
+        <p class="page-sub">Every push notification SyncUp sent, from any part of the system.</p>
+        <p class="small muted" style="margin-top:4px">
+            {% if log_days %}Entries older than {{ log_days }} day{{ log_days|pluralize }} are removed by the daily cleanup.{% else %}Entries are kept forever: push log cleanup is turned off.{% endif %}
+            <a href="{% url 'mobile_config' %}">Change in App config</a>
+        </p>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mobile_push' %}" class="btn">{% icon "send" %}Send a push</a>
+    </div>
+</div>
+
+<section class="stack gap-sm" aria-labelledby="last-day">
+    <h2 class="section-label" id="last-day">Last 24 hours · excluding chat</h2>
+    <div class="stats">
+        <div class="stat">
+            <span class="stat-label">{% icon "send" %}Pushes</span>
+            <span class="stat-value">{{ summary.pushes|default:0 }}</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "smartphone" %}Devices reached</span>
+            <span class="stat-value text-success">{{ summary.delivered|default:0 }}</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "circle-x" %}Failed deliveries</span>
+            <span class="stat-value{% if summary.failed %} text-danger{% endif %}">{{ summary.failed|default:0 }}</span>
+        </div>
+        <div class="stat">
+            <span class="stat-label">{% icon "triangle-alert" %}Need attention</span>
+            <span class="stat-value{% if summary.problems %} text-danger{% endif %}">{{ summary.problems }}</span>
+            <span class="stat-meta">{{ summary.no_devices }} with no devices</span>
+        </div>
+    </div>
+</section>
+
+<div class="card">
+    <div class="card-head">
+        {% icon "scroll-text" %}<h2>{{ page.paginator.count }} push{{ page.paginator.count|pluralize:"es" }}</h2>
+        <span class="small muted">Times in IST · open a title for details</span>
+    </div>
+
+    <form method="get" class="table-tools log-filters">
+        <label class="input-icon">
+            <span class="sr-only">Search</span>
+            {% icon "search" %}
+            <input type="search" id="f-q" name="q" value="{{ q }}" class="input" placeholder="Title, message, user or partner">
+        </label>
+        <label class="sr-only" for="f-source">Source</label>
+        <select id="f-source" name="source" class="input input-sm" title="Source">
+            <option value="" {% if not source %}selected{% endif %}>All except chat</option>
+            <option value="all" {% if source == "all" %}selected{% endif %}>All, with chat</option>
+            {% for value, label in source_choices %}
+            <option value="{{ value }}" {% if source == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <label class="sr-only" for="f-status">Status</label>
+        <select id="f-status" name="status" class="input input-sm" title="Status">
+            <option value="" {% if not status %}selected{% endif %}>Any status</option>
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <label class="sr-only" for="f-days">Period</label>
+        <select id="f-days" name="days" class="input input-sm" title="Period">
+            {% for value, label in periods %}
+            <option value="{{ value }}" {% if period == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <div class="row gap-sm">
+            <button type="submit" class="btn btn-sm btn-primary">{% icon "funnel" %}Apply</button>
+            <a href="{% url 'mobile_push_log' %}" class="btn btn-sm btn-ghost" title="Reset filters">Reset</a>
+        </div>
+    </form>
+
+    <div class="table-wrap">
+        <table class="table table-stack log-table">
+            <thead>
+                <tr><th>When</th><th>Source</th><th>To</th><th>Notification</th><th class="t-right">Devices</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+                {% for n in page %}
+                <tr>
+                    <td data-label="When" class="nowrap">
+                        <div>{{ n.sent_at|date:"d M Y" }}<div class="small muted">{{ n.sent_at|date:"H:i:s" }}</div></div>
+                    </td>
+                    <td data-label="Source"><span class="badge">{{ n.get_source_display }}</span></td>
+                    <td data-label="To">
+                        <div style="min-width:0">
+                            <span class="truncate" style="display:block;max-width:210px" title="{{ n.target_label }}">{{ n.target_label }}</span>
+                            {% if n.partner and n.account %}<div class="small muted">{{ n.partner.name }}</div>{% endif %}
+                        </div>
+                    </td>
+                    <td class="t-primary" style="min-width:260px">
+                        <details class="log-note">
+                            <summary>
+                                <span class="t-cell-main">{{ n.title }}</span> {% icon "chevron-down" "chev" %}
+                                <span class="t-cell-sub truncate" style="display:block;max-width:320px">{{ n.body }}</span>
+                            </summary>
+                            <dl class="kv">
+                                <dt>Message</dt>
+                                <dd style="white-space:pre-wrap">{{ n.body|default:"—" }}</dd>
+                                {% if n.data.link_url %}<dt>Opens on tap</dt><dd class="break">{{ n.data.link_url }}</dd>{% endif %}
+                                {% if n.link %}<dt>Link</dt><dd>{{ n.link.title }}</dd>{% endif %}
+                                {% if n.partner %}<dt>Partner</dt><dd>{{ n.partner.name }}</dd>{% endif %}
+                                {% if n.image_url %}<dt>Image</dt><dd class="break"><a href="{{ n.image_url }}" target="_blank" rel="noopener">{{ n.image_url }}</a></dd>{% endif %}
+                                {% if n.error %}<dt class="text-danger">Error</dt><dd class="text-danger break">{{ n.error }}</dd>{% endif %}
+                                {% if n.data %}<dt>Payload</dt><dd><pre class="code wrap">{{ n.data_json }}</pre></dd>{% endif %}
+                            </dl>
+                        </details>
+                    </td>
+                    <td data-label="Devices" class="t-right num">{{ n.devices }}</td>
+                    <td data-label="Result" class="nowrap">
+                        <div>
+                            {% if n.status == "sent" %}<span class="badge badge-success"><span class="dot"></span>Sent</span>
+                            {% elif n.status == "partial" %}<span class="badge badge-warning"><span class="dot"></span>Partly failed</span>
+                            {% elif n.status == "failed" %}<span class="badge badge-danger"><span class="dot"></span>Failed</span>
+                            {% elif n.status == "error" %}<span class="badge badge-danger"><span class="dot"></span>Error</span>
+                            {% elif n.status == "no_devices" %}<span class="badge">No devices</span>
+                            {% elif n.status == "not_configured" %}<span class="badge badge-warning">{% icon "triangle-alert" %}FCM not configured</span>
+                            {% else %}<span class="badge">Not recorded</span>{% endif %}
+                            <div class="small muted num" style="margin-top:4px">{{ n.success_count }} ok{% if n.fail_count %} · <span class="text-danger">{{ n.fail_count }} failed</span>{% endif %}</div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="6"><div class="empty">{% icon "search" %}<b>No pushes match these filters</b><a class="btn btn-sm" href="{% url 'mobile_push_log' %}">Reset filters</a></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page.paginator.num_pages > 1 %}
+    <div class="table-foot">
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        <nav class="pagination ml-auto" aria-label="Pages">
+            {% if page.has_previous %}
+            <a href="?{{ querystring }}&page={{ page.previous_page_number }}">{% icon "chevron-left" "icon-sm" %}Newer</a>
+            {% endif %}
+            {% if page.has_next %}
+            <a href="?{{ querystring }}&page={{ page.next_page_number }}">Older{% icon "chevron-right" "icon-sm" %}</a>
+            {% endif %}
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
