@@ -1,53 +1,65 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}Mobile App — Devices{% endblock %}
+{% block title %}Devices{% endblock %}
 
 {% block content %}
-<div class="row align-items-center mb-3">
-    <div class="col"><h2 class="mb-0">Devices</h2></div>
+<div class="page-head">
+    <div class="titles">
+        <h1>Devices</h1>
+        <p class="page-sub">Phones signed in to the SyncUp app</p>
+    </div>
 </div>
 
-<table class="table table-striped table-bordered align-middle" id="devices-table">
-    <thead class="table-dark">
-        <tr>
-            <th>Account</th>
-            <th>Device ID</th>
-            <th>Version</th>
-            <th>Last seen</th>
-            <th>Last reminder sync</th>
-            <th>Active</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for d in devices %}
-        <tr>
-            <td><a href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.email }}</a></td>
-            <td><small class="text-muted">{{ d.device_id }}</small></td>
-            <td>{{ d.app_version|default:"—" }}</td>
-            <td>{{ d.last_seen|date:"d M Y, H:i" }}</td>
-            <td>{% if d.last_reminder_sync_at %}{{ d.last_reminder_sync_at|date:"d M Y, H:i" }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-            <td>{% if d.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
-            <td class="text-end">
-                {% if d.is_active %}
-                <form method="post" action="{% url 'mobile_device_deactivate' d.id %}" class="d-inline">{% csrf_token %}
-                    <button class="btn btn-sm btn-outline-danger" title="Deactivate"><i class="fas fa-ban"></i></button>
-                </form>
-                {% endif %}
-            </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" class="text-muted text-center">No devices registered.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endblock %}
-
-{% block script %}
-<script>
-$(document).ready(function () {
-    var isMobile = window.innerWidth <= 768;
-    $('#devices-table').DataTable({ destroy:true, order:[], paging:true, lengthChange:!isMobile, searching:true });
-});
-</script>
+<div class="card" data-table>
+    <div class="table-tools">
+        <label class="input-icon">
+            <span class="sr-only">Search devices</span>
+            {% icon "search" %}
+            <input class="input" type="search" id="device-search" placeholder="Search email, device ID or version" data-table-search autocomplete="off">
+        </label>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Account</th>
+                    <th>Device ID</th>
+                    <th data-sort="text">Version</th>
+                    <th data-sort="text">Last seen</th>
+                    <th data-sort="text">Last reminder sync</th>
+                    <th>Status</th>
+                    <th class="t-right"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in devices %}
+                <tr>
+                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.email }}</a></td>
+                    <td data-label="Device ID"><span class="mono small muted break">{{ d.device_id }}</span></td>
+                    <td data-label="Version">{{ d.app_version|default:"—" }}</td>
+                    <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{{ d.last_seen|date:"d M Y, H:i" }}</td>
+                    <td data-label="Reminder sync" data-value="{{ d.last_reminder_sync_at|date:'c' }}" class="nowrap">{{ d.last_reminder_sync_at|date:"d M Y, H:i"|default:"—" }}</td>
+                    <td data-label="Status">
+                        {% if d.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% else %}<span class="badge">Inactive</span>{% endif %}
+                    </td>
+                    <td class="t-right">
+                        {% if d.is_active %}
+                        <form method="post" action="{% url 'mobile_device_deactivate' d.id %}"
+                              data-confirm="Deactivate this device?" data-confirm-text="It stops receiving push until {{ d.account.email }} signs in again."
+                              data-confirm-button="Deactivate" data-danger>
+                            {% csrf_token %}
+                            <button class="btn btn-sm" type="submit" title="Deactivate">{% icon "ban" %}Deactivate</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="7"><div class="empty">{% icon "smartphone" %}<b>No devices registered</b><span>Devices appear here after a user signs in to the app.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="empty" data-table-empty hidden>{% icon "search" %}<b>No devices match "<span data-query></span>"</b></div>
+    </div>
+    <div class="table-foot"><span data-table-count></span></div>
+</div>
 {% endblock %}

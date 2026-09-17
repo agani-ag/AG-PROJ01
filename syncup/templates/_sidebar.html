@@ -1,0 +1,57 @@
+{% load static %}<aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="side-brand" href="{% url 'home' %}">
+        <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp
+    </a>
+    <nav class="side-nav">
+        <div class="nav-group">
+            <div class="nav-label">Overview</div>
+            <a class="nav-link" href="{% url 'mobile_dashboard' %}" {% nav_active "mobile_dashboard" %}>{% icon "layout-dashboard" %}<span class="nav-text">Dashboard</span></a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Accounts</div>
+            <a class="nav-link" href="{% url 'mobile_accounts' %}" {% nav_active "mobile_accounts mobile_account_add mobile_account_edit mobile_link_add mobile_link_edit" %}>{% icon "users" %}<span class="nav-text">Accounts</span></a>
+            <a class="nav-link" href="{% url 'mobile_devices' %}" {% nav_active "mobile_devices" %}>{% icon "smartphone" %}<span class="nav-text">Devices</span></a>
+            <a class="nav-link" href="{% url 'mobile_general_links' %}" {% nav_active "mobile_general_links mobile_general_link_add mobile_general_link_edit" %}>{% icon "link-2" %}<span class="nav-text">General links</span></a>
+            <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with n=nav_unread_chats %}{% if n %}<span class="count" title="{{ n }} unread">{{ n }}</span>{% endif %}{% endwith %}</a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Notify</div>
+            <a class="nav-link" href="{% url 'mobile_reminders' %}" {% nav_active "mobile_reminders mobile_reminder_edit mobile_reminder_receipts" %}>{% icon "calendar-clock" %}<span class="nav-text">Reminders</span></a>
+            <a class="nav-link" href="{% url 'mobile_push' %}" {% nav_active "mobile_push" %}>{% icon "bell-ring" %}<span class="nav-text">Push notifications</span></a>
+            <a class="nav-link" href="{% url 'mobile_telegram' %}" {% nav_active "mobile_telegram" %}>{% icon "send" %}<span class="nav-text">Telegram</span></a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Logs</div>
+            <a class="nav-link" href="{% url 'mobile_push_log' %}" {% nav_active "mobile_push_log" %}>{% icon "scroll-text" %}<span class="nav-text">Push log</span></a>
+            <a class="nav-link" href="{% url 'mobile_action_test' %}" {% nav_active "mobile_action_test" %}>{% icon "flask-conical" %}<span class="nav-text">Verify test</span></a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Config</div>
+            <a class="nav-link" href="{% url 'mobile_partners' %}" {% nav_active "mobile_partners" %}>{% icon "handshake" %}<span class="nav-text">Partners</span></a>
+            <a class="nav-link" href="{% url 'mobile_config' %}" {% nav_active "mobile_config" %}>{% icon "settings" %}<span class="nav-text">App config</span></a>
+            <a class="nav-link" href="{% url 'mobile_remote_config' %}" {% nav_active "mobile_remote_config" %}>{% icon "cloud-cog" %}<span class="nav-text">Remote config</span></a>
+            <a class="nav-link" href="{% url 'privacy_policy' %}" target="_blank" rel="noopener">{% icon "shield-check" %}<span class="nav-text">Privacy policy</span>{% icon "external-link" "ext" %}</a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Media</div>
+            <a class="nav-link" href="{% url 'clicksend' %}" {% nav_active "clicksend" %}>{% icon "mail" %}<span class="nav-text">Click Send</span></a>
+            <a class="nav-link" href="{% url 'cloudinary' %}" {% nav_active "cloudinary" %}>{% icon "image" %}<span class="nav-text">Cloudinary</span></a>
+            <a class="nav-link" href="{% url 'video_player' %}" {% nav_active "video_player" %}>{% icon "video" %}<span class="nav-text">Video player</span></a>
+        </div>
+        <div class="nav-group">
+            <div class="nav-label">Live</div>
+            <a class="nav-link" href="{% url 'live_admin' 'radio' %}" {% nav_active "live_admin:radio" %}>{% icon "radio" %}<span class="nav-text">Radio</span></a>
+            <a class="nav-link" href="{% url 'live_admin' 'tv' %}" {% nav_active "live_admin:tv" %}>{% icon "tv" %}<span class="nav-text">TV</span></a>
+            <a class="nav-link" href="{% url 'broadcast_admin' %}" {% nav_active "broadcast_admin" %}>{% icon "cast" %}<span class="nav-text">Broadcast</span></a>
+        </div>
+    </nav>
+    <div class="side-foot">
+        <div class="user-chip">
+            <span class="avatar">{{ user.first_name|default:user.username|first|upper }}</span>
+            <div class="who truncate">{{ user.first_name|default:user.username|capfirst }}<small>Admin</small></div>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'admin_profile' %}" title="Profile" aria-label="Profile" {% nav_active "admin_profile" %}>{% icon "user-round" %}</a>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'download_sqlite' %}" title="Download SQLite backup" aria-label="Download SQLite backup">{% icon "database-backup" %}</a>
+            <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'logout' %}" title="Log out" aria-label="Log out">{% icon "log-out" %}</a>
+        </div>
+    </div>
+</aside>

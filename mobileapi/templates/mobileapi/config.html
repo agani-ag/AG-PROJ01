@@ -1,151 +1,182 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}Mobile App — Config{% endblock %}
+{% block title %}App config{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block head %}
+<style>
+    #{{ form.feature_flags.id_for_label }} { font-family: var(--mono); font-size: 13px; }
+    .card-intro { margin-bottom: 2px; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
-        <div class="text-center mb-4"><h2 class="fw-bold">App Configuration</h2>
-            <div class="text-muted">Served to the app via <code>GET /app/v1/config</code></div>
-        </div>
-
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-
-            <h6 class="text-muted text-uppercase small">Version gate</h6>
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Minimum supported version (code)</label>
-                    {{ form.min_supported_version }}
-                    <div class="form-text">
-                        Devices below this version code are forced to update (blocking screen).
-                        Keep it at or below the lowest live version to force nobody.
-                    </div>
-                </div>
-            </div>
-
-            <hr>
-            <h6 class="text-muted text-uppercase small">Support & flags</h6>
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Support email</label>
-                    {{ form.support_email }}
-                    <div class="form-text">Shown in the app's Help for password resets.</div>
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Support phone</label>
-                    {{ form.support_phone }}
-                    <div class="form-text">Admin mobile number shown in Help.</div>
-                </div>
-            </div>
-            <div class="form-check mb-3">
-                {{ form.chat_enabled }}
-                <label class="form-check-label ms-1">Enable in-app chat</label>
-                <div class="form-text">
-                    When on, users (and support agents) see the chat button in the app. Turn off to
-                    hide chat everywhere.
-                </div>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Feature flags (JSON)</label>
-                {{ form.feature_flags }}
-                <div class="form-text">e.g. <code>{"upi_enabled": true}</code></div>
-            </div>
-
-            <hr>
-            <h6 class="text-muted text-uppercase small">Notifications (server push)</h6>
-            <div class="mb-3">
-                <label class="form-label">Cron dispatch interval</label>
-                {{ form.cron_dispatch_interval_minutes }}
-                <div class="form-text">
-                    Set this to match how often your external cron service calls
-                    <code>/cron/push/dispatch</code>. It's the shortest a server (cron) push can
-                    repeat. Delivery works at any cadence — this only keeps the limit and banner honest.
-                </div>
-            </div>
-
-            <hr>
-            <h6 class="text-muted text-uppercase small">Data retention (auto-cleanup)</h6>
-            <div class="text-muted small mb-2">
-                Days to keep each kind of data before the cleanup job removes it. <strong>0 = keep
-                forever.</strong> Expired login tokens/sessions are always removed; unread chat is
-                always kept.
-            </div>
-            <div class="row">
-                <div class="col-6 col-md-3 mb-3">
-                    <label class="form-label">Push logs (days)</label>
-                    {{ form.cleanup_log_days }}
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <label class="form-label">Chat messages (days)</label>
-                    {{ form.cleanup_chat_days }}
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <label class="form-label">Inactive devices (days)</label>
-                    {{ form.cleanup_inactive_device_days }}
-                </div>
-                <div class="col-6 col-md-3 mb-3">
-                    <label class="form-label">Finished reminders (days)</label>
-                    {{ form.cleanup_done_reminder_days }}
-                </div>
-            </div>
-
-            <hr>
-            <h6 class="text-muted text-uppercase small">Privacy policy</h6>
-            <div class="text-muted small mb-2">
-                Shown on the public page
-                <a href="{% url 'privacy_policy' %}" target="_blank">/privacy/</a>
-                (the URL to paste into Play Console) and linked in the app's Profile.
-            </div>
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Company / legal name</label>
-                    {{ form.privacy_company_name }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Effective date</label>
-                    {{ form.privacy_effective_date }}
-                    <div class="form-text">Free text, e.g. <code>10 August 2026</code>.</div>
-                </div>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Privacy contact email</label>
-                {{ form.privacy_contact_email }}
-                <div class="form-text">Optional — falls back to the support email above if blank.</div>
-            </div>
-
-            <hr>
-            <h6 class="text-muted text-uppercase small">Announcement banner</h6>
-            <div class="form-check mb-3">
-                {{ form.announcement_active }}
-                <label class="form-check-label ms-1">Show announcement in the app</label>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Title</label>
-                {{ form.announcement_title }}
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Message</label>
-                {{ form.announcement_message }}
-            </div>
-            <div class="form-check mb-2">
-                {{ form.announcement_fullscreen }}
-                <label class="form-check-label ms-1">Show as full screen (like the update screen)</label>
-            </div>
-            <div class="form-check mb-3">
-                {{ form.announcement_blocking }}
-                <label class="form-check-label ms-1">Blocking — no dismiss button, shows every launch (maintenance/outage)</label>
-            </div>
-
-            <div class="d-flex gap-2 mt-3">
-                <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                    <i class="fas fa-check me-2"></i>Save Configuration
-                </button>
-                <a href="{% url 'mobile_dashboard' %}" class="btn btn-secondary btn-lg flex-fill">
-                    <i class="fas fa-arrow-left me-2"></i>Back
-                </a>
-            </div>
-        </form>
+<div class="page-head">
+    <div class="titles">
+        <h1>App config</h1>
+        <p class="page-sub">Served to the app via <code>GET /app/v1/config</code></p>
     </div>
 </div>
+
+<form method="POST" class="stack" data-track-changes>
+    {% csrf_token %}
+    {% for e in form.non_field_errors %}<div class="alert alert-danger">{% icon "circle-alert" %}<div class="alert-body">{{ e }}</div></div>{% endfor %}
+
+    <div class="card">
+        <div class="card-head">{% icon "smartphone" %}<h2>Version gate</h2></div>
+        <div class="card-body form">
+            <div class="form-grid">
+                <div class="field{% if form.min_supported_version.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.min_supported_version.id_for_label }}">Minimum supported version (code)</label>
+                    {{ form.min_supported_version }}
+                    {% for e in form.min_supported_version.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <p class="help" style="align-self:end;padding-bottom:4px">Devices below this version code are forced to update (blocking screen). Keep it at or below the lowest live version to force nobody.</p>
+                <div class="field{% if form.android_package_name.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.android_package_name.id_for_label }}">Android package name</label>
+                    {{ form.android_package_name }}
+                    {% for e in form.android_package_name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <p class="help" style="align-self:end;padding-bottom:4px">The app's application id (e.g. <code>com.agani.syncup</code>). Used to build the Play Store / open-app link.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "sliders-horizontal" %}<h2>Support &amp; flags</h2></div>
+        <div class="card-body form">
+            <div class="form-grid">
+                <div class="field{% if form.support_email.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.support_email.id_for_label }}">Support email</label>
+                    {{ form.support_email }}
+                    {% for e in form.support_email.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    <span class="help">Shown in the app's Help for password resets.</span>
+                </div>
+                <div class="field{% if form.support_phone.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.support_phone.id_for_label }}">Support phone</label>
+                    {{ form.support_phone }}
+                    {% for e in form.support_phone.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    <span class="help">Admin mobile number shown in Help.</span>
+                </div>
+            </div>
+            <div class="switch-row" style="padding-block:4px">
+                <div class="text"><b>Enable in-app chat</b><span class="help">When on, users (and support agents) see the chat button in the app. Turn off to hide chat everywhere.</span></div>
+                <label class="switch">{{ form.chat_enabled }}<span class="track"></span><span class="sr-only">Enable in-app chat</span></label>
+            </div>
+            <div class="field{% if form.feature_flags.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.feature_flags.id_for_label }}">Feature flags (JSON)</label>
+                {{ form.feature_flags }}
+                {% for e in form.feature_flags.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">e.g. <code>{"upi_enabled": true}</code></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "bell-ring" %}<h2>Notifications (server push)</h2></div>
+        <div class="card-body form">
+            <div class="field{% if form.cron_dispatch_interval_minutes.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.cron_dispatch_interval_minutes.id_for_label }}">Cron dispatch interval <span class="opt">minutes</span></label>
+                {{ form.cron_dispatch_interval_minutes }}
+                {% for e in form.cron_dispatch_interval_minutes.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Set this to match how often your external cron service calls <code>/cron/push/dispatch</code>. It's the shortest a server (cron) push can repeat. Delivery works at any cadence; this only keeps the limit and banner honest.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "archive" %}<h2>Data retention (auto-cleanup)</h2></div>
+        <div class="card-body form">
+            <p class="help card-intro">Days to keep each kind of data before the cleanup job removes it. <b>0 = keep forever.</b> Expired login tokens and sessions are always removed; unread chat is always kept.</p>
+            <div class="form-grid">
+                <div class="field{% if form.cleanup_log_days.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.cleanup_log_days.id_for_label }}">Push logs <span class="opt">days</span></label>
+                    {{ form.cleanup_log_days }}
+                    {% for e in form.cleanup_log_days.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field{% if form.cleanup_chat_days.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.cleanup_chat_days.id_for_label }}">Chat messages <span class="opt">days</span></label>
+                    {{ form.cleanup_chat_days }}
+                    {% for e in form.cleanup_chat_days.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field{% if form.cleanup_inactive_device_days.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.cleanup_inactive_device_days.id_for_label }}">Inactive devices <span class="opt">days</span></label>
+                    {{ form.cleanup_inactive_device_days }}
+                    {% for e in form.cleanup_inactive_device_days.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field{% if form.cleanup_done_reminder_days.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.cleanup_done_reminder_days.id_for_label }}">Finished reminders <span class="opt">days</span></label>
+                    {{ form.cleanup_done_reminder_days }}
+                    {% for e in form.cleanup_done_reminder_days.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "shield-check" %}<h2>Privacy policy</h2></div>
+        <div class="card-body form">
+            <p class="help card-intro">Shown on the public page <a href="{% url 'privacy_policy' %}" target="_blank" rel="noopener">/privacy/</a> (the URL to paste into Play Console) and linked in the app's Profile.</p>
+            <div class="form-grid">
+                <div class="field{% if form.privacy_company_name.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.privacy_company_name.id_for_label }}">Company / legal name</label>
+                    {{ form.privacy_company_name }}
+                    {% for e in form.privacy_company_name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                </div>
+                <div class="field{% if form.privacy_effective_date.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.privacy_effective_date.id_for_label }}">Effective date</label>
+                    {{ form.privacy_effective_date }}
+                    {% for e in form.privacy_effective_date.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    <span class="help">Free text, e.g. <code>10 August 2026</code>.</span>
+                </div>
+                <div class="field span-2{% if form.privacy_contact_email.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.privacy_contact_email.id_for_label }}">Privacy contact email <span class="opt">optional</span></label>
+                    {{ form.privacy_contact_email }}
+                    {% for e in form.privacy_contact_email.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    <span class="help">Falls back to the support email above if blank.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "flag" %}<h2>Announcement banner</h2></div>
+        <div class="card-body form">
+            <div class="switch-row" style="padding-block:4px">
+                <div class="text"><b>Show announcement in the app</b></div>
+                <label class="switch">{{ form.announcement_active }}<span class="track"></span><span class="sr-only">Show announcement in the app</span></label>
+            </div>
+            <div class="field{% if form.announcement_title.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.announcement_title.id_for_label }}">Title</label>
+                {{ form.announcement_title }}
+                {% for e in form.announcement_title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.announcement_message.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.announcement_message.id_for_label }}">Message</label>
+                {{ form.announcement_message }}
+                {% for e in form.announcement_message.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div>
+                <div class="switch-row">
+                    <div class="text"><b>Show as full screen</b><span class="help">Like the update screen, instead of a banner.</span></div>
+                    <label class="switch">{{ form.announcement_fullscreen }}<span class="track"></span><span class="sr-only">Show as full screen</span></label>
+                </div>
+                <div class="switch-row" style="padding-bottom:0">
+                    <div class="text"><b>Blocking</b><span class="help">No dismiss button; shows every launch (maintenance/outage).</span></div>
+                    <label class="switch">{{ form.announcement_blocking }}<span class="track"></span><span class="sr-only">Blocking</span></label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <button type="submit" class="btn btn-primary">{% icon "check" %}Save configuration</button>
+        <a href="{% url 'mobile_dashboard' %}" class="btn btn-ghost">Cancel</a>
+    </div>
+
+    <div class="savebar" hidden>
+        <span class="msg">Unsaved changes</span>
+        <button type="reset" class="btn btn-ghost btn-sm">Discard</button>
+        <button type="submit" class="btn btn-primary btn-sm">{% icon "check" %}Save</button>
+    </div>
+</form>
 {% endblock %}

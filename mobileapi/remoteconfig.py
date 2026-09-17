@@ -6,6 +6,7 @@ the Django admin, without opening the Firebase console. Reuses the same
 service account / project as FCM (`FIREBASE_PROJECT_ID`, `SERVICE_ACCOUNT_FILE`).
 """
 import json
+import time
 
 import requests
 from django.conf import settings
@@ -14,6 +15,9 @@ from .fcm import _service_account_path, is_configured  # reuse project credentia
 
 RC_SCOPES = ["https://www.googleapis.com/auth/firebase.remoteconfig"]
 _URL = "https://firebaseremoteconfig.googleapis.com/v1/projects/{pid}/remoteConfig"
+_token_cache = {"token": None, "expires_at": 0.0}
+# One keep-alive connection pool: later requests skip the TCP/TLS handshake to Google.
+_session = requests.Session()
 
 
 class RemoteConfigError(Exception):
@@ -28,6 +32,12 @@ def _project_id():
 
 
 def _access_token():
+    # Reuse the OAuth token (~1h lifetime) like fcm.py does; fetching a fresh one on every
+    # request made the Remote Config page take over a second to open.
+    now = time.time()
+    if _token_cache["token"] and now < _token_cache["expires_at"]:
+        return _token_cache["token"]
+
     from google.auth.transport.requests import Request
     from google.oauth2 import service_account
 
@@ -35,13 +45,15 @@ def _access_token():
         _service_account_path(), scopes=RC_SCOPES
     )
     creds.refresh(Request())
+    _token_cache["token"] = creds.token
+    _token_cache["expires_at"] = now + 50 * 60   # refresh 10 min before expiry
     return creds.token
 
 
 def get_template():
     """Returns (template_dict, etag)."""
     url = _URL.format(pid=_project_id())
-    resp = requests.get(url, headers={"Authorization": f"Bearer {_access_token()}"}, timeout=15)
+    resp = _session.get(url, headers={"Authorization": f"Bearer {_access_token()}"}, timeout=15)
     if resp.status_code != 200:
         raise RemoteConfigError(f"{resp.status_code}: {resp.text[:300]}")
     etag = resp.headers.get("ETag", "*")
@@ -71,7 +83,7 @@ def set_parameter(key, value):
         "Content-Type": "application/json; UTF-8",
         "If-Match": etag or "*",
     }
-    resp = requests.put(url, headers=headers, data=json.dumps(template), timeout=20)
+    resp = _session.put(url, headers=headers, data=json.dumps(template), timeout=20)
     if resp.status_code != 200:
         raise RemoteConfigError(f"{resp.status_code}: {resp.text[:300]}")
     return True

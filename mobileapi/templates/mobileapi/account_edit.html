@@ -1,157 +1,135 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}{% if is_edit %}Edit Account{% else %}Add Account{% endif %}{% endblock %}
+{% block title %}{% if is_edit %}{{ account.name }}{% else %}New account{% endif %}{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-lg-9">
-
-        <div class="text-center mb-4">
-            <h2 class="fw-bold">{% if is_edit %}Edit Account{% else %}Add Account{% endif %}</h2>
-            {% if account.partner_id %}
-            <div class="mt-2">
-                <span class="badge text-bg-info"><i class="fas fa-handshake me-1"></i>Provisioned by {{ account.partner.name }}</span>
-            </div>
-            {% endif %}
-        </div>
-
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-            <div class="row">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Name</label>
-                    {{ form.name }}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">Email</label>
-                    {{ form.email }}
-                </div>
-            </div>
-            <div class="row align-items-end">
-                <div class="col-12 col-md-6 mb-3">
-                    <label class="form-label">{% if is_edit %}Reset password{% else %}Password{% endif %}</label>
-                    {{ form.new_password }}
-                    <div class="form-text">{{ form.new_password.help_text }}</div>
-                    {% if form.new_password.errors %}<div class="text-danger small">{{ form.new_password.errors.0 }}</div>{% endif %}
-                </div>
-                <div class="col-12 col-md-6 mb-3">
-                    <div class="form-check">
-                        {{ form.is_active }}
-                        <label class="form-check-label ms-1">Active</label>
-                    </div>
-                    <div class="form-check mt-2">
-                        {{ form.admin_chat_mode }}
-                        <label class="form-check-label ms-1">Admin chat mode (support agent)</label>
-                        <div class="form-text">Their app Chat opens the support inbox (all users) instead of a personal chat.</div>
-                    </div>
-                    <div class="form-check mt-2">
-                        {{ form.can_manage_links }}
-                        <label class="form-check-label ms-1">Can manage links</label>
-                        <div class="form-text">Lets the user add/remove their own links from the app.</div>
-                    </div>
-                    <div class="form-check mt-2">
-                        {{ form.show_general_links }}
-                        <label class="form-check-label ms-1">Show general links</label>
-                        <div class="form-text">Include the shared general links in this user's list. Turn OFF for single-link (kiosk) users.</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="d-flex gap-2 mt-3">
-                <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                    <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Create Account{% endif %}
-                </button>
-                {% if is_edit %}
-                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
-                    <i class="fas fa-trash me-2"></i>Delete
-                </button>
-                {% endif %}
-                <a href="{% url 'mobile_accounts' %}" class="btn btn-secondary btn-lg flex-fill">
-                    <i class="fas fa-arrow-left me-2"></i>Back
-                </a>
-            </div>
-        </form>
-
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_accounts' %}">{% icon "arrow-left" "icon-sm" %}Accounts</a>
+        <h1>{% if is_edit %}{{ account.name }}{% else %}New account{% endif %}</h1>
         {% if is_edit %}
-        <!-- Links for this account -->
-        <div class="card shadow-sm mt-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-link me-1"></i> Links</span>
-                <a href="{% url 'mobile_link_add' %}?account={{ account.id }}" class="btn btn-sm btn-primary">
-                    <i class="fas fa-plus"></i> Add link
-                </a>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-striped mb-0 align-middle">
-                    <thead><tr><th>Title</th><th>URL</th><th>Added by</th><th>Active</th><th></th></tr></thead>
-                    <tbody>
-                        {% for link in links %}
-                        <tr>
-                            <td>{{ link.title }}</td>
-                            <td style="max-width:320px;"><span class="d-inline-block text-truncate" style="max-width:300px;">{{ link.url }}</span></td>
-                            <td>
-                                {% if link.created_by_user %}
-                                <span class="badge text-bg-info"><i class="fas fa-user me-1"></i>User</span>
-                                {% else %}
-                                <span class="badge text-bg-secondary"><i class="fas fa-user-shield me-1"></i>Admin</span>
-                                {% endif %}
-                            </td>
-                            <td>{% if link.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
-                            <td class="text-end">
-                                <a href="{% url 'mobile_link_edit' link.id %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-pen"></i></a>
-                            </td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="5" class="text-muted text-center">No links yet.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+        <div class="row" style="margin-top:8px">
+            {% if account.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+            {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
+            {% if account.partner_id %}<span class="badge badge-info">{% icon "handshake" %}Provisioned by {{ account.partner.name }}</span>{% endif %}
+            <span class="small muted">Last login {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
         </div>
-
-        <!-- Devices (read-only) -->
-        <div class="card shadow-sm mt-4">
-            <div class="card-header"><i class="fas fa-mobile-screen me-1"></i> Devices</div>
-            <div class="table-responsive">
-                <table class="table table-striped mb-0 align-middle">
-                    <thead><tr><th>Device</th><th>Platform</th><th>Version</th><th>Last seen</th><th>Active</th></tr></thead>
-                    <tbody>
-                        {% for d in devices %}
-                        <tr>
-                            <td><small class="text-muted">{{ d.device_id }}</small></td>
-                            <td>{{ d.platform }}</td>
-                            <td>{{ d.app_version|default:"—" }}</td>
-                            <td>{{ d.last_seen|date:"d M Y, H:i" }}</td>
-                            <td>{% if d.is_active %}<span class="badge text-bg-success">Yes</span>{% else %}<span class="badge text-bg-secondary">No</span>{% endif %}</td>
-                        </tr>
-                        {% empty %}
-                        <tr><td colspan="5" class="text-muted text-center">No devices registered.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <form method="post" action="{% url 'mobile_account_delete' account.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
         {% endif %}
     </div>
 </div>
-{% endblock %}
 
-{% block script %}
-{% if is_edit %}
-<script>
-function showDeleteAlert() {
-    Swal.fire({
-        title: 'Delete this account?',
-        text: 'This also removes its links, devices and tokens.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#dc3545',
-        confirmButtonText: 'Yes, delete it!',
-        cancelButtonText: 'Cancel'
-    }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
-}
-</script>
-{% endif %}
+<div class="{% if is_edit %}split{% else %}stack{% endif %}">
+    <form method="POST" class="stack" novalidate>
+        {% csrf_token %}
+        <div class="card">
+            <div class="card-head">{% icon "user-round" %}<h2>Profile</h2></div>
+            <div class="card-body form">
+                <div class="form-grid">
+                    <div class="field{% if form.name.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.name.id_for_label }}">Name</label>
+                        {{ form.name }}
+                        {% for e in form.name.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+                    <div class="field{% if form.email.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.email.id_for_label }}">Email</label>
+                        {{ form.email }}
+                        {% for e in form.email.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+                    <div class="field span-2{% if form.new_password.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.new_password.id_for_label }}">{% if is_edit %}Reset password <span class="opt">optional</span>{% else %}Password{% endif %}</label>
+                        <div class="input-group">
+                            {{ form.new_password }}
+                            <button class="btn btn-icon" type="button" data-reveal="#{{ form.new_password.id_for_label }}" aria-label="Show">{% icon "eye" %}</button>
+                        </div>
+                        {% for e in form.new_password.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        {% if form.new_password.help_text %}<span class="help">{{ form.new_password.help_text }}</span>{% endif %}
+                    </div>
+                </div>
+                {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "shield-check" %}<h2>Access</h2></div>
+            <div class="card-body" style="padding-block:4px">
+                <div class="switch-row">
+                    <div class="text"><b>Active</b><span class="help">Inactive accounts can't sign in to the app.</span></div>
+                    <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
+                </div>
+                <div class="switch-row">
+                    <div class="text"><b>Support agent (admin chat mode)</b><span class="help">Their app Chat opens the support inbox for all users instead of a personal chat.</span></div>
+                    <label class="switch">{{ form.admin_chat_mode }}<span class="track"></span><span class="sr-only">Support agent</span></label>
+                </div>
+                <div class="switch-row">
+                    <div class="text"><b>Can manage links</b><span class="help">Lets the user add and remove their own links in the app.</span></div>
+                    <label class="switch">{{ form.can_manage_links }}<span class="track"></span><span class="sr-only">Can manage links</span></label>
+                </div>
+                <div class="switch-row">
+                    <div class="text"><b>Show general links</b><span class="help">Include the shared general links. Turn off for single-link (kiosk) users.</span></div>
+                    <label class="switch">{{ form.show_general_links }}<span class="track"></span><span class="sr-only">Show general links</span></label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <button type="submit" class="btn btn-primary">{% icon "check" %}{% if is_edit %}Save changes{% else %}Create account{% endif %}</button>
+            <a href="{% url 'mobile_accounts' %}" class="btn btn-ghost">Cancel</a>
+        </div>
+    </form>
+
+    {% if is_edit %}
+    <div class="stack sticky">
+        <div class="card">
+            <div class="card-head">
+                {% icon "link-2" %}<h2>Links</h2>
+                <a href="{% url 'mobile_link_add' %}?account={{ account.id }}" class="btn btn-sm">{% icon "plus" %}Add</a>
+            </div>
+            <ul class="list">
+                {% for link in links %}
+                <li>
+                    <a class="list-item" href="{% url 'mobile_link_edit' link.id %}">
+                        <span class="main-col">
+                            <span class="title truncate" style="display:block">{{ link.title }}</span>
+                            <span class="sub truncate" style="display:block">{{ link.url }}</span>
+                        </span>
+                        {% if not link.is_active %}<span class="badge badge-danger">Off</span>{% endif %}
+                        {% if link.created_by_user %}<span class="badge" title="Added by the user">{% icon "user" %}User</span>
+                        {% else %}<span class="badge badge-accent" title="Added by an admin">{% icon "shield-user" %}Admin</span>{% endif %}
+                    </a>
+                </li>
+                {% empty %}
+                <li class="empty small">No links yet.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "smartphone" %}<h2>Devices</h2></div>
+            <ul class="list">
+                {% for d in devices %}
+                <li class="list-item">
+                    <span class="main-col">
+                        <span class="title" style="display:block">{{ d.platform|capfirst }} · {{ d.app_version|default:"version unknown" }}</span>
+                        <span class="sub mono truncate" style="display:block" title="{{ d.device_id }}">{{ d.device_id }}</span>
+                    </span>
+                    {% if d.is_active %}<span class="badge badge-success" title="Last seen {{ d.last_seen|date:'d M Y, H:i' }}">{{ d.last_seen|date:"d M" }}</span>
+                    {% else %}<span class="badge" title="Inactive">Inactive</span>{% endif %}
+                </li>
+                {% empty %}
+                <li class="empty small">No devices registered.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <form method="post" action="{% url 'mobile_account_delete' account.id %}" class="card card-danger"
+              data-confirm="Delete {{ account.name }}?" data-confirm-text="This also removes their links, devices and sign-in tokens. It can't be undone."
+              data-confirm-button="Delete account" data-danger>
+            {% csrf_token %}
+            <div class="card-body stack" style="gap:10px">
+                <div><b>Delete account</b><p class="help">Removes the account with its links, devices and tokens.</p></div>
+                <button type="submit" class="btn btn-sm text-danger" style="align-self:flex-start">{% icon "trash" %}Delete account…</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}

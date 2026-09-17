@@ -42,19 +42,20 @@ def superuser_required(view):
 
 
 def _after_login(request):
-    """Where to go after signing in: the ?next= page if it's on this site, else home."""
+    """Where to go after signing in: the ?next= page if it's on this site, else the admin dashboard
+    (home is the public landing page)."""
     nxt = request.POST.get('next') or request.GET.get('next')
     if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()},
                                                require_https=request.is_secure()):
         return redirect(nxt)
-    return redirect('home')
+    return redirect('mobile_dashboard')
 
 
 # =============== Password login ===============
 @never_cache
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('home')
+        return redirect('mobile_dashboard')
     auth_form = AuthForm(request, data=request.POST or None)
     if request.method == 'POST':
         if auth_form.is_valid():
@@ -107,7 +108,7 @@ def magic_link_login(request, token):
         if user is None:
             return render(request, 'auth/magic_link.html', {'invalid': True}, status=410)
         login(request, user, backend=MODEL_BACKEND)
-        return redirect('home')
+        return redirect('mobile_dashboard')
     invalid = not AdminLoginLink.is_valid(token)
     return render(request, 'auth/magic_link.html', {'invalid': invalid}, status=410 if invalid else 200)
 

@@ -1,7 +1,7 @@
 """
 Custom HTML admin screens for the SyncUp mobile API (superuser-only).
 
-Function-based views + Bootstrap templates, matching the existing syncup app.
+Function-based views + templates styled by static/css/app.css, matching the existing syncup app.
 Mounted at /mobile/ (see admin_urls.py). Separate from the JSON API (/app/v1/).
 """
 import json
@@ -55,7 +55,7 @@ def dashboard(request):
         "device_count": AppDevice.objects.filter(is_active=True).count(),
         "link_count": AppLink.objects.count(),
         "reminder_count": AppReminder.objects.filter(is_active=True).count(),
-        "recent_accounts": AppAccount.objects.order_by("-created_at")[:5],
+        "recent_accounts": AppAccount.objects.select_related("partner").order_by("-created_at")[:5],
         "recent_notifications": AppNotificationLog.objects.exclude(source="chat").select_related("account", "partner")[:5],
         "fcm_configured": fcm.is_configured(),
         "chat_unread_count": AppChatMessage.objects.filter(sender="user", read_by_admin=False).count(),

@@ -1,131 +1,96 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}Mobile App — Dashboard{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="row align-items-center mb-4">
-    <div class="col"><h2 class="mb-0">SyncUp Mobile</h2></div>
-    <div class="col-auto">
-        <a href="{% url 'mobile_account_add' %}" class="btn btn-primary btn-sm">
-            <i class="fas fa-plus me-1"></i> New Account
-        </a>
+<div class="page-head">
+    <div class="titles">
+        <h1>Dashboard</h1>
+        <p class="page-sub">SyncUp mobile app at a glance</p>
+    </div>
+    <div class="page-actions">
+        <a href="{% url 'mobile_push' %}" class="btn">{% icon "bell-ring" %}Send push</a>
+        <a href="{% url 'mobile_account_add' %}" class="btn btn-primary">{% icon "plus" %}New account</a>
     </div>
 </div>
 
 {% if not fcm_configured %}
 <div class="alert alert-warning">
-    <i class="fas fa-triangle-exclamation me-1"></i>
-    Push (FCM) is not configured — set <code>FIREBASE_PROJECT_ID</code> and <code>SERVICE_ACCOUNT_FILE</code>.
+    {% icon "triangle-alert" %}
+    <div class="alert-body"><b>Push isn't set up</b>Set <code>FIREBASE_PROJECT_ID</code> and <code>SERVICE_ACCOUNT_FILE</code> to send notifications.</div>
 </div>
 {% endif %}
 
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_accounts' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold">{{ account_count }}</div>
-                <div class="text-muted">Accounts</div>
-                <small class="text-success">{{ active_account_count }} active</small>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_devices' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold">{{ device_count }}</div>
-                <div class="text-muted">Active devices</div>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="card shadow-sm text-center h-100"><div class="card-body">
-            <div class="display-6 fw-bold">{{ link_count }}</div>
-            <div class="text-muted">Links</div>
-        </div></div>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_push' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold"><i class="fas fa-bell"></i></div>
-                <div class="text-muted">Send push</div>
-            </div></div>
-        </a>
-    </div>
+{% if chat_unread_count %}
+<div class="alert">
+    {% icon "messages-square" %}
+    <div class="alert-body">{{ chat_unread_count }} unread message{{ chat_unread_count|pluralize }} from app users.</div>
+    <a class="btn btn-sm" href="{% url 'mobile_chats' %}">Open messages</a>
+</div>
+{% endif %}
+
+<div class="stats">
+    <a class="stat" href="{% url 'mobile_accounts' %}">
+        <span class="stat-label">{% icon "users" %}Accounts</span>
+        <span class="stat-value">{{ account_count }}</span>
+        <span class="stat-meta"><span class="text-success">{{ active_account_count }} active</span></span>
+    </a>
+    <a class="stat" href="{% url 'mobile_devices' %}">
+        <span class="stat-label">{% icon "smartphone" %}Active devices</span>
+        <span class="stat-value">{{ device_count }}</span>
+        <span class="stat-meta">Signed in to the app</span>
+    </a>
+    <a class="stat" href="{% url 'mobile_general_links' %}">
+        <span class="stat-label">{% icon "link-2" %}Links</span>
+        <span class="stat-value">{{ link_count }}</span>
+        <span class="stat-meta">Per-user and general</span>
+    </a>
+    <a class="stat" href="{% url 'mobile_reminders' %}">
+        <span class="stat-label">{% icon "calendar-clock" %}Active reminders</span>
+        <span class="stat-value">{{ reminder_count }}</span>
+        <span class="stat-meta">Fired on the device</span>
+    </a>
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_reminders' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold">{{ reminder_count }}</div>
-                <div class="text-muted">Active reminders</div>
-                <small class="text-primary"><i class="fas fa-clock me-1"></i>Schedule</small>
-            </div></div>
-        </a>
+<div class="grid-2">
+    <div class="card">
+        <div class="card-head">
+            {% icon "users" %}<h2>Recent accounts</h2>
+            <a class="small" href="{% url 'mobile_accounts' %}">View all</a>
+        </div>
+        <ul class="list">
+            {% for a in recent_accounts %}
+            <li>
+                <a class="list-item" href="{% url 'mobile_account_edit' a.id %}">
+                    <span class="main-col">
+                        <span class="title truncate" style="display:block">{{ a.name }}</span>
+                        <span class="sub truncate" style="display:block">{{ a.email }}</span>
+                    </span>
+                    {% if a.partner_id %}<span class="badge badge-info">{% icon "plug" %}{{ a.partner.name }}</span>{% else %}<span class="badge">Admin</span>{% endif %}
+                </a>
+            </li>
+            {% empty %}
+            <li class="empty">{% icon "users" %}<b>No accounts yet</b><a class="btn btn-primary btn-sm" href="{% url 'mobile_account_add' %}">{% icon "plus" %}New account</a></li>
+            {% endfor %}
+        </ul>
     </div>
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_config' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold"><i class="fas fa-gear"></i></div>
-                <div class="text-muted">App config</div>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{% url 'mobile_chats' %}" class="text-decoration-none">
-            <div class="card shadow-sm text-center h-100"><div class="card-body">
-                <div class="display-6 fw-bold position-relative d-inline-block">
-                    <i class="fas fa-comments"></i>
-                    {% if chat_unread_count %}
-                    <span class="badge bg-danger rounded-pill position-absolute top-0 start-100 translate-middle" style="font-size:.5em;">{{ chat_unread_count }}</span>
-                    {% endif %}
+
+    <div class="card">
+        <div class="card-head">
+            {% icon "bell-ring" %}<h2>Recent push</h2>
+            <a class="small" href="{% url 'mobile_push_log' %}">Push log</a>
+        </div>
+        <ul class="list">
+            {% for n in recent_notifications %}
+            <li class="list-item">
+                <div class="main-col">
+                    <div class="row-between"><span class="title truncate">{{ n.title }}</span><span class="small faint num nowrap">{{ n.sent_at|date:"d M, H:i" }}</span></div>
+                    <div class="sub">{{ n.target_label }} · {{ n.get_source_display }} · <span class="text-success num">{{ n.success_count }} delivered</span>{% if n.fail_count %} · <span class="text-danger num">{{ n.fail_count }} failed</span>{% endif %}</div>
                 </div>
-                <div class="text-muted">Chats</div>
-                {% if chat_unread_count %}<small class="text-danger">{{ chat_unread_count }} unread</small>{% endif %}
-            </div></div>
-        </a>
-    </div>
-</div>
-
-<div class="row g-4">
-    <div class="col-12 col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent accounts</span>
-                <a href="{% url 'mobile_accounts' %}" class="small">View all</a>
-            </div>
-            <ul class="list-group list-group-flush">
-                {% for a in recent_accounts %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <a href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a>
-                    <small class="text-muted">{{ a.email }}</small>
-                </li>
-                {% empty %}
-                <li class="list-group-item text-muted">No accounts yet.</li>
-                {% endfor %}
-            </ul>
-        </div>
-    </div>
-    <div class="col-12 col-lg-6">
-        <div class="card shadow-sm h-100">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent push</span>
-                <span class="small"><a href="{% url 'mobile_push_log' %}">Log</a> · <a href="{% url 'mobile_push' %}">Compose</a></span>
-            </div>
-            <ul class="list-group list-group-flush">
-                {% for n in recent_notifications %}
-                <li class="list-group-item">
-                    <div class="d-flex justify-content-between">
-                        <strong>{{ n.title }}</strong>
-                        <small class="text-muted">{{ n.sent_at|date:"d M, H:i" }}</small>
-                    </div>
-                    <small class="text-muted">{{ n.target_label }} · {{ n.get_source_display }} · {{ n.success_count }} ok / {{ n.fail_count }} failed</small>
-                </li>
-                {% empty %}
-                <li class="list-group-item text-muted">No notifications sent yet.</li>
-                {% endfor %}
-            </ul>
-        </div>
+            </li>
+            {% empty %}
+            <li class="empty">{% icon "bell" %}<b>No notifications sent yet</b><a class="btn btn-sm" href="{% url 'mobile_push' %}">Send one</a></li>
+            {% endfor %}
+        </ul>
     </div>
 </div>
 {% endblock %}

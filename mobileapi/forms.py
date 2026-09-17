@@ -1,4 +1,4 @@
-"""Forms for the HTML admin screens (Bootstrap-styled, matching the syncup app)."""
+"""Forms for the HTML admin screens (styled by static/css/app.css, matching the syncup app)."""
 import json
 import re
 from datetime import timezone as dt_timezone
@@ -9,13 +9,14 @@ from django.utils import timezone
 from .models import AppAccount, AppConfig, AppLink, AppReminder
 
 
-def _bootstrap(fields, checkbox_fields=()):
-    for name, field in fields.items():
-        if name in checkbox_fields:
-            field.widget.attrs.update({"class": "form-check-input"})
-        else:
-            css = field.widget.attrs.get("class", "")
-            field.widget.attrs["class"] = (css + " form-control").strip()
+def _style(fields):
+    """Give every widget the app.css class: text inputs, selects and textareas get "input".
+    Checkboxes get none; templates wrap them in a .switch or .check label."""
+    for field in fields.values():
+        if isinstance(field.widget, forms.CheckboxInput):
+            continue
+        css = field.widget.attrs.get("class", "")
+        field.widget.attrs["class"] = (css + " input").strip()
 
 
 class AppAccountForm(forms.ModelForm):
@@ -32,9 +33,7 @@ class AppAccountForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=(
-            "is_active", "admin_chat_mode", "can_manage_links", "show_general_links",
-        ))
+        _style(self.fields)
 
     def clean_new_password(self):
         pw = self.cleaned_data.get("new_password")
@@ -62,9 +61,7 @@ class AppLinkForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("is_active", "notify_token_enabled", "keep_screen_on"))
-        # Icon is a choice field → use a Bootstrap select.
-        self.fields["icon"].widget.attrs["class"] = "form-select"
+        _style(self.fields)
         self.fields["icon"].required = False
 
 
@@ -78,8 +75,7 @@ class GeneralLinkForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields, checkbox_fields=("is_active", "keep_screen_on"))
-        self.fields["icon"].widget.attrs["class"] = "form-select"
+        _style(self.fields)
         self.fields["icon"].required = False
 
 
@@ -88,6 +84,7 @@ class AppConfigForm(forms.ModelForm):
         model = AppConfig
         fields = [
             "min_supported_version",
+            "android_package_name",
             "support_email",
             "support_phone",
             "privacy_company_name",
@@ -113,13 +110,7 @@ class AppConfigForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(
-            self.fields,
-            checkbox_fields=(
-                "announcement_active", "announcement_fullscreen", "announcement_blocking",
-                "chat_enabled",
-            ),
-        )
+        _style(self.fields)
 
 
 # Advanced FCM (AndroidConfig) options exposed on the Push form. Blank/"—" = leave unset.
@@ -205,11 +196,7 @@ class PushForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self.fields)
-        for name in ("account", "fcm_priority", "fcm_sound", "fcm_notification_priority", "fcm_visibility"):
-            self.fields[name].widget.attrs["class"] = "form-select"
-        for name in ("fcm_save_defaults", "fcm_sticky", "fcm_local_only", "fcm_restrict_package"):
-            self.fields[name].widget.attrs["class"] = "form-check-input"
+        _style(self.fields)
         # In-place hints (skip color/select/checkbox/datetime widgets — they ignore placeholders).
         placeholders = {
             "title": "e.g. Weekend offer is live",
@@ -359,9 +346,7 @@ class ReminderForm(forms.ModelForm):
                     self.initial.setdefault("interval_value", secs // m)
                     self.initial.setdefault("interval_unit", mult)
                     break
-        _bootstrap(self.fields, checkbox_fields=("is_active",))
-        for name in ("account", "delivery", "recurrence", "interval_unit"):
-            self.fields[name].widget.attrs["class"] = "form-select"
+        _style(self.fields)
 
     def clean(self):
         cleaned = super().clean()

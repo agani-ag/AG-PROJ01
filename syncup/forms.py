@@ -5,9 +5,10 @@ from django.contrib.auth.forms import AuthenticationForm
 from .models import AdminPin
 
 
-def _bootstrap(form):
+def _style(form):
+    """app.css class for every widget (these forms have no checkboxes)."""
     for field in form.fields.values():
-        field.widget.attrs.setdefault('class', 'form-control')
+        field.widget.attrs.setdefault('class', 'input')
 
 
 class AuthForm(AuthenticationForm):
@@ -15,7 +16,7 @@ class AuthForm(AuthenticationForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        _bootstrap(self)
+        _style(self)
 
     def clean_username(self):
         # Automatically convert the username to lowercase
@@ -47,7 +48,7 @@ class AdminProfileForm(forms.Form):
     def __init__(self, user, *args, **kwargs):
         self.user = user
         super().__init__(*args, **kwargs)
-        _bootstrap(self)
+        _style(self)
 
     def clean_new_password(self):
         password = self.cleaned_data.get('new_password') or ''

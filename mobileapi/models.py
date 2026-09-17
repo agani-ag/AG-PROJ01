@@ -353,6 +353,11 @@ class AppConfig(models.Model):
     """Single-row config served by GET /app/v1/config (admin-managed)."""
 
     min_supported_version = models.IntegerField(default=1)
+    # Android application id — used to build the Play Store / open-app links (e.g. the update screen).
+    android_package_name = models.CharField(
+        max_length=150, blank=True, default="com.agani.syncup",
+        help_text="The Android app's package name (application id), e.g. com.agani.syncup.",
+    )
     support_email = models.EmailField(null=True, blank=True)
     support_phone = models.CharField(max_length=30, null=True, blank=True)
     # Privacy policy page details (shown on the public /privacy/ page)

@@ -1,89 +1,85 @@
 {% extends "base.html" %}
-{% block title %}{% if is_edit %}Edit General Link{% else %}Add General Link{% endif %}{% endblock %}
+{% block title %}{% if is_edit %}Edit general link{% else %}Add general link{% endif %}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_general_links' %}">{% icon "arrow-left" "icon-sm" %}General links</a>
+        <h1>{% if is_edit %}Edit general link{% else %}Add general link{% endif %}</h1>
+        <p class="page-sub">Shown to all users with general links turned on</p>
+    </div>
+</div>
 
-        <div class="text-center mb-4">
-            <h2 class="fw-bold">{% if is_edit %}Edit General Link{% else %}Add General Link{% endif %}</h2>
-            <div class="text-muted">Shown to all users (with general links enabled)</div>
-        </div>
+<form method="POST" class="stack">
+    {% csrf_token %}
 
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-
-            <div class="mb-3">
-                <label class="form-label">Title</label>
+    <div class="card">
+        <div class="card-head">{% icon "globe" %}<h2>Link</h2></div>
+        <div class="card-body form">
+            <div class="field{% if form.title.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.title.id_for_label }}">Title</label>
                 {{ form.title }}
+                {% for e in form.title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
             </div>
-            <div class="mb-3">
-                <label class="form-label">URL</label>
+            <div class="field{% if form.url.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.url.id_for_label }}">URL</label>
                 {{ form.url }}
-                <select class="form-select mt-2"
-                        onchange="if(this.value){document.getElementById('id_url').value=this.value;}">
+                {% for e in form.url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <select class="input" aria-label="Pick from existing URLs"
+                        onchange="if(this.value){document.getElementById('{{ form.url.id_for_label }}').value=this.value;}">
                     <option value="">— or pick from existing URLs —</option>
                     {% for u in all_urls %}
                     <option value="{{ u.url }}">{{ u.label }}</option>
                     {% endfor %}
                 </select>
-                <div class="form-text">Distinct URLs already used across users. Selecting one fills the URL box.</div>
+                <span class="help">Distinct URLs already used across users. Selecting one fills the URL box.</span>
             </div>
-            <div class="row">
-                <div class="col-12 col-md-8 mb-3">
-                    <label class="form-label">Description</label>
+            <div class="form-grid">
+                <div class="field{% if form.description.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.description.id_for_label }}">Description <span class="opt">optional</span></label>
                     {{ form.description }}
+                    {% for e in form.description.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
-                <div class="col-12 col-md-4 mb-3">
-                    <label class="form-label">Icon (optional)</label>
+                <div class="field{% if form.icon.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.icon.id_for_label }}">Icon <span class="opt">optional</span></label>
                     {{ form.icon }}
+                    {% for e in form.icon.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
             </div>
-            <div class="form-check mb-2">
-                {{ form.is_active }}
-                <label class="form-check-label ms-1">Active</label>
+            {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "sliders-horizontal" %}<h2>Options</h2></div>
+        <div class="card-body" style="padding-block:4px">
+            <div class="switch-row">
+                <div class="text"><b>Active</b><span class="help">Inactive links are hidden for everyone.</span></div>
+                <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
-            <div class="form-check mb-2">
-                {{ form.keep_screen_on }}
-                <label class="form-check-label ms-1">Keep screen on (audio)</label>
-                <div class="form-text">
-                    Keeps the screen awake so this page's audio keeps playing (radio/music). Users can
-                    dim it to a dark, battery-saving “Radio mode” from the floating button.
+            <div class="switch-row">
+                <div class="text">
+                    <b>Keep screen on (audio)</b>
+                    <span class="help">Keeps the screen awake so this page's audio keeps playing (radio/music). Users can dim it to a dark, battery-saving “Radio mode” from the floating button.</span>
                 </div>
+                <label class="switch">{{ form.keep_screen_on }}<span class="track"></span><span class="sr-only">Keep screen on</span></label>
             </div>
+        </div>
+    </div>
 
-            <div class="d-flex gap-2 mt-3">
-                <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                    <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Link{% endif %}
-                </button>
-                {% if is_edit %}
-                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
-                    <i class="fas fa-trash me-2"></i>Delete
-                </button>
-                {% endif %}
-                <a href="{% url 'mobile_general_links' %}" class="btn btn-secondary btn-lg flex-fill">
-                    <i class="fas fa-arrow-left me-2"></i>Back
-                </a>
-            </div>
-        </form>
-
+    <div class="row">
+        <button type="submit" class="btn btn-primary">{% icon "check" %}{% if is_edit %}Save changes{% else %}Save link{% endif %}</button>
+        <a href="{% url 'mobile_general_links' %}" class="btn btn-ghost">Cancel</a>
         {% if is_edit %}
-        <form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        <button type="submit" form="deleteForm" class="btn text-danger ml-auto">{% icon "trash" %}Delete link…</button>
         {% endif %}
     </div>
-</div>
-{% endblock %}
+</form>
 
-{% block script %}
 {% if is_edit %}
-<script>
-function showDeleteAlert() {
-    Swal.fire({
-        title: 'Delete this general link?', text: 'It will disappear for all users.', icon: 'warning',
-        showCancelButton: true, confirmButtonColor: '#dc3545', confirmButtonText: 'Yes, delete it!',
-        cancelButtonText: 'Cancel'
-    }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
-}
-</script>
+<form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" hidden
+      data-confirm="Delete this general link?" data-confirm-text="It will disappear for all users."
+      data-confirm-button="Delete link" data-danger>{% csrf_token %}</form>
 {% endif %}
 {% endblock %}

@@ -1,41 +1,65 @@
 {% extends "base.html" %}
-{% block title %}Mobile App — Chat with {{ account.name }}{% endblock %}
+{% block title %}Chat with {{ account.name }}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block head %}
+<style>
+    .thread { max-height: 60vh; overflow-y: auto; padding: 16px 18px; background: var(--bg); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+    .msg-row { display: flex; margin-top: 10px; }
+    .msg-row:first-child { margin-top: 0; }
+    .msg-row.admin { justify-content: flex-end; }
+    .msg-row.user { justify-content: flex-start; }
+    .bubble { max-width: 75%; padding: 8px 13px; border-radius: 16px; line-height: 1.42; box-shadow: var(--shadow-sm); }
+    .bubble .body { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .msg-row.admin .bubble { background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 5px; }
+    .msg-row.user .bubble { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+    .bubble .meta { margin-top: 3px; font-size: 11.5px; text-align: right; color: var(--faint); }
+    .msg-row.admin .bubble .meta { color: var(--on-accent); opacity: .75; }
+    @media (max-width: 640px) { .bubble { max-width: 86%; } .thread { padding: 12px; } }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row align-items-center mb-3">
-    <div class="col">
-        <h2 class="mb-0">{{ account.name }}</h2>
-        <small class="text-muted">{{ account.email }}</small>
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_chats' %}">{% icon "arrow-left" "icon-sm" %}Messages</a>
+        <h1>{{ account.name }}</h1>
+        <p class="page-sub">{{ account.email }}</p>
     </div>
-    <div class="col-auto"><a href="{% url 'mobile_chats' %}" class="btn btn-secondary btn-sm">Back to chats</a></div>
 </div>
 
-<div class="card shadow-sm mb-3">
-    <div class="card-body" style="max-height:60vh; overflow-y:auto;" id="thread">
+<div class="card">
+    <div class="card-head">{% icon "messages-square" %}<h2>Conversation</h2><span class="small muted">{{ msgs|length }} message{{ msgs|length|pluralize }}</span></div>
+    <div class="thread" id="thread">
         {% for m in msgs %}
-        <div class="d-flex mb-2 {% if m.sender == 'admin' %}justify-content-end{% else %}justify-content-start{% endif %}">
-            <div class="p-2 rounded-3 {% if m.sender == 'admin' %}bg-primary text-white{% else %}bg-light border{% endif %}" style="max-width:75%;">
-                <div style="white-space:pre-wrap; word-break:break-word;">{{ m.body }}</div>
-                <div class="small {% if m.sender == 'admin' %}text-white-50{% else %}text-muted{% endif %} text-end mt-1">
-                    {{ m.sender|title }} · {{ m.created_at|date:"d M, H:i" }}
-                </div>
+        <div class="msg-row {% if m.sender == 'admin' %}admin{% else %}user{% endif %}">
+            <div class="bubble">
+                <div class="body">{{ m.body }}</div>
+                <div class="meta">{{ m.sender|title }} · {{ m.created_at|date:"d M, H:i" }}</div>
             </div>
         </div>
         {% empty %}
-        <p class="text-muted mb-0">No messages yet.</p>
+        <div class="empty">{% icon "message-square" %}<b>No messages yet</b></div>
         {% endfor %}
     </div>
 </div>
 
-<form method="post" action="{% url 'mobile_chat_detail' account.id %}">
+<form method="post" action="{% url 'mobile_chat_detail' account.id %}" class="card">
     {% csrf_token %}
-    <div class="input-group">
-        <textarea name="body" class="form-control" rows="2" placeholder="Type a reply…" required></textarea>
-        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i>Send</button>
+    <div class="card-body form">
+        <div class="field">
+            <label class="label" for="replyBody">Reply</label>
+            <textarea id="replyBody" name="body" class="input" rows="2" placeholder="Type a reply…" required></textarea>
+            <span class="help">Your reply is sent to {{ account.name }}'s devices as a notification.</span>
+        </div>
     </div>
-    <div class="form-text">Your reply is sent to {{ account.name }}'s devices as a notification.</div>
+    <div class="card-foot row">
+        <button type="submit" class="btn btn-primary">{% icon "send-horizontal" %}Send reply</button>
+    </div>
 </form>
+{% endblock %}
 
+{% block script %}
 <script>
     // Jump to the latest message on load.
     var t = document.getElementById("thread");

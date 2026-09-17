@@ -1,97 +1,64 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="en">
+{% load static %}<!DOCTYPE html>
+<html lang="en" data-icons="{% static 'icons.svg' %}">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Status-bar colour for the app WebView: matches the dark navbar (Bootstrap .bg-dark). -->
-    <meta name="theme-color" content="#212529">
-    <title>{% block title %}AG-PROJ01{% endblock %}</title>
-
-    <!-- Favicon -->
-    <link rel="icon" href="{% static 'images/recycle-icon.png' %}" type="image/png" sizes="32x32">
-
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="{% static 'css/main.css' %}">
-
-    <!-- DataTables CSS -->
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-
-    <!-- AG Grid -->
-    <link href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/styles/ag-grid.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/styles/ag-theme-alpine.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.2.1/dist/ag-grid-community.min.noStyle.js"></script>
-
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    {# Apply a saved light/dark choice before first paint (no flash). #}
+    <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {# Status-bar colour for the app WebView: matches the top bar (--surface). #}
+    {% include "mobileapi/_theme_color.html" with light="#ffffff" dark="#131a26" %}
+    <title>{% block title %}SyncUp{% endblock %} · SyncUp</title>
+    <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
     {% block head %}{% endblock %}
 </head>
-<body class="d-flex flex-column min-vh-100">
-    
-    <!-- Navbar -->
-    {% block navbar %}
-        {% include 'navbar.html' %}
-    {% endblock %}
+<body>
+{% block layout %}
+<div class="{% if user.is_superuser %}shell{% else %}main{% endif %}">
+    {% if user.is_superuser %}
+    {% include "_sidebar.html" %}
+    <div class="scrim"></div>
+    <div class="main">
+    {% endif %}
+        <header class="topbar">
+            {% if user.is_superuser %}
+            <button class="btn btn-ghost btn-icon nav-toggle" type="button" data-nav-toggle aria-label="Open menu">{% icon "menu" %}</button>
+            <div class="crumb" id="crumb"></div>
+            <div class="spacer"></div>
+            <button class="jump-btn" type="button" data-palette aria-label="Jump to page">{% icon "search" "icon-sm" %}<span>Jump to…</span><kbd>Ctrl K</kbd></button>
+            {% else %}
+            <a class="brand" href="{% url 'home' %}"><span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp</a>
+            <div class="spacer"></div>
+            {% endif %}
+            <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme">{% icon "monitor" %}</button>
+            {% if not user.is_authenticated %}
+            <a class="btn btn-sm btn-primary" href="{% url 'login' %}">{% icon "log-in" %}Sign in</a>
+            {% endif %}
+        </header>
 
-    <!-- Django Messages -->
-    <div class="container mt-3">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert 
-                    {% if message.tags == 'error' %}alert-danger{% else %}alert-{{ message.tags }}{% endif %}
-                    alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+        <main class="page {% block page_class %}{% endblock %}">
+            {% include "_messages.html" %}
+            {% block content %}{% endblock %}
+        </main>
+    {% if user.is_superuser %}
     </div>
+    {% endif %}
+</div>
 
-    <!-- Main Content -->
-    <main class="container mt-2 mb-4">
-        {% block content %}
-        {% endblock %}
-    </main>
+{% if user.is_superuser %}
+<dialog class="palette" id="palette" aria-label="Jump to page">
+    <div class="palette-input">{% icon "search" %}<input id="palette-q" placeholder="Jump to a page…" autocomplete="off"><kbd>Esc</kbd></div>
+    <ul class="palette-list"></ul>
+</dialog>
+{% endif %}
+{% endblock %}
 
-    <!-- Footer -->
-    <!-- <footer class="bg-dark text-white py-4 mt-auto">
-        <div class="container text-center">
-            <p>&copy; 2026 AG-PROJ01. All rights reserved.</p>
-            <small>Powered by Python & Bootstrap 5</small>
-        </div>
-    </footer> -->
-    
-    <!-- jQuery -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
-    <!-- DataTables JS -->
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-    
-    <!-- Custom JS -->
-    <script src="{% static 'js/main.js' %}"></script>
-
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    <!-- Auto-hide messages -->
-    <script>
-        setTimeout(() => {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                const bsAlert = new bootstrap.Alert(alert);
-                bsAlert.close();
-            });
-        }, 5000); // 5000 ms = 5 seconds
-    </script>
-
-    {% block script %}{% endblock %}
+<div class="toasts" id="toasts" aria-live="polite"></div>
+{% if messages %}
+<script type="application/json" id="django-messages">[{% for m in messages %}{"text": "{{ m|escapejs }}", "level": "{{ m.level_tag|escapejs }}"}{% if not forloop.last %}, {% endif %}{% endfor %}]</script>
+{% endif %}
+{# Loaded at the end of <body> (not render-blocking) and before page scripts, so they can use window.App directly. #}
+<script src="{% static 'js/app.js' %}"></script>
+{% block script %}{% endblock %}
 </body>
 </html>

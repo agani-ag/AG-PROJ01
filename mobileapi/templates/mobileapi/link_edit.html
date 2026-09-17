@@ -1,108 +1,99 @@
 {% extends "base.html" %}
-{% load static %}
-{% block title %}{% if is_edit %}Edit Link{% else %}Add Link{% endif %}{% endblock %}
+{% block title %}{% if is_edit %}Edit link{% else %}Add link{% endif %}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-12 col-md-10 col-lg-8">
-
-        <div class="text-center mb-4">
-            <h2 class="fw-bold">{% if is_edit %}Edit Link{% else %}Add Link{% endif %}</h2>
-            <div class="text-muted">for {{ account.name }} &lt;{{ account.email }}&gt;</div>
-            {% if is_edit %}
-            <div class="mt-2">
-                {% if link.created_by_user %}
-                <span class="badge text-bg-info"><i class="fas fa-user me-1"></i>Added by user</span>
-                {% else %}
-                <span class="badge text-bg-secondary"><i class="fas fa-user-shield me-1"></i>Added by admin</span>
-                {% endif %}
-            </div>
-            {% endif %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_account_edit' account.id %}">{% icon "arrow-left" "icon-sm" %}{{ account.name }}</a>
+        <h1>{% if is_edit %}Edit link{% else %}Add link{% endif %}</h1>
+        <p class="page-sub">For {{ account.name }} &lt;{{ account.email }}&gt;</p>
+        {% if is_edit %}
+        <div class="row" style="margin-top:8px">
+            {% if link.created_by_user %}<span class="badge badge-info">{% icon "user" %}Added by user</span>
+            {% else %}<span class="badge badge-accent">{% icon "shield-user" %}Added by admin</span>{% endif %}
         </div>
+        {% endif %}
+    </div>
+</div>
 
-        <form method="POST" class="card shadow-sm p-4">
-            {% csrf_token %}
-            <input type="hidden" name="account" value="{{ account.id }}">
+<form method="POST" class="stack">
+    {% csrf_token %}
+    <input type="hidden" name="account" value="{{ account.id }}">
 
-            <div class="mb-3">
-                <label class="form-label">Title</label>
+    <div class="card">
+        <div class="card-head">{% icon "link-2" %}<h2>Link</h2></div>
+        <div class="card-body form">
+            <div class="field{% if form.title.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.title.id_for_label }}">Title</label>
                 {{ form.title }}
+                {% for e in form.title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
             </div>
-            <div class="mb-3">
-                <label class="form-label">URL</label>
+            <div class="field{% if form.url.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.url.id_for_label }}">URL</label>
                 {{ form.url }}
-                <select class="form-select mt-2"
-                        onchange="if(this.value){document.getElementById('id_url').value=this.value;}">
+                {% for e in form.url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <select class="input" aria-label="Pick from existing URLs"
+                        onchange="if(this.value){document.getElementById('{{ form.url.id_for_label }}').value=this.value;}">
                     <option value="">— or pick from existing URLs —</option>
                     {% for u in all_urls %}
                     <option value="{{ u.url }}">{{ u.label }}</option>
                     {% endfor %}
                 </select>
-                <div class="form-text">Distinct URLs already used across users. Selecting one fills the URL box.</div>
+                <span class="help">Distinct URLs already used across users. Selecting one fills the URL box.</span>
             </div>
-            <div class="row">
-                <div class="col-12 col-md-8 mb-3">
-                    <label class="form-label">Description</label>
+            <div class="form-grid">
+                <div class="field{% if form.description.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.description.id_for_label }}">Description <span class="opt">optional</span></label>
                     {{ form.description }}
+                    {% for e in form.description.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
-                <div class="col-12 col-md-4 mb-3">
-                    <label class="form-label">Icon (optional)</label>
+                <div class="field{% if form.icon.errors %} invalid{% endif %}">
+                    <label class="label" for="{{ form.icon.id_for_label }}">Icon <span class="opt">optional</span></label>
                     {{ form.icon }}
+                    {% for e in form.icon.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
             </div>
-            <div class="form-check mb-2">
-                {{ form.is_active }}
-                <label class="form-check-label ms-1">Active</label>
-            </div>
-            <div class="form-check mb-2">
-                {{ form.notify_token_enabled }}
-                <label class="form-check-label ms-1">Inject SyncUp notification token</label>
-                <div class="form-text">
-                    Lets this site push notifications to this user. The page reads
-                    <code>window.SyncUp.token</code> and its backend POSTs to
-                    <code>/app/v1/partner/notify</code>. Uncheck to revoke.
-                </div>
-            </div>
-            <div class="form-check mb-2">
-                {{ form.keep_screen_on }}
-                <label class="form-check-label ms-1">Keep screen on (audio)</label>
-                <div class="form-text">
-                    Keeps the screen awake on this page so its audio keeps playing (radio/music).
-                    Users can dim it to a dark, battery-saving “Radio mode” from the floating button.
-                </div>
-            </div>
+            {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+    </div>
 
-            <div class="d-flex gap-2 mt-3">
-                <button type="submit" class="btn btn-primary btn-lg flex-fill">
-                    <i class="fas fa-check me-2"></i>{% if is_edit %}Save Changes{% else %}Save Link{% endif %}
-                </button>
-                {% if is_edit %}
-                <button type="button" class="btn btn-danger btn-lg flex-fill" onclick="showDeleteAlert()">
-                    <i class="fas fa-trash me-2"></i>Delete
-                </button>
-                {% endif %}
-                <a href="{% url 'mobile_account_edit' account.id %}" class="btn btn-secondary btn-lg flex-fill">
-                    <i class="fas fa-arrow-left me-2"></i>Back
-                </a>
+    <div class="card">
+        <div class="card-head">{% icon "sliders-horizontal" %}<h2>Options</h2></div>
+        <div class="card-body" style="padding-block:4px">
+            <div class="switch-row">
+                <div class="text"><b>Active</b><span class="help">Inactive links are hidden in the app.</span></div>
+                <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
-        </form>
+            <div class="switch-row">
+                <div class="text">
+                    <b>Inject SyncUp notification token</b>
+                    <span class="help">Lets this site push notifications to this user. The page reads <code>window.SyncUp.token</code> and its backend POSTs to <code>/app/v1/partner/notify</code>. Turn off to revoke.</span>
+                </div>
+                <label class="switch">{{ form.notify_token_enabled }}<span class="track"></span><span class="sr-only">Inject SyncUp notification token</span></label>
+            </div>
+            <div class="switch-row">
+                <div class="text">
+                    <b>Keep screen on (audio)</b>
+                    <span class="help">Keeps the screen awake on this page so its audio keeps playing (radio/music). Users can dim it to a dark, battery-saving “Radio mode” from the floating button.</span>
+                </div>
+                <label class="switch">{{ form.keep_screen_on }}<span class="track"></span><span class="sr-only">Keep screen on</span></label>
+            </div>
+        </div>
+    </div>
 
+    <div class="row">
+        <button type="submit" class="btn btn-primary">{% icon "check" %}{% if is_edit %}Save changes{% else %}Save link{% endif %}</button>
+        <a href="{% url 'mobile_account_edit' account.id %}" class="btn btn-ghost">Cancel</a>
         {% if is_edit %}
-        <form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" class="d-none">{% csrf_token %}</form>
+        <button type="submit" form="deleteForm" class="btn text-danger ml-auto">{% icon "trash" %}Delete link…</button>
         {% endif %}
     </div>
-</div>
-{% endblock %}
+</form>
 
-{% block script %}
 {% if is_edit %}
-<script>
-function showDeleteAlert() {
-    Swal.fire({
-        title: 'Delete this link?', icon: 'warning', showCancelButton: true,
-        confirmButtonColor: '#dc3545', confirmButtonText: 'Yes, delete it!', cancelButtonText: 'Cancel'
-    }).then((result) => { if (result.isConfirmed) document.getElementById('deleteForm').submit(); });
-}
-</script>
+<form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" hidden
+      data-confirm="Delete this link?" data-confirm-text="“{{ link.title }}” is removed from {{ account.name }}'s app. This can't be undone."
+      data-confirm-button="Delete link" data-danger>{% csrf_token %}</form>
 {% endif %}
 {% endblock %}

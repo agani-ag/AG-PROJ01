@@ -74,7 +74,10 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'syncup.context_processors.admin_shell',
             ],
+            # {% icon %} and {% nav_active %} are available in every template without {% load %}.
+            'builtins': ['syncup.templatetags.ui'],
         },
     },
 ]

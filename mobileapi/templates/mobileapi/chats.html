@@ -1,162 +1,183 @@
 {% extends "base.html" %}
-{% block title %}Mobile App — Chats{% endblock %}
+{% block title %}Messages{% endblock %}
+{% block page_class %}page-chat{% endblock %}
 
-{% block content %}
+{% block head %}
 <style>
-    :root { --chat-primary: #2563eb; --chat-primary-2: #1d4ed8; }
-    /* Full-screen chat: reclaim the page chrome so the interface fills the whole viewport. */
-    main.container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
-    .container.mt-3 { margin-top: 0 !important; }   /* the Django-messages wrapper above main */
-    footer { display: none !important; }
-    .chat-inbox { height: calc(100vh - 56px); min-height: 0; overflow: hidden; border: 0; border-radius: 0; margin: 0; }
-    .chat-inbox .row { height: 100%; }
-    .list-head { background: var(--bs-card-bg,#fff); }
-
-    /* Scrollbars */
-    .conv-list::-webkit-scrollbar, .thread-body::-webkit-scrollbar { width: 8px; }
-    .conv-list::-webkit-scrollbar-thumb, .thread-body::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 8px; }
+    /* Full-height inbox: the page fills the viewport under the top bar; list and thread scroll on their own. */
+    .page.page-chat { max-width: 1400px; height: calc(100vh - var(--top-h)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px)); min-height: 460px; padding-bottom: 24px; }
+    .chat-inbox { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); overflow: hidden; }
 
     /* ---- Conversation list ---- */
-    .conv-search { background: var(--bs-card-bg,#fff); }
-    .conv-list { overflow-y: auto; flex: 1; }
-    .conv-item { cursor: pointer; border: 0; border-left: 3px solid transparent; background: transparent; transition: background .12s; }
-    .conv-item:hover { background: var(--bs-tertiary-bg,#f1f3f5); }
-    .conv-item.active { background: var(--bs-primary-bg-subtle,#e7f1ff); border-left-color: var(--chat-primary); }
-    .conv-item.unread .conv-name, .conv-item.unread .conv-preview { font-weight: 700; color: var(--bs-body-color); }
-    .conv-name { font-weight: 600; }
-    .conv-preview { font-size: .82rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .conv-time { font-size: .72rem; color: var(--bs-secondary-color); white-space: nowrap; }
+    .chat-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+    .chat-search { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .chat-search .input { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+    .conv-list { flex: 1; min-height: 0; overflow-y: auto; }
+    .conv-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px 10px 9px; border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+    .conv-item:hover { background: var(--surface-2); }
+    .conv-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
+    .conv-main { flex: 1; min-width: 0; }
+    .conv-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .conv-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-time { flex: 0 0 auto; font-size: 11.5px; color: var(--faint); }
+    .conv-preview { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-item.unread .conv-name, .conv-item.unread .conv-preview { font-weight: 700; color: var(--text); }
+    .conv-item.unread .conv-time { color: var(--accent); font-weight: 600; }
+    .conv-unread { flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center; background: var(--danger); color: var(--surface); font-size: 11px; font-weight: 700; }
 
     /* ---- Avatars + presence ---- */
-    .avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        font-weight: 700; color: #fff; flex: 0 0 44px; letter-spacing: .5px; }
-    .avatar-wrap { position: relative; flex: 0 0 44px; }
-    .presence-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%;
-        border: 2.5px solid var(--bs-card-bg,#fff); background: #9ca3af; }
-    .presence-dot.online { background: #22c55e; box-shadow: 0 0 0 2px rgba(34,197,94,.18); }
+    .chat-inbox .avatar-wrap { position: relative; flex: 0 0 auto; }
+    .chat-inbox .avatar { width: 42px; height: 42px; font-size: 16px; }
+    .presence-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); background: var(--faint); }
+    .presence-dot.online { background: var(--success); }
 
     /* ---- Thread ---- */
-    .thread-pane { height: 100%; position: relative; }
-    .thread-header { background: var(--bs-card-bg,#fff); }
-    .thread-presence { font-size: .78rem; color: var(--bs-secondary-color); display: flex; align-items: center; gap: 5px; }
-    .thread-presence.online { color: #16a34a; font-weight: 600; }
-    .thread-presence .pdot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; display: inline-block; }
-    .thread-presence.online .pdot { background: #22c55e; }
+    .chat-thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .thread-head { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    .thread-back { display: none; margin-left: -8px; }
+    .th-main { flex: 1; min-width: 0; line-height: 1.3; }
+    .th-name { font-weight: 600; }
+    .thread-presence { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+    .thread-presence .pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
+    .thread-presence.online { color: var(--success); font-weight: 600; }
+    .thread-presence.online .pdot { background: var(--success); }
+    .th-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; max-width: 45%; }
 
-    .thread-body { overflow-y: auto; flex: 1; display: flex; flex-direction: column;
-        background: linear-gradient(180deg, var(--bs-tertiary-bg,#f6f8fb), var(--bs-body-bg,#fff)); }
-    #threadMessages { margin-top: auto; padding: 18px 18px 8px; }  /* bottom-anchored */
+    .thread-scroll { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .thread-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
+    .thread-body > .empty { flex: 1; justify-content: center; }
+    #threadMessages { margin-top: auto; padding: 16px 18px 8px; }  /* bottom-anchored */
+    #typingRow { margin-top: 0; padding: 0 18px 12px; }
 
-    .date-sep { text-align: center; margin: 14px 0 10px; }
-    .date-sep span { background: rgba(0,0,0,.06); color: var(--bs-secondary-color); font-size: .72rem;
-        padding: 3px 12px; border-radius: 999px; }
+    .date-sep { text-align: center; margin: 14px 0 8px; }
+    .date-sep span { display: inline-block; padding: 2px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
 
     .msg-row { display: flex; margin-top: 12px; }
     .msg-row.grouped { margin-top: 3px; }
     .msg-row.admin { justify-content: flex-end; }
     .msg-row.user { justify-content: flex-start; }
-    .msg-col { display: flex; flex-direction: column; max-width: 68%; }
+    .msg-col { display: flex; flex-direction: column; max-width: min(68%, 560px); }
     .msg-row.admin .msg-col { align-items: flex-end; }
     .msg-row.user .msg-col { align-items: flex-start; }
-    .bubble { padding: 8px 13px; border-radius: 16px; line-height: 1.4; white-space: pre-wrap; word-break: break-word;
-        font-size: .93rem; box-shadow: 0 1px 1px rgba(0,0,0,.05); }
-    .msg-row.admin .bubble { background: var(--chat-primary); color: #fff; border-bottom-right-radius: 5px; }
-    .msg-row.user .bubble { background: #fff; color: var(--bs-body-color); border: 1px solid var(--bs-border-color);
-        border-bottom-left-radius: 5px; }
+    .bubble { padding: 8px 13px; border-radius: 16px; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--shadow-sm); }
+    .msg-row.admin .bubble { background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 5px; }
+    .msg-row.user .bubble { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
     .msg-row.grouped.admin .bubble { border-top-right-radius: 7px; }
     .msg-row.grouped.user .bubble { border-top-left-radius: 7px; }
-    .msg-meta { font-size: .68rem; color: var(--bs-secondary-color); margin-top: 2px; display: flex; align-items: center; gap: 4px; }
-    .msg-meta .tick { color: #9ca3af; }
-    .msg-meta .tick.read { color: var(--chat-primary); }
-
-    .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-        color: var(--bs-secondary-color); text-align: center; gap: 10px; }
+    .msg-meta { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; color: var(--faint); }
+    .msg-meta .tick { display: inline-flex; color: var(--faint); }
+    .msg-meta .tick .icon { width: 14px; height: 14px; }
+    .msg-meta .tick.read { color: var(--accent); }
 
     /* Typing indicator (animated dots) */
-    #typingRow { padding: 0 18px 10px; }
-    .typing-bubble { display: inline-flex !important; gap: 5px; align-items: center; padding: 11px 14px !important; }
-    .typing-bubble span { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; display: inline-block;
-        animation: typingBlink 1.2s infinite ease-in-out; }
+    .typing-bubble { display: inline-flex; align-items: center; gap: 5px; padding: 11px 14px; }
+    .typing-bubble span { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); animation: typing-blink 1.2s infinite ease-in-out; }
     .typing-bubble span:nth-child(2) { animation-delay: .2s; }
     .typing-bubble span:nth-child(3) { animation-delay: .4s; }
-    @keyframes typingBlink { 0%,60%,100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+    @keyframes typing-blink { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
 
     /* Jump-to-latest */
-    .jump-latest { position: absolute; right: 18px; bottom: 92px; z-index: 5; border: 0; border-radius: 999px;
-        background: var(--chat-primary); color: #fff; padding: 7px 14px; box-shadow: 0 4px 12px rgba(0,0,0,.28);
-        display: none; align-items: center; gap: 6px; font-size: .8rem; cursor: pointer; }
-    .jump-latest:hover { background: var(--chat-primary-2); }
+    .jump-latest { position: absolute; right: 16px; bottom: 14px; z-index: 5; display: none; align-items: center; justify-content: center; gap: 6px; min-width: 34px; height: 34px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); font: 600 13px/1 var(--font); cursor: pointer; }
+    .jump-latest:hover { background: var(--accent-hover); }
     .jump-latest.show { display: inline-flex; }
+    .jump-latest .icon { width: 16px; height: 16px; }
 
     /* ---- Composer ---- */
-    .composer { background: var(--bs-card-bg,#fff); }
-    .composer textarea { resize: none; max-height: 120px; border-radius: 22px; padding: 10px 16px; }
-    .composer .btn-send { width: 44px; height: 44px; border-radius: 50%; flex: 0 0 44px; display: flex;
-        align-items: center; justify-content: center; background: var(--chat-primary); border: 0; }
-    .composer .btn-send:hover { background: var(--chat-primary-2); }
+    .composer { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+    .composer form { display: flex; align-items: flex-end; gap: 8px; }
+    .composer textarea.input { flex: 1; min-height: 42px; max-height: 120px; resize: none; border-radius: 21px; padding: 10px 16px; }
+    .composer .btn-send { width: 42px; height: 42px; padding: 0; border-radius: 50%; flex: 0 0 auto; }
+    .composer .help { padding: 0 8px; }
+
+    /* ---- Phones: list first, the thread opens full-screen with a back button ---- */
+    @media (max-width: 760px) {
+        .chat-inbox { grid-template-columns: minmax(0, 1fr); }
+        .chat-list { border-right: 0; }
+        .chat-inbox .chat-thread, .chat-inbox.has-thread .chat-list { display: none; }
+        .chat-inbox.has-thread .chat-thread { display: flex; }
+        .thread-back { display: inline-flex; }
+        .thread-head { padding: 8px 12px; }
+        .th-email { display: none; }
+        .msg-col { max-width: 84%; }
+        #threadMessages { padding: 12px 12px 8px; }
+        #typingRow { padding: 0 12px 12px; }
+        .composer .kbd-hint { display: none; }
+        .page.page-chat.thread-open { padding: 0; gap: 0; }
+        .page-chat.thread-open > .page-head { display: none; }
+        .page-chat.thread-open .chat-inbox { border: 0; border-radius: 0; box-shadow: none; }
+        .page-chat.thread-open .composer { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    }
+    @media (max-width: 640px) { .page.page-chat { padding-bottom: 16px; } }
 </style>
+{% endblock %}
 
-<div class="card shadow-sm chat-inbox">
-    <div class="row g-0">
-        <!-- Conversation list -->
-        <div class="col-12 col-md-4 col-lg-3 border-end d-flex flex-column">
-            <div class="list-head p-2 px-3 border-bottom d-flex align-items-center">
-                <i class="fas fa-comments text-primary me-2"></i>
-                <span class="fw-bold">Chats</span>
-                <span id="listStatus" class="text-muted small ms-2"></span>
-                <a href="{% url 'mobile_dashboard' %}" class="btn btn-sm btn-light ms-auto" title="Back to dashboard">
-                    <i class="fas fa-arrow-left"></i>
-                </a>
-            </div>
-            <div class="conv-search p-2 border-bottom">
-                <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-transparent border-end-0"><i class="fas fa-search text-muted"></i></span>
-                    <input id="chatSearch" class="form-control border-start-0" placeholder="Search name or email…" autocomplete="off">
-                </div>
-            </div>
-            <div id="convList" class="conv-list"></div>
-        </div>
-
-        <!-- Thread -->
-        <div class="col d-flex flex-column thread-pane">
-            <div id="threadHeader" class="border-bottom px-3 py-2 d-none">
-                <div class="d-flex align-items-center">
-                    <div class="avatar-wrap me-2">
-                        <div id="thAvatar" class="avatar"></div>
-                        <span id="thDot" class="presence-dot"></span>
-                    </div>
-                    <div class="flex-grow-1 min-width-0">
-                        <div class="fw-semibold lh-sm" id="thName"></div>
-                        <div id="thPresence" class="thread-presence"><span class="pdot"></span><span></span></div>
-                    </div>
-                    <div class="text-end">
-                        <div class="small text-muted" id="thEmail"></div>
-                        <span id="thInactive" class="badge bg-secondary d-none">Inactive</span>
-                    </div>
-                </div>
-            </div>
-            <div id="threadBody" class="thread-body">
-                <div class="empty-state">
-                    <i class="fas fa-comments fa-2x opacity-25"></i>
-                    <div>Select a conversation to start</div>
-                </div>
-            </div>
-            <button id="jumpLatest" class="jump-latest" type="button">
-                <i class="fas fa-arrow-down"></i><span id="jumpCount"></span>
-            </button>
-            <div id="composer" class="composer border-top p-2 d-none">
-                <form id="replyForm" class="d-flex gap-2 align-items-end">
-                    <textarea id="replyInput" class="form-control" rows="1" placeholder="Type a reply…  (Enter to send, Shift+Enter for a new line)"></textarea>
-                    <button type="submit" class="btn btn-send text-white"><i class="fas fa-paper-plane"></i></button>
-                </form>
-                <div class="form-text ms-2 mt-1">Delivered to the user's devices as a notification (skipped while they're active here).</div>
-            </div>
-        </div>
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_dashboard' %}">{% icon "arrow-left" "icon-sm" %}Dashboard</a>
+        <h1>Messages</h1>
+        <p class="page-sub" id="listStatus">Chats with app users</p>
     </div>
 </div>
 
+<div class="card chat-inbox" id="chatInbox">
+    <!-- Conversation list -->
+    <section class="chat-list" aria-label="Conversations">
+        <div class="chat-search">
+            <label class="input-icon">
+                <span class="sr-only">Search conversations</span>
+                {% icon "search" %}
+                <input id="chatSearch" class="input" type="search" placeholder="Search name or email" autocomplete="off">
+            </label>
+        </div>
+        <div id="convList" class="conv-list">
+            <div class="empty"><span class="spinner"></span></div>
+        </div>
+    </section>
+
+    <!-- Thread -->
+    <section class="chat-thread" aria-label="Conversation">
+        <div id="threadHeader" class="thread-head" hidden>
+            <button id="threadBack" class="btn btn-ghost btn-icon thread-back" type="button" aria-label="Back to conversations">{% icon "arrow-left" %}</button>
+            <div class="avatar-wrap">
+                <div id="thAvatar" class="avatar"></div>
+                <span id="thDot" class="presence-dot"></span>
+            </div>
+            <div class="th-main">
+                <div class="th-name truncate" id="thName"></div>
+                <div id="thPresence" class="thread-presence"><span class="pdot"></span><span></span></div>
+            </div>
+            <div class="th-side">
+                <span class="small muted truncate th-email" id="thEmail"></span>
+                <span id="thInactive" class="badge badge-danger" hidden><span class="dot"></span>Inactive</span>
+            </div>
+        </div>
+        <div class="thread-scroll">
+            <div id="threadBody" class="thread-body">
+                <div class="empty">
+                    {% icon "messages-square" %}
+                    <b>Select a conversation to start</b>
+                    <span class="small">New messages from app users appear on the left.</span>
+                </div>
+            </div>
+            <button id="jumpLatest" class="jump-latest" type="button" aria-label="Jump to latest message">
+                {% icon "arrow-down" %}<span id="jumpCount"></span>
+            </button>
+        </div>
+        <div id="composer" class="composer" hidden>
+            <form id="replyForm" data-no-busy>
+                <textarea id="replyInput" class="input" rows="1" placeholder="Type a reply…" aria-label="Reply"></textarea>
+                <button type="submit" class="btn btn-primary btn-send" aria-label="Send reply" title="Send (Enter)">{% icon "send-horizontal" %}</button>
+            </form>
+            <p class="help"><span class="kbd-hint">Enter to send, Shift+Enter for a new line. </span>Delivered to the user's devices as a notification (skipped while they're active here).</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block script %}
 <script>
-(function () {
+document.addEventListener("DOMContentLoaded", function () {
     var CSRF = "{{ csrf_token }}";
     var URL_LIST = "{% url 'mobile_chat_list_json' %}";
     var URL_THREAD = "{% url 'mobile_chat_thread_json' 0 %}";
@@ -164,6 +185,8 @@
     var URL_TYPING = "{% url 'mobile_chat_typing' 0 %}";
     var lastTypingPing = 0;
 
+    var page = document.querySelector("main.page");
+    var inbox = document.getElementById("chatInbox");
     var convList = document.getElementById("convList");
     var threadBody = document.getElementById("threadBody");
     var threadHeader = document.getElementById("threadHeader");
@@ -171,10 +194,12 @@
     var replyInput = document.getElementById("replyInput");
     var search = document.getElementById("chatSearch");
     var listStatus = document.getElementById("listStatus");
+    var EMPTY_THREAD = threadBody.innerHTML;
 
     var current = null, lastId = 0, seen = {}, conversations = [], readUptoId = 0;
     var lastDay = null, lastSender = null;
     var jump = document.getElementById("jumpLatest"), jumpCount = document.getElementById("jumpCount"), newCount = 0;
+    // Per-user avatar colours (white initials read on all of them, in both themes).
     var COLORS = ["#2563eb", "#0d9488", "#7c3aed", "#db2777", "#ea580c", "#059669", "#4f46e5", "#c026d3"];
 
     function threadUrl(id) { return URL_THREAD.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
@@ -221,30 +246,30 @@
             return !q || (c.name || "").toLowerCase().indexOf(q) >= 0 || (c.email || "").toLowerCase().indexOf(q) >= 0;
         });
         if (!items.length) {
-            convList.innerHTML = '<div class="text-muted small text-center p-4">' + (q ? "No matches" : "No chats yet") + "</div>";
+            convList.innerHTML = '<div class="empty">' + App.icon(q ? "search" : "messages-square") + "<b>" + (q ? "No matches" : "No chats yet") + "</b></div>";
             return;
         }
         convList.innerHTML = items.map(function (c) {
             var preview = (c.last_sender === "admin" ? "You: " : "") + (c.last_body || "");
             var presTitle = c.online ? "Active now" : (c.last_seen_ms ? "Last seen " + relTime(c.last_seen_ms) : "Offline");
             return '' +
-              '<button type="button" class="conv-item w-100 text-start p-2 d-flex align-items-center gap-2' +
-                  (c.id === current ? " active" : "") + (c.unread ? " unread" : "") +
+              '<button type="button" class="conv-item' + (c.id === current ? " active" : "") + (c.unread ? " unread" : "") +
                   '" data-id="' + c.id + '" data-name="' + esc(c.name) + '" data-email="' + esc(c.email) +
-                  '" data-online="' + (c.online ? 1 : 0) + '" data-lastseen="' + (c.last_seen_ms || 0) + '">' +
-                '<div class="avatar-wrap">' +
-                  '<div class="avatar" style="background:' + colorFor(c.id) + '">' + esc(initials(c.name)) + '</div>' +
+                  '" data-online="' + (c.online ? 1 : 0) + '" data-lastseen="' + (c.last_seen_ms || 0) + '"' +
+                  (c.id === current ? ' aria-current="true"' : "") + '>' +
+                '<span class="avatar-wrap">' +
+                  '<span class="avatar" style="background:' + colorFor(c.id) + '">' + esc(initials(c.name)) + '</span>' +
                   '<span class="presence-dot' + (c.online ? " online" : "") + '" title="' + presTitle + '"></span>' +
-                '</div>' +
-                '<div class="flex-grow-1" style="min-width:0">' +
-                  '<div class="d-flex justify-content-between align-items-center">' +
-                    '<span class="conv-name text-truncate">' + esc(c.name) + '</span>' +
-                    '<span class="conv-time ms-2">' + listTime(c.last_at_ms) + '</span></div>' +
-                  '<div class="d-flex justify-content-between align-items-center">' +
+                '</span>' +
+                '<span class="conv-main">' +
+                  '<span class="conv-line">' +
+                    '<span class="conv-name">' + esc(c.name) + '</span>' +
+                    '<span class="conv-time">' + listTime(c.last_at_ms) + '</span></span>' +
+                  '<span class="conv-line">' +
                     '<span class="conv-preview">' + esc(preview) + '</span>' +
-                    (c.unread ? '<span class="badge rounded-pill bg-danger ms-2">' + c.unread + '</span>' : '') +
-                  '</div>' +
-                '</div>' +
+                    (c.unread ? '<span class="conv-unread" title="' + c.unread + ' unread">' + c.unread + '</span>' : '') +
+                  '</span>' +
+                '</span>' +
               '</button>';
         }).join("");
         Array.prototype.forEach.call(convList.querySelectorAll(".conv-item"), function (el) {
@@ -261,7 +286,7 @@
             .then(function (d) {
                 conversations = d.conversations || [];
                 var unread = conversations.reduce(function (n, c) { return n + (c.unread || 0); }, 0);
-                listStatus.textContent = conversations.length + (unread ? " · " + unread + " unread" : "");
+                listStatus.textContent = conversations.length + " conversation" + (conversations.length === 1 ? "" : "s") + (unread ? " · " + unread + " unread" : "");
                 renderList();
             }).catch(function () {});
     }
@@ -276,9 +301,9 @@
         var pres = document.getElementById("thPresence");
         pres.className = "thread-presence" + (a.online ? " online" : "");
         pres.querySelector("span:last-child").textContent = a.online ? "Active now" : (a.last_seen_ms ? "Last seen " + relTime(a.last_seen_ms) : "Offline");
-        document.getElementById("thInactive").classList.toggle("d-none", a.active !== false);
-        threadHeader.classList.remove("d-none");
-        composer.classList.remove("d-none");
+        document.getElementById("thInactive").hidden = a.active !== false;
+        threadHeader.hidden = false;
+        composer.hidden = false;
     }
 
     function tm() { return document.getElementById("threadMessages"); }
@@ -298,8 +323,8 @@
         row.className = "msg-row " + (m.sender === "admin" ? "admin" : "user") + (grouped ? " grouped" : "");
         row.dataset.id = m.id;
         var meta = '<span class="time">' + timeOnly(m.created_at_ms) + "</span>";
-        if (m.sender === "admin") meta += '<span class="tick"><i class="fas fa-check"></i></span>';
-        row.innerHTML = '<div class="msg-col"><div class="bubble">' + esc(m.body) + "</div><div class=\"msg-meta\">" + meta + "</div></div>";
+        if (m.sender === "admin") meta += '<span class="tick">' + App.icon("check") + "</span>";
+        row.innerHTML = '<div class="msg-col"><div class="bubble">' + esc(m.body) + '</div><div class="msg-meta">' + meta + "</div></div>";
         box.appendChild(row);
         lastSender = m.sender;
     }
@@ -314,30 +339,51 @@
                 tick.style.display = "";
                 var read = parseInt(els[i].dataset.id, 10) <= readUptoId;
                 tick.className = read ? "tick read" : "tick";
-                tick.innerHTML = read ? '<i class="fas fa-check-double"></i>' : '<i class="fas fa-check"></i>';
+                tick.title = read ? "Read" : "Delivered";
+                tick.innerHTML = App.icon(read ? "check-check" : "check");
             } else {
                 tick.style.display = "none";
             }
         }
     }
 
+    function resetThreadState() {
+        lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+    }
+
     function openConversation(id, name, email, online, lastSeenMs) {
-        current = id; lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+        current = id; resetThreadState();
         threadBody.innerHTML = '<div id="threadMessages"></div>' +
-            '<div id="typingRow" class="msg-row user d-none"><div class="msg-col">' +
-            '<div class="bubble typing-bubble"><span></span><span></span><span></span></div></div></div>';
+            '<div id="typingRow" class="msg-row user" hidden><div class="msg-col">' +
+            '<div class="bubble typing-bubble" aria-label="Typing"><span></span><span></span><span></span></div></div></div>';
         setHeader({ id: id, name: name, email: email, online: online, last_seen_ms: lastSeenMs, active: true });
+        inbox.classList.add("has-thread");
+        if (page) page.classList.add("thread-open");
         updateJump();
         renderList();
         loadThread();
     }
 
+    // Phones: back from the thread to the list (stops polling that thread).
+    function closeConversation() {
+        current = null; resetThreadState();
+        threadBody.innerHTML = EMPTY_THREAD;
+        threadHeader.hidden = true;
+        composer.hidden = true;
+        inbox.classList.remove("has-thread");
+        if (page) page.classList.remove("thread-open");
+        updateJump();
+        renderList();
+        loadList();
+    }
+
     function loadThread() {
         if (!current) return;
-        var stick = atBottom(), firstLoad = lastId === 0;
-        fetch(threadUrl(current) + "?since=" + lastId, { credentials: "same-origin" })
+        var id = current, stick = atBottom(), firstLoad = lastId === 0;
+        fetch(threadUrl(id) + "?since=" + lastId, { credentials: "same-origin" })
             .then(function (r) { return r.json(); })
             .then(function (d) {
+                if (id !== current) return;  // switched conversation while this was loading
                 if (d.account) setHeader(d.account);
                 // Header flips to "typing…" while the user is typing (overrides Active/Last seen).
                 if (d.user_typing) {
@@ -350,7 +396,7 @@
                 readUptoId = d.read_upto_id || readUptoId;
                 updateReadReceipts();
                 var tr = document.getElementById("typingRow");
-                if (tr) tr.classList.toggle("d-none", !d.user_typing);
+                if (tr) tr.hidden = !d.user_typing;
                 if (firstLoad || stick) { scrollBottom(); }
                 else if (added) { newCount += added; }
                 updateJump();
@@ -361,21 +407,23 @@
     function sendReply() {
         var body = replyInput.value.trim();
         if (!body || !current) return;
-        replyInput.value = ""; replyInput.style.height = "auto";
-        fetch(replyUrl(current), {
-            method: "POST", credentials: "same-origin",
-            headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF },
-            body: JSON.stringify({ body: body })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { if (d && d.message) { renderMessage(d.message); updateReadReceipts(); scrollBottom(); loadList(); } })
-            .catch(function () {});
+        var id = current;
+        replyInput.value = ""; replyInput.style.height = "";
+        App.fetchJSON(replyUrl(id), { method: "POST", headers: { "X-CSRFToken": CSRF }, body: { body: body } })
+            .then(function (d) {
+                if (d && d.message && id === current) { renderMessage(d.message); updateReadReceipts(); scrollBottom(); }
+                loadList();
+            })
+            .catch(function (err) {
+                if (id === current && !replyInput.value) replyInput.value = body;  // keep the draft
+                App.toast("Couldn't send the reply: " + err.message, "error");
+            });
     }
 
     document.getElementById("replyForm").addEventListener("submit", function (e) { e.preventDefault(); sendReply(); });
     replyInput.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } });
     replyInput.addEventListener("input", function () {
-        replyInput.style.height = "auto"; replyInput.style.height = Math.min(replyInput.scrollHeight, 120) + "px";
+        replyInput.style.height = "auto"; replyInput.style.height = Math.min(replyInput.scrollHeight + 2, 120) + "px";
         var now = Date.now();
         if (current && replyInput.value.trim() && now - lastTypingPing > 3000) {
             lastTypingPing = now;
@@ -385,10 +433,11 @@
     search.addEventListener("input", renderList);
     threadBody.addEventListener("scroll", updateJump);
     jump.addEventListener("click", function () { scrollBottom(); updateJump(); });
+    document.getElementById("threadBack").addEventListener("click", closeConversation);
 
     loadList();
     setInterval(loadList, 10000);
     setInterval(function () { loadThread(); }, 4000);
-})();
+});
 </script>
 {% endblock %}

@@ -8,10 +8,10 @@
     <title>Something went wrong</title>
     <style>
         :root { color-scheme: light dark; --bg: #f6f8fb; --card: #ffffff; --text: #0f172a;
-                --muted: #5b6472; --accent: #2563eb; --border: #e2e8f0; }
+                --muted: #5b6472; --accent: #2563eb; --on-accent: #ffffff; --border: #e2e8f0; }
         @media (prefers-color-scheme: dark) {
             :root { --bg: #0b0f17; --card: #131a26; --text: #e6eaf2; --muted: #9aa4b2;
-                    --accent: #60a5fa; --border: #223049; }
+                    --accent: #60a5fa; --on-accent: #0b0f17; --border: #223049; }
         }
         * { box-sizing: border-box; }
         html, body { margin: 0; height: 100%; }
@@ -24,7 +24,7 @@
         h1 { font-size: 20px; margin: 16px 0 8px; }
         p { margin: 0 0 24px; color: var(--muted); line-height: 1.5; }
         a { display: inline-block; padding: 10px 22px; border-radius: 10px; background: var(--accent);
-            color: #fff; text-decoration: none; font-weight: 600; }
+            color: var(--on-accent); text-decoration: none; font-weight: 600; }
     </style>
 </head>
 <body>

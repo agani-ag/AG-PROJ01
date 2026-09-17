@@ -1,43 +1,35 @@
 {% comment %}
 Client-side unsigned Cloudinary image widget for notification/reminder images.
-Fills the #id_image_url field. Requires `cloud_cfg` in context. No API secret is used
-(upload = unsigned preset; pick-existing = public tag-list JSON). Follows the pattern in
-services/cloudinary.html.
+Fills the #id_image_url field (and fires an "input" event on it so page previews can follow).
+Requires `cloud_cfg` in context. No API secret is used (upload = unsigned preset; pick-existing =
+public tag-list JSON). Follows the pattern in services/cloudinary.html.
 {% endcomment %}
 {% if cloud_cfg.enabled %}
 {{ cloud_cfg|json_script:"cld-cfg" }}
-<div class="mb-3">
-    <div class="d-flex gap-2 flex-wrap mb-2">
-        <label class="btn btn-outline-primary btn-sm mb-0">
-            <i class="fas fa-cloud-arrow-up me-1"></i> Upload image
-            <input type="file" id="cldFile" accept="image/*" class="d-none">
-        </label>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="cldPickBtn">
-            <i class="fas fa-images me-1"></i> Pick existing
-        </button>
-        <button type="button" class="btn btn-outline-danger btn-sm" id="cldClearBtn">Clear</button>
+<div class="stack gap-sm">
+    <div class="row gap-sm">
+        <button type="button" class="btn btn-sm" id="cldUploadBtn">{% icon "cloud-upload" %}Upload image</button>
+        <input type="file" id="cldFile" accept="image/*" hidden>
+        <button type="button" class="btn btn-sm" id="cldPickBtn">{% icon "images" %}Pick existing</button>
+        <button type="button" class="btn btn-sm btn-ghost" id="cldClearBtn">{% icon "x" %}Clear</button>
     </div>
-    <div id="cldStatus" class="small text-muted"></div>
-    <div id="cldPreviewWrap" class="mt-2" style="display:none;">
-        <img id="cldPreview" src="" alt="preview"
-             style="max-height:120px;border-radius:8px;border:1px solid #dee2e6;">
+    <div id="cldStatus" class="small muted" role="status"></div>
+    <div id="cldPreviewWrap" hidden>
+        <img id="cldPreview" src="" alt="Selected image"
+             style="display:block;max-height:120px;border-radius:var(--radius-sm);border:1px solid var(--border)">
     </div>
 </div>
 
-<div class="modal fade" id="cldModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Pick a notification image</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="cldGalleryStatus" class="small text-muted mb-2"></div>
-                <div class="row g-2" id="cldGallery"></div>
-            </div>
-        </div>
+<dialog class="modal modal-lg" id="cldModal" aria-labelledby="cldModalTitle">
+    <div class="modal-head">
+        <h2 id="cldModalTitle">Pick a notification image</h2>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button>
     </div>
-</div>
+    <div class="modal-content">
+        <div id="cldGalleryStatus" class="small muted" role="status"></div>
+        <div class="media-grid" id="cldGallery" style="grid-template-columns:repeat(auto-fill,minmax(130px,1fr))"></div>
+    </div>
+</dialog>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -52,8 +44,12 @@ document.addEventListener("DOMContentLoaded", function () {
     var preview = document.getElementById("cldPreview");
 
     function setStatus(msg, kind) {
-        statusEl.className = "small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
+        statusEl.className = "small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "muted");
         statusEl.textContent = msg;
+    }
+    function fieldChanged() {
+        // Setting .value doesn't fire events; let page scripts (e.g. the push preview) follow along.
+        field.dispatchEvent(new Event("input", { bubbles: true }));
     }
     function deliveryUrl(publicId, version, format, transform) {
         var t = transform ? (transform + "/") : "";
@@ -65,17 +61,21 @@ document.addEventListener("DOMContentLoaded", function () {
         var url = deliveryUrl(publicId, version, format, DELIVER);
         field.value = url;
         preview.src = url;
-        previewWrap.style.display = "";
+        previewWrap.hidden = false;
+        fieldChanged();
     }
-    if (field && field.value) { preview.src = field.value; previewWrap.style.display = ""; }
+    if (field && field.value) { preview.src = field.value; previewWrap.hidden = false; }
 
     // ---- Upload (unsigned) ----
     var fileInput = document.getElementById("cldFile");
+    var uploadBtn = document.getElementById("cldUploadBtn");
+    uploadBtn.addEventListener("click", function () { fileInput.click(); });
     fileInput.addEventListener("change", function () {
         var file = fileInput.files[0];
         fileInput.value = "";
         if (!file) return;
         setStatus("Uploading…");
+        uploadBtn.setAttribute("aria-busy", "true");
         var form = new FormData();
         form.append("file", file);
         form.append("upload_preset", PRESET);
@@ -87,16 +87,18 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(function (d) {
                 if (d.error) { setStatus("Upload failed: " + (d.error.message || ""), "err"); return; }
                 chooseImage(d.public_id, d.version, d.format);
-                setStatus("Uploaded ✓", "ok");
+                setStatus("Uploaded.", "ok");
             })
-            .catch(function (e) { setStatus("Upload error: " + e, "err"); });
+            .catch(function (e) { setStatus("Upload error: " + e, "err"); })
+            .then(function () { uploadBtn.removeAttribute("aria-busy"); });
     });
 
     // ---- Clear ----
     document.getElementById("cldClearBtn").addEventListener("click", function () {
         field.value = "";
-        previewWrap.style.display = "none";
+        previewWrap.hidden = true;
         setStatus("");
+        fieldChanged();
     });
 
     // ---- Pick existing (public tag-list JSON, no secret) ----
@@ -104,9 +106,9 @@ document.addEventListener("DOMContentLoaded", function () {
     var gallery = document.getElementById("cldGallery");
     var galleryStatus = document.getElementById("cldGalleryStatus");
     document.getElementById("cldPickBtn").addEventListener("click", function () {
-        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        modalEl.showModal();
         gallery.innerHTML = "";
-        galleryStatus.textContent = "Loading…";
+        galleryStatus.innerHTML = '<span class="spinner"></span> Loading…';
         // Cache-bust: the list JSON is CDN-cached for 60s, so a stale 404 (from before the
         // first upload) can linger. A unique query forces a fresh copy.
         var listUrl = "https://res.cloudinary.com/" + encodeURIComponent(CLOUD) +
@@ -115,22 +117,29 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
             .then(function (d) {
                 var res = d.resources || [];
-                if (!res.length) { galleryStatus.textContent = 'No images tagged "' + TAG + '" yet — upload one, then wait up to a minute.'; return; }
+                if (!res.length) { galleryStatus.textContent = 'No images tagged "' + TAG + '" yet. Upload one, then wait up to a minute.'; return; }
                 res.sort(function (a, b) { return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
-                galleryStatus.textContent = res.length + " image(s)";
+                galleryStatus.textContent = res.length + (res.length === 1 ? " image" : " images") + ". Click one to use it.";
                 res.forEach(function (r) {
-                    var col = document.createElement("div");
-                    col.className = "col-4 col-md-3";
+                    var tile = document.createElement("button");
+                    tile.type = "button";
+                    tile.className = "media-tile";
+                    tile.style.cssText = "padding:0;cursor:pointer;font:inherit;color:inherit;text-align:left";
+                    tile.title = r.public_id;
+                    var thumb = document.createElement("span");
+                    thumb.className = "thumb";
                     var img = document.createElement("img");
                     img.src = deliveryUrl(r.public_id, r.version, r.format, THUMB);
-                    img.style.cssText = "width:100%;height:90px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid #dee2e6;";
-                    img.addEventListener("click", function () {
+                    img.alt = r.public_id;
+                    img.loading = "lazy";
+                    thumb.appendChild(img);
+                    tile.appendChild(thumb);
+                    tile.addEventListener("click", function () {
                         chooseImage(r.public_id, r.version, r.format);
-                        setStatus("Selected ✓", "ok");
-                        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                        setStatus("Selected.", "ok");
+                        modalEl.close();
                     });
-                    col.appendChild(img);
-                    gallery.appendChild(col);
+                    gallery.appendChild(tile);
                 });
             })
             .catch(function (e) {

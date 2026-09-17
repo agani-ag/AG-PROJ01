@@ -1,272 +1,463 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Home{% endblock %}
+{% block title %}Get SyncUp for Android{% endblock %}
 
-{% block content %}
+{% block head %}
+<meta name="description" content="SyncUp puts your work links, reminders, notifications and support chat in one secure Android app. Get it on Google Play.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SyncUp — your work, in sync">
+<meta property="og:description" content="Work links, reminders, notifications and support chat in one secure Android app.">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "SyncUp",
+ "operatingSystem": "ANDROID", "applicationCategory": "BusinessApplication",
+ "url": "{{ play_url|escapejs }}", "publisher": {"@type": "Organization", "name": "{{ company_name|escapejs }}"}}
+</script>
 <style>
-/* ===== HERO SECTION ===== */
-.hero-section {
-    min-height: 90vh;
-    display: flex;
-    align-items: center;
-    color: white;
-    border-radius: 12px;
-    background: linear-gradient(-45deg, #1E88E5, #42A5F5, #1565C0, #64B5F6);
-    background-size: 400% 400%;
-    animation: gradientMove 15s ease infinite;
-    padding: 2rem;
-}
+    /* ---------- Landing page (public). Colours come from app.css tokens, so light/dark both work. ---------- */
+    html { scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+    .lp { --lp-max: 1160px; --device: #0b0f17; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+    .lp-wrap { width: 100%; max-width: var(--lp-max); margin: 0 auto; padding-inline: 24px; }
+    .lp section { scroll-margin-top: 76px; }
+    .lp h2 { font-size: clamp(24px, 3.2vw, 34px); font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+    .lp .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); }
+    .lp .lead { font-size: 17px; line-height: 1.6; color: var(--muted); max-width: 60ch; }
+    .skip { position: absolute; left: 12px; top: -48px; z-index: 50; padding: 8px 12px; border-radius: var(--radius); background: var(--accent); color: var(--on-accent); }
+    .skip:focus { top: 12px; }
 
-@keyframes gradientMove {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
+    /* Header */
+    .lp-header { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: saturate(160%) blur(12px); -webkit-backdrop-filter: saturate(160%) blur(12px); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top, 0px); }
+    .lp-header .lp-wrap { display: flex; align-items: center; gap: 20px; height: 64px; }
+    .lp-brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 750; font-size: 18px; color: var(--text); letter-spacing: -.01em; }
+    .lp-brand:hover { text-decoration: none; }
+    .lp-brand .brand-mark { width: 32px; height: 32px; border-radius: 9px; }
+    .lp-nav { display: flex; gap: 4px; margin-left: 12px; }
+    .lp-nav a { padding: 8px 12px; border-radius: var(--radius-sm); color: var(--muted); font-weight: 500; }
+    .lp-nav a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+    .lp-header .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    @media (max-width: 880px) { .lp-nav { display: none; } }
+    @media (max-width: 480px) { .lp-header .signin-text { display: none; } .lp-header .btn-signin { width: 36px; padding: 0; } }
 
-.hero-title {
-    font-weight: 700;
-    font-size: clamp(2rem, 5vw, 3rem);
-}
+    /* Hero */
+    .lp-hero { position: relative; overflow: clip; padding-block: 72px 88px; }
+    .lp-hero::before { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+        background:
+            radial-gradient(520px 380px at 78% 30%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+            radial-gradient(420px 320px at 8% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 70%); }
+    .lp-hero::after { content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .55;
+        background-image: radial-gradient(color-mix(in srgb, var(--text) 14%, transparent) 1px, transparent 1px); background-size: 22px 22px;
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 85%); mask-image: linear-gradient(to bottom, #000 0%, transparent 85%); }
+    .lp-hero .lp-wrap { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: center; gap: 48px; }
+    .hero-copy { display: flex; flex-direction: column; gap: 22px; }
+    .pill { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 500; box-shadow: var(--shadow-sm); }
+    .pill .dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent); }
+    .hero-copy h1 { font-size: clamp(36px, 5.4vw, 60px); line-height: 1.04; font-weight: 780; letter-spacing: -.035em; }
+    .hero-copy h1 .accent { color: var(--accent); }
+    .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+    .play-badge { display: inline-flex; border-radius: 10px; line-height: 0; transition: transform .15s ease, box-shadow .15s ease; }
+    .play-badge img { height: 56px; width: auto; }
+    .play-badge:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); }
+    .trust { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 13.5px; }
+    .trust span { display: inline-flex; align-items: center; gap: 7px; }
+    .trust .icon { width: 16px; height: 16px; color: var(--success); }
 
-.hero-subtitle {
-    font-size: 1.1rem;
-    opacity: 0.9;
-}
+    /* Phone mockup (illustration) */
+    .hero-art { position: relative; justify-self: center; width: min(300px, 76vw); padding-block: 12px; }
+    .device { position: relative; aspect-ratio: 9 / 19; width: 100%; border-radius: 42px; padding: 11px; background: var(--device); box-shadow: 0 30px 60px -20px rgba(15, 23, 42, .45), 0 0 0 1.5px #2a3446, 0 0 0 1px rgba(255, 255, 255, .08) inset; }
+    .device::before { content: ""; position: absolute; top: 20px; left: 50%; width: 76px; height: 20px; border-radius: 999px; background: #000; transform: translateX(-50%); z-index: 2; }
+    .screen { position: relative; height: 100%; border-radius: 32px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; font-size: 11px; }
+    .s-status { display: flex; justify-content: space-between; align-items: center; padding: 14px 22px 4px; font-weight: 600; font-size: 11px; color: var(--text); }
+    .s-status .icon { width: 12px; height: 12px; }
+    .s-bar { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; }
+    .s-bar .brand-mark { width: 24px; height: 24px; border-radius: 7px; }
+    .s-bar b { font-size: 14px; flex: 1; }
+    .s-avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent); font-size: 10px; font-weight: 700; }
+    .s-banner { margin: 0 12px 10px; padding: 8px 10px; border-radius: 12px; background: var(--warning-soft); display: flex; gap: 7px; align-items: flex-start; line-height: 1.35; }
+    .s-banner .icon { width: 13px; height: 13px; color: var(--warning); flex: 0 0 auto; margin-top: 1px; }
+    .s-label { padding: 2px 14px 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+    .s-links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px; }
+    .s-link { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-weight: 600; color: var(--text); line-height: 1.25; }
+    .s-link i { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); }
+    .s-link i .icon { width: 14px; height: 14px; }
+    .s-link small { font-weight: 400; color: var(--muted); font-size: 9.5px; }
+    .s-tabs { margin-top: auto; display: flex; justify-content: space-around; padding: 10px 8px 16px; background: var(--surface); border-top: 1px solid var(--border); color: var(--faint); }
+    .s-tabs span { position: relative; display: grid; place-items: center; }
+    .s-tabs .on { color: var(--accent); }
+    .s-tabs .icon { width: 18px; height: 18px; }
+    .s-tabs .badge-dot { position: absolute; top: -3px; right: -6px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; }
+    .float { position: absolute; z-index: 3; display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; width: 230px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-lg); font-size: 12.5px; line-height: 1.35; }
+    .float .brand-mark { width: 26px; height: 26px; border-radius: 8px; flex: 0 0 auto; }
+    .float b { display: block; font-size: 13px; }
+    .float small { color: var(--faint); font-size: 11px; }
+    .float-notif { top: 56%; left: -128px; animation: bob 6s ease-in-out infinite; }
+    .float-chat { bottom: 12%; right: -118px; width: 210px; animation: bob 6s ease-in-out 1.2s infinite; }
+    .float-chat .s-avatar { width: 26px; height: 26px; flex: 0 0 auto; background: var(--success); }
+    @keyframes bob { 50% { transform: translateY(-6px); } }
 
-.hero-img {
-    animation: floatImage 4s ease-in-out infinite;
-}
+    /* Download */
+    .lp-download { padding-block: 16px 88px; }
+    .dl-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 40px; align-items: center; padding: 40px; border-radius: 24px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); position: relative; overflow: hidden; }
+    .dl-card::before { content: ""; position: absolute; right: -120px; top: -120px; width: 360px; height: 360px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%); pointer-events: none; }
+    .dl-copy { position: relative; display: flex; flex-direction: column; gap: 16px; }
+    .pkg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+    .pkg code { font-size: 13px; }
+    .qr-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .qr { position: relative; width: 208px; height: 208px; padding: 14px; border-radius: 20px; background: #fff; box-shadow: 0 0 0 1px rgba(15, 23, 42, .08), 0 18px 40px -18px rgba(15, 23, 42, .35); }
+    .qr svg { display: block; width: 100%; height: 100%; }
+    .qr .qr-logo { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%); border-radius: 11px; background: #fff; padding: 4px; }
+    .qr .qr-logo img { width: 100%; height: 100%; display: block; border-radius: 8px; }
+    .qr-card .caption { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 
-@keyframes floatImage {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-12px); }
-    100% { transform: translateY(0px); }
-}
+    /* Sections */
+    .lp-section { padding-block: 80px; }
+    .lp-section.alt { background: var(--surface); border-block: 1px solid var(--border); }
+    .sec-head { display: flex; flex-direction: column; gap: 12px; margin-bottom: 40px; max-width: 680px; }
+    .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .feature { display: flex; flex-direction: column; gap: 10px; padding: 24px; border-radius: 18px; background: var(--surface); border: 1px solid var(--border); transition: border-color .15s, transform .15s; }
+    .feature:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+    .feature .f-icon { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); margin-bottom: 4px; }
+    .feature .f-icon .icon { width: 21px; height: 21px; }
+    .feature h3 { font-size: 16.5px; font-weight: 650; }
+    .feature p { color: var(--muted); line-height: 1.55; }
 
-/* ===== CTA BUTTONS ===== */
-.cta-btn {
-    padding: 10px 25px;
-    font-weight: 600;
-    border-radius: 8px;
-    transition: all 0.3s ease;
-}
-.cta-btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 6px 15px rgba(0,0,0,0.2);
-}
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; counter-reset: step; list-style: none; margin: 0; padding: 0; }
+    .step { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 26px 24px 24px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); }
+    .step::before { counter-increment: step; content: counter(step); width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; margin-bottom: 8px; background: var(--text); color: var(--bg); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .step h3 { font-size: 16.5px; font-weight: 650; }
+    .step p { color: var(--muted); line-height: 1.55; }
 
-/* ===== FEATURE CARDS ===== */
-.feature-card {
-    border: none;
-    border-radius: 12px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.feature-card:hover {
-    transform: translateY(-8px) scale(1.03);
-    box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-}
+    .secure { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+    .secure .sec-head { margin-bottom: 0; }
+    .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+    .checks li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); line-height: 1.5; }
+    .checks .icon { width: 20px; height: 20px; color: var(--success); flex: 0 0 auto; margin-top: 1px; }
+    .checks b { display: block; font-weight: 600; }
+    .checks span { color: var(--muted); }
 
-/* ===== FEATURE ICONS ===== */
-.feature-icon {
-    width: 70px;
-    height: 70px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: auto;
-    font-size: 1.5rem;
-}
+    .support { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .contact { display: flex; gap: 14px; align-items: center; padding: 20px; border-radius: 16px; background: var(--bg); border: 1px solid var(--border); color: var(--text); min-width: 0; }
+    a.contact:hover { text-decoration: none; border-color: var(--border-strong); }
+    .contact .c-icon { width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); }
+    .contact b { display: block; font-weight: 600; }
+    .contact span { color: var(--muted); overflow-wrap: anywhere; }
 
-/* ===== STATS SECTION ===== */
-.stats-box {
-    background: white;
-    border-radius: 12px;
-    padding: 30px;
-    margin-top: -40px;
-    position: relative;
-    z-index: 10;
-}
-.stat-item h4 {
-    font-weight: 700;
-    color: #1E88E5;
-}
-.stat-item p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #666;
-}
+    /* Closing CTA + footer */
+    .lp-cta { padding-block: 72px; }
+    .cta-card { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 32px; padding: 36px 40px; border-radius: 24px; background: linear-gradient(135deg, #0b0f17 0%, #0f1a33 100%); border: 1px solid #22304a; color: #e6eaf2; }
+    .cta-card h2 { color: #fff; }
+    .cta-card p { color: #9aa4b2; margin-top: 6px; }
+    .cta-card .brand-mark { width: 56px; height: 56px; border-radius: 15px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .12); }
+    .cta-card .row { gap: 18px; }
+    .lp-footer { margin-top: auto; border-top: 1px solid var(--border); background: var(--surface); padding-block: 28px calc(28px + env(safe-area-inset-bottom, 0px)); }
+    .lp-footer .lp-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; color: var(--muted); font-size: 13.5px; }
+    .lp-footer nav { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-left: auto; }
+    .lp-footer a { color: var(--muted); }
+    .lp-footer a:hover { color: var(--text); }
+    .lp-footer .legal { flex-basis: 100%; font-size: 12px; color: var(--faint); }
 
-/* ===== SCROLL ANIMATION ===== */
-.fade-up {
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.8s ease-out;
-}
-.fade-up.show {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-/* RESPONSIVE HERO IMAGE */
-@media(max-width: 767px) {
-    .hero-section { text-align: center; }
-    .hero-section .row { justify-content: center; }
-    .hero-section .col-md-6 { text-align: center !important; }
-}
+    @media (max-width: 960px) {
+        .lp-hero { padding-block: 48px 64px; }
+        .lp-hero .lp-wrap { grid-template-columns: minmax(0, 1fr); gap: 56px; }
+        .hero-copy { align-items: center; text-align: center; }
+        .hero-copy .pill { align-self: center; }
+        .cta-row, .trust { justify-content: center; }
+        .float-notif { left: -96px; }
+        .float-chat { right: -92px; }
+        .features, .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .secure { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+    }
+    @media (max-width: 720px) {
+        .lp-wrap { padding-inline: 16px; }
+        .dl-card { grid-template-columns: minmax(0, 1fr); padding: 28px 20px; text-align: center; gap: 28px; }
+        .dl-copy { align-items: center; }
+        .pkg { justify-content: center; }
+        .qr-card { grid-row: 1; }
+        .features, .steps { grid-template-columns: minmax(0, 1fr); }
+        .lp-section { padding-block: 56px; }
+        .cta-card { padding: 28px 22px; justify-content: center; text-align: center; }
+        .cta-card .row { justify-content: center; }
+        .lp-footer .lp-wrap, .lp-footer nav { justify-content: center; margin-left: 0; text-align: center; }
+    }
+    @media (max-width: 520px) {
+        .float { width: 196px; padding: 9px 11px; font-size: 11.5px; }
+        .float-notif { left: -40px; top: 57%; }
+        .float-chat { right: -34px; width: 180px; }
+        .play-badge img { height: 52px; }
+    }
 </style>
+{% endblock %}
 
-<!-- HERO SECTION -->
-<div class="container mt-4">
-    <div class="hero-section text-center text-md-start">
-        <div class="row w-100 align-items-center gy-4">
+{% block layout %}
+<div class="lp">
+    <a class="skip" href="#download">Skip to download</a>
 
-            <!-- Text -->
-            <div class="col-md-6">
-                <span class="badge bg-light text-primary mb-3 px-3 py-2">🚀 Smart Workflow Platform</span>
-
-                <h1 class="hero-title mb-3">Sync<span style="color:#FFD54F;">Up<i class="fas fa-refresh"></i></span></h1>
-                <p class="hero-subtitle">
-                    Streamline your workflow, manage data efficiently, and stay perfectly in sync — all from one powerful platform.
-                </p>
-
-                {% if user.is_authenticated %}
-                    <p class="mt-3 fs-5">Welcome back, <strong>{{ user.first_name|default:user.username|capfirst }}</strong> 👋</p>
+    <header class="lp-header">
+        <div class="lp-wrap">
+            <a class="lp-brand" href="{% url 'home' %}">
+                <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp
+            </a>
+            <nav class="lp-nav" aria-label="Page sections">
+                <a href="#features">Features</a>
+                <a href="#how">How it works</a>
+                <a href="#security">Privacy</a>
+                <a href="#support">Support</a>
+            </nav>
+            <div class="actions">
+                <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme">{% icon "monitor" %}</button>
+                {% if user.is_superuser %}
+                <a class="btn" href="{% url 'mobile_dashboard' %}">{% icon "layout-dashboard" %}<span class="signin-text">Open console</span></a>
+                {% else %}
+                <a class="btn btn-ghost btn-signin" href="{% url 'login' %}" title="Admin sign in">{% icon "log-in" %}<span class="signin-text">Sign in</span></a>
                 {% endif %}
+                <a class="btn btn-primary" href="#download">{% icon "download" %}Get the app</a>
+            </div>
+        </div>
+    </header>
 
-                <div class="mt-4 d-flex flex-column flex-sm-row gap-3 justify-content-center justify-content-md-start">
-                    {% if user.is_authenticated %}
-                    <a href="{% url 'logout' %}" class="btn btn-light px-4 py-2 fw-semibold cta-btn">Packup With SyncUp <i class="fas fa-refresh"></i></a>
-                    <a href="{% url 'admin_profile' %}" class="btn btn-outline-light px-4 py-2 fw-semibold cta-btn">My SyncUp Account</a>
-                    {% else %}
-                    <a href="{% url 'login' %}" class="btn btn-light px-4 py-2 fw-semibold cta-btn">SyncUp With As <i class="fas fa-refresh"></i></a>
+    <main>
+        {% include "_messages.html" %}
+
+        <!-- Hero -->
+        <section class="lp-hero" aria-labelledby="hero-title">
+            <div class="lp-wrap">
+                <div class="hero-copy">
+                    <span class="pill"><span class="dot-live"></span>Android app by {{ company_name }}</span>
+                    <h1 id="hero-title">Your work links, reminders and support, <span class="accent">in sync.</span></h1>
+                    <p class="lead">SyncUp brings the web tools your organization uses into one secure app. Open them in a tap, get notified when something needs you, and reach support without leaving the app.</p>
+                    <div class="cta-row">
+                        <a class="play-badge" href="{{ play_url }}" target="_blank" rel="noopener">
+                            <img src="{% static 'images/google-play-badge.png' %}" alt="Get it on Google Play" width="188" height="56">
+                        </a>
+                        <a class="btn btn-lg btn-ghost" href="#how">How it works {% icon "arrow-right" %}</a>
+                    </div>
+                    <div class="trust">
+                        <span>{% icon "circle-check" %}No ads</span>
+                        <span>{% icon "circle-check" %}Your data is never sold</span>
+                        <span>{% icon "circle-check" %}Encrypted connection</span>
+                    </div>
+                </div>
+
+                <div class="hero-art" aria-hidden="true">
+                    <div class="device">
+                        <div class="screen">
+                            <div class="s-status"><span>9:41</span><span>{% icon "wifi" %}</span></div>
+                            <div class="s-bar">
+                                <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+                                <b>SyncUp</b><span class="s-avatar">PR</span>
+                            </div>
+                            <div class="s-banner">{% icon "info" %}<span>Scheduled maintenance tonight, 11 pm to midnight.</span></div>
+                            <div class="s-label">Your links</div>
+                            <div class="s-links">
+                                <span class="s-link"><i>{% icon "calendar-clock" %}</i>Shift roster<small>Updated today</small></span>
+                                <span class="s-link"><i>{% icon "gauge" %}</i>Store dashboard<small>Sales &amp; stock</small></span>
+                                <span class="s-link"><i>{% icon "file-text" %}</i>Leave request<small>Form</small></span>
+                                <span class="s-link"><i>{% icon "monitor-play" %}</i>Training<small>Videos</small></span>
+                            </div>
+                            <div class="s-tabs">
+                                <span class="on">{% icon "layout-dashboard" %}</span>
+                                <span>{% icon "bell" %}</span>
+                                <span>{% icon "messages-square" %}<em class="badge-dot">2</em></span>
+                                <span>{% icon "user-round" %}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="float float-notif">
+                        <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+                        <div><small>SyncUp · now</small><b>Team stand-up in 10 minutes</b>Room 2, or join from the link.</div>
+                    </div>
+                    <div class="float float-chat">
+                        <span class="s-avatar">{% icon "messages-square" "icon-sm" %}</span>
+                        <div><small>Support · read</small><b>Thanks, it's fixed now!</b></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Download -->
+        <section class="lp-download" id="download" aria-labelledby="download-title">
+            <div class="lp-wrap">
+                <div class="dl-card">
+                    <div class="dl-copy">
+                        <span class="eyebrow">{% icon "download" "icon-sm" %}Download</span>
+                        <h2 id="download-title">Get SyncUp on your phone</h2>
+                        <p class="lead">Point your phone's camera at the code to open SyncUp on Google Play. Already on your phone? Tap the button instead.</p>
+                        <div class="cta-row">
+                            <a class="play-badge" href="{{ play_url }}" target="_blank" rel="noopener">
+                                <img src="{% static 'images/google-play-badge.png' %}" alt="Get it on Google Play" width="188" height="56">
+                            </a>
+                        </div>
+                        <div class="pkg">
+                            <span>Package name</span>
+                            <code id="pkgName">{{ package_name }}</code>
+                            <button class="btn btn-ghost btn-sm" type="button" data-copy-target="#pkgName" aria-label="Copy package name">{% icon "copy" %}Copy</button>
+                        </div>
+                    </div>
+                    <div class="qr-card">
+                        <div class="qr" id="playQr" data-url="{{ play_url }}">
+                            <span class="qr-logo"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+                            <noscript><a href="{{ play_url }}">{{ play_url }}</a></noscript>
+                        </div>
+                        <span class="caption">{% icon "qr-code" "icon-sm" %}Scan to install from Google Play</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="lp-section alt" id="features" aria-labelledby="features-title">
+            <div class="lp-wrap">
+                <div class="sec-head">
+                    <span class="eyebrow">{% icon "sparkles" "icon-sm" %}Features</span>
+                    <h2 id="features-title">Everything for your workday, one tap away</h2>
+                    <p class="lead">Your organization sets SyncUp up for you, so the tools, alerts and people you need are ready when you sign in.</p>
+                </div>
+                <div class="features">
+                    <article class="feature">
+                        <span class="f-icon">{% icon "link-2" %}</span>
+                        <h3>All your work links</h3>
+                        <p>Forms, dashboards and web apps open right inside SyncUp. Your admin adds them, and you can add your own when allowed.</p>
+                    </article>
+                    <article class="feature">
+                        <span class="f-icon">{% icon "bell-ring" %}</span>
+                        <h3>Notifications that matter</h3>
+                        <p>Updates and announcements arrive as rich notifications, and tapping one opens the right page.</p>
+                    </article>
+                    <article class="feature">
+                        <span class="f-icon">{% icon "calendar-clock" %}</span>
+                        <h3>Reminders that work offline</h3>
+                        <p>Reminders are set on your phone, so they go off on time, every time, even without a connection.</p>
+                    </article>
+                    <article class="feature">
+                        <span class="f-icon">{% icon "messages-square" %}</span>
+                        <h3>Chat with support</h3>
+                        <p>Ask a question from inside the app, see when it's read, and get the answer in the same thread.</p>
+                    </article>
+                    <article class="feature">
+                        <span class="f-icon">{% icon "square-check" %}</span>
+                        <h3>Approve with a tap</h3>
+                        <p>When a connected service needs you to confirm a code or a request, answer it right from your phone.</p>
+                    </article>
+                    <article class="feature">
+                        <span class="f-icon">{% icon "lock" %}</span>
+                        <h3>App lock</h3>
+                        <p>Protect SyncUp with a PIN, so your links and messages stay private on a shared phone.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- How it works -->
+        <section class="lp-section" id="how" aria-labelledby="how-title">
+            <div class="lp-wrap">
+                <div class="sec-head">
+                    <span class="eyebrow">{% icon "zap" "icon-sm" %}How it works</span>
+                    <h2 id="how-title">Up and running in three steps</h2>
+                </div>
+                <ol class="steps">
+                    <li class="step">
+                        <h3>Install SyncUp</h3>
+                        <p>Get it from Google Play, or scan the QR code above with your phone.</p>
+                    </li>
+                    <li class="step">
+                        <h3>Sign in</h3>
+                        <p>Use the email and password your administrator gave you. SyncUp accounts are issued by your organization.</p>
+                    </li>
+                    <li class="step">
+                        <h3>Stay in sync</h3>
+                        <p>Your links, reminders and messages are ready, and they update on their own as things change.</p>
+                    </li>
+                </ol>
+            </div>
+        </section>
+
+        <!-- Privacy & security -->
+        <section class="lp-section alt" id="security" aria-labelledby="security-title">
+            <div class="lp-wrap secure">
+                <div class="sec-head">
+                    <span class="eyebrow">{% icon "shield-check" "icon-sm" %}Privacy &amp; security</span>
+                    <h2 id="security-title">Your information stays yours</h2>
+                    <p class="lead">SyncUp is a private business app. It only uses what it needs to sign you in and deliver your notifications.</p>
+                    <div><a class="btn" href="{% url 'privacy_policy' %}">{% icon "file-text" %}Read the privacy policy</a></div>
+                </div>
+                <ul class="checks">
+                    <li>{% icon "lock" %}<div><b>Encrypted in transit</b><span>All traffic uses HTTPS. The app refuses plain, unencrypted connections.</span></div></li>
+                    <li>{% icon "key-round" %}<div><b>Protected on your phone</b><span>Your session and app-lock PIN are kept in Android's encrypted storage.</span></div></li>
+                    <li>{% icon "ban" %}<div><b>No ads, no data selling</b><span>Your information is never sold or used for advertising.</span></div></li>
+                    <li>{% icon "trash" %}<div><b>Delete your account any time</b><span>Open Profile, then Delete account. It signs you out everywhere.</span></div></li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Support -->
+        <section class="lp-section" id="support" aria-labelledby="support-title">
+            <div class="lp-wrap">
+                <div class="sec-head">
+                    <span class="eyebrow">{% icon "circle-question-mark" "icon-sm" %}Support</span>
+                    <h2 id="support-title">Need a hand?</h2>
+                    <p class="lead">Can't sign in or missing a link? Your administrator can reset your password or add it for you.</p>
+                </div>
+                <div class="support">
+                    {% if support_email %}
+                    <a class="contact" href="mailto:{{ support_email }}"><span class="c-icon">{% icon "mail" %}</span><div><b>Email support</b><span>{{ support_email }}</span></div></a>
                     {% endif %}
+                    {% if support_phone %}
+                    <a class="contact" href="tel:{{ support_phone|cut:' ' }}"><span class="c-icon">{% icon "phone" %}</span><div><b>Call support</b><span>{{ support_phone }}</span></div></a>
+                    {% endif %}
+                    <div class="contact"><span class="c-icon">{% icon "messages-square" %}</span><div><b>Chat in the app</b><span>Signed in already? Tap Chat to message support.</span></div></div>
                 </div>
             </div>
+        </section>
 
-            <!-- Image -->
-            <div class="col-md-6 position-relative text-center">
-                <div style="
-                    position:absolute;
-                    width:240px;
-                    height:240px;
-                    background:rgba(255,255,255,0.15);
-                    border-radius:50%;
-                    filter:blur(40px);
-                    top:50%;
-                    left:50%;
-                    transform:translate(-50%,-50%);
-                    z-index:0;"></div>
-
-                <img src="{% static 'images/SyncUp.png' %}" 
-                     class="img-fluid hero-img position-relative" 
-                     style="max-height: 250px; z-index:1;"
-                     alt="Hero Image">
+        <!-- Closing call to action -->
+        <section class="lp-cta" aria-label="Download SyncUp">
+            <div class="lp-wrap">
+                <div class="cta-card">
+                    <div class="row">
+                        <span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>
+                        <div>
+                            <h2>Ready to get in sync?</h2>
+                            <p>Install SyncUp and sign in with your work account.</p>
+                        </div>
+                    </div>
+                    <a class="play-badge" href="{{ play_url }}" target="_blank" rel="noopener">
+                        <img src="{% static 'images/google-play-badge.png' %}" alt="Get it on Google Play" width="188" height="56">
+                    </a>
+                </div>
             </div>
+        </section>
+    </main>
 
+    <footer class="lp-footer">
+        <div class="lp-wrap">
+            <a class="lp-brand" href="{% url 'home' %}"><span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp</a>
+            <span>&copy; {% now "Y" %} {{ company_name }}</span>
+            <nav aria-label="Footer">
+                <a href="{{ play_url }}" target="_blank" rel="noopener">Google Play</a>
+                <a href="{% url 'privacy_policy' %}">Privacy policy</a>
+                {% if support_email %}<a href="mailto:{{ support_email }}">Contact</a>{% endif %}
+                {% if user.is_superuser %}<a href="{% url 'mobile_dashboard' %}">Admin console</a>{% else %}<a href="{% url 'login' %}">Admin sign in</a>{% endif %}
+            </nav>
+            <p class="legal">Google Play and the Google Play logo are trademarks of Google LLC.</p>
         </div>
-    </div>
+    </footer>
 </div>
-
-<!-- STATS SECTION -->
-<div class="container mt-5">
-    <div class="stats-box shadow-lg fade-up">
-        <div class="row text-center">
-            <div class="col-6 col-md-3 stat-item">
-                <h4 class="counter" data-target="10000">0</h4>
-                <p>Records Synced</p>
-            </div>
-            <div class="col-6 col-md-3 stat-item">
-                <h4 class="counter" data-target="500">0</h4>
-                <p>Active Users</p>
-            </div>
-            <div class="col-6 col-md-3 stat-item">
-                <h4 class="counter" data-target="120">0</h4>
-                <p>Projects Managed</p>
-            </div>
-            <div class="col-6 col-md-3 stat-item">
-                <h4 class="counter" data-target="99">0</h4>
-                <p>% Uptime</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- FEATURES SECTION -->
-<div class="container mt-5 py-5" style="background: #f8f9fa; border-radius: 12px;">
-    <div class="text-center mb-5 fade-up">
-        <h3 class="fw-bold">Why Choose SyncUp?</h3>
-        <p class="text-muted fs-5">Simple, fast, and powerful tools for your workflow</p>
-    </div>
-
-    <div class="row g-4">
-        <div class="col-12 col-md-4 fade-up">
-            <div class="card feature-card shadow-lg p-4 text-center h-100 border-0 bg-white">
-                <div class="feature-icon mb-3" style="background:#E3F2FD;">
-                    <i class="fas fa-database text-primary"></i>
-                </div>
-                <h5 class="mt-3 fw-bold">Data Management</h5>
-                <p class="text-muted">Organize and access your data efficiently with powerful tools.</p>
-            </div>
-        </div>
-        <div class="col-12 col-md-4 fade-up">
-            <div class="card feature-card shadow-lg p-4 text-center h-100 border-0 bg-white">
-                <div class="feature-icon mb-3" style="background:#E8F5E9;">
-                    <i class="fas fa-sync-alt text-success"></i>
-                </div>
-                <h5 class="mt-3 fw-bold">Real-Time Sync</h5>
-                <p class="text-muted">Keep everything updated instantly across your system.</p>
-            </div>
-        </div>
-        <div class="col-12 col-md-4 fade-up">
-            <div class="card feature-card shadow-lg p-4 text-center h-100 border-0 bg-white">
-                <div class="feature-icon mb-3" style="background:#FFEBEE;">
-                    <i class="fas fa-lock text-danger"></i>
-                </div>
-                <h5 class="mt-3 fw-bold">Secure Access</h5>
-                <p class="text-muted">Your data is protected with industry-standard security.</p>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block script %}
+<script src="{% static 'js/vendor/qrcode.min.js' %}"></script>
 <script>
-// ===== Counter Animation =====
-const counters = document.querySelectorAll('.counter');
-
-const animateCounter = (counter) => {
-    const target = +counter.getAttribute('data-target');
-    let count = 0;
-    const speed = target / 100;
-    const update = () => {
-        if (count < target) {
-            count += speed;
-            counter.innerText = Math.floor(count);
-            requestAnimationFrame(update);
-        } else {
-            counter.innerText = target.toLocaleString();
-        }
-    };
-    update();
-};
-
-// ===== Scroll Animation =====
-const fadeElements = document.querySelectorAll('.fade-up');
-
-const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('show');
-            observer.unobserve(entry.target);
-        }
-    });
-}, { threshold: 0.2 });
-
-fadeElements.forEach(el => observer.observe(el));
-counters.forEach(counter => observer.observe(counter));
-observer.observe(document.querySelector('.stats-box'));
+(function () {
+    // Play Store QR, drawn as SVG. Level H (30% recovery) leaves room for the app icon in the middle.
+    var box = document.getElementById("playQr");
+    if (!box || typeof qrcode !== "function") return;
+    var qr = qrcode(0, "H");
+    qr.addData(box.dataset.url);
+    qr.make();
+    box.insertAdjacentHTML("afterbegin", qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }));
+    var svg = box.querySelector("svg");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "QR code: SyncUp on Google Play");
+})();
 </script>
 {% endblock %}

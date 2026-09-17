@@ -3,181 +3,194 @@
 {% block title %}Cloudinary{% endblock %}
 
 {% block head %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
 <style>
-  body { background: #f4f6fb; }
-  .brand-icon { color: #2c3e50; }
-  .card-img-top-wrap {
-    aspect-ratio: 4 / 3; overflow: hidden; background: #f0f2f7;
-    display: flex; align-items: center; justify-content: center; cursor: pointer;
-  }
-  .card-img-top-wrap img { width: 100%; height: 100%; object-fit: cover; }
-  .file-name { font-weight: 600; font-size: 14px; word-break: break-all; }
-  .file-sub { font-size: 12px; }
-  .dropzone {
-    border: 2px dashed #c7cddb; border-radius: 12px; padding: 28px; text-align: center;
-    color: #6c757d; cursor: pointer; transition: all .12s ease; background: #fff;
-  }
-  .dropzone.drag { border-color: #0d6efd; background: #eef4ff; }
-  .ctx-pre { white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; font-size: 12px; }
-  .lb-img { max-width: 100%; max-height: 78vh; object-fit: contain; }
-  .badge-stat { font-size: 13px; }
-  .top-btn {
-    position: fixed; bottom: 24px; right: 24px; z-index: 1040;
-    width: 46px; height: 46px; border-radius: 50%; padding: 0;
-    display: none; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(0,0,0,.25); font-size: 20px;
-  }
-  .top-btn.show { display: inline-flex; }
-  /* Bulk selection */
-  .card-img-top-wrap { position: relative; }
-  .sel-check {
-    position: absolute; top: 8px; left: 8px; z-index: 3;
-    width: 22px; height: 22px; cursor: pointer; display: none;
-    box-shadow: 0 0 0 2px #fff; background-color: #fff;
-  }
+  /* Filters: one row on desktop, 2 × 2 on phones */
+  .gallery-filters { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 260px) minmax(0, 150px) minmax(0, 1fr); gap: 12px 14px; align-items: end; }
+  @media (max-width: 760px) { .gallery-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .page-head .page-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } }
+
+  .status-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .status-line:empty { display: none; }
+  #sentinel { padding: 8px 0 16px; }
+  #sentinel:empty { padding: 4px 0; }
+
+  /* Select mode */
+  .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+  .bulk-bar { position: sticky; top: calc(var(--top-h) + 8px); z-index: 15; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+  .bulk-bar .spacer { flex: 1; }
+  .sel-check { position: absolute; top: 8px; left: 8px; z-index: 2; width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: var(--accent); display: none; box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
   #gallery.select-mode .sel-check { display: block; }
-  .card.selected { outline: 3px solid #0d6efd; outline-offset: -1px; }
-  .card.selected .card-img-top-wrap::after {
-    content: ""; position: absolute; inset: 0; background: rgba(13,110,253,.12);
-  }
-  #bulkBar { top: 8px; z-index: 1030; }
+
+  /* Tiles */
+  .media-tile .thumb { position: relative; cursor: pointer; }
+  .media-tile .thumb:focus-visible { border-radius: 0; box-shadow: inset 0 0 0 3px var(--accent); }
+  .media-tile .thumb .thumb-icon { width: 32px; height: 32px; }
+  .media-tile.selected .thumb::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--accent) 16%, transparent); pointer-events: none; }
+  .media-tile .meta b { font-size: 13px; font-weight: 600; }
+  .tile-actions { display: flex; gap: 2px; margin-top: auto; padding: 0 6px 6px; }
+  .tile-actions .btn { flex: 1; width: auto; }
+  .media-grid > .empty { grid-column: 1 / -1; }
+
+  .dropzone-browse { color: var(--accent); font-weight: 600; cursor: pointer; }
+  pre.code.ctx-pre { max-height: 240px; overflow: auto; }
+  pre.code.muted { color: var(--muted); }
+  dialog.modal .modal-body p { overflow-wrap: anywhere; }
+
+  /* Lightbox: dark backdrop behind the image in both themes */
+  .viewer { display: grid; place-items: center; min-height: 200px; background: #0b0f17; }
+  .viewer img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+
+  .top-btn { position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 25; width: 44px; height: 44px; border-radius: 50%; box-shadow: var(--shadow-lg); }
+  @media (max-width: 640px) { .top-btn { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); } }
 </style>
 {% endblock %}
 
 {% block content %}
-
-<!-- Header (page toolbar — base.html already provides the site navbar) -->
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-4 pt-4 pb-2">
-  <h4 class="fw-bold d-flex align-items-center gap-2 mb-0">
-    <i class="bi bi-cloud-fill brand-icon"></i> Cloud Gallery
-  </h4>
-  <div class="d-flex gap-2 flex-wrap">
-    <button class="btn btn-outline-dark btn-sm" id="selectBtn"><i class="bi bi-check2-square"></i> Select</button>
-    <button class="btn btn-outline-primary btn-sm" id="refreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
-    <button class="btn btn-outline-info btn-sm" id="statusBtn"><i class="bi bi-heart-pulse"></i> Cloud Status</button>
-    <button class="btn btn-outline-secondary btn-sm" id="settingsBtn"><i class="bi bi-cloud-arrow-up"></i> Upload</button>
-  </div>
+<div class="page-head">
+    <div class="titles">
+        <h1>Cloud gallery</h1>
+        <p class="page-sub">Device backups and notification images stored in Cloudinary</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn" type="button" id="selectBtn" aria-pressed="false">{% icon "square-check" %}Select</button>
+        <button class="btn" type="button" id="refreshBtn">{% icon "refresh-cw" %}Refresh</button>
+        <button class="btn" type="button" id="statusBtn">{% icon "heart-pulse" %}Cloud status</button>
+        <button class="btn btn-primary" type="button" id="settingsBtn" aria-expanded="false" aria-controls="settingsPanel">{% icon "cloud-upload" %}Upload</button>
+    </div>
 </div>
 
-<div class="container-fluid px-4 py-4">
-
-  <!-- Upload (toggled by the Upload button, collapsed by default) -->
-  <div class="collapse" id="settingsPanel">
-    <div class="card shadow-sm mb-3">
-      <div class="card-body">
-        <div id="upTarget" class="small mb-2"></div>
-        <div id="dropzone" class="dropzone">
-          <div class="fs-2"><i class="bi bi-cloud-arrow-up"></i></div>
-          <div><b>Drag &amp; drop</b> images here, or
-            <label for="fileInput" class="text-primary" style="cursor:pointer;">browse</label></div>
-          <input type="file" id="fileInput" accept="image/*" multiple class="d-none" />
+{# Upload (toggled by the Upload button, hidden by default) #}
+<section class="card" id="settingsPanel" hidden>
+    <div class="card-head">
+        {% icon "cloud-upload" %}<h2>Upload images</h2>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" id="uploadClose" aria-label="Close upload panel">{% icon "x" %}</button>
+    </div>
+    <div class="card-body stack" style="gap:12px">
+        <div id="upTarget"></div>
+        <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload images: drop files here, or press Enter to browse">
+            {% icon "image-up" %}
+            <div><b>Drag &amp; drop</b> images here, or <label for="fileInput" class="dropzone-browse">browse</label></div>
+            <span class="help">Images only. You can pick several at once.</span>
+            <input type="file" id="fileInput" accept="image/*" multiple hidden>
         </div>
-        <div id="upStatus" class="small mt-2"></div>
-      </div>
+        <div class="progress" id="upProgress" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div class="progress-bar" id="upProgressBar"></div></div>
+        <div id="upStatus" class="status-line small"></div>
     </div>
-  </div>
+</section>
 
-  <!-- Filters -->
-  <div class="row g-3 align-items-end mb-3">
-    <div class="col-md-2">
-      <label class="form-label fw-semibold mb-1">Scope</label>
-      <select id="scope" class="form-select">
-        <option value="">— All —</option>
-        <option value="device" selected>Devices</option>
-        <option value="notification">Notifications</option>
-      </select>
+{# Filters #}
+<div class="card">
+    <div class="card-body gallery-filters">
+        <div class="field">
+            <label class="label" for="scope">Scope</label>
+            <select id="scope" class="input">
+                <option value="">All scopes</option>
+                <option value="device" selected>Devices</option>
+                <option value="notification">Notifications</option>
+            </select>
+        </div>
+        <div class="field">
+            <label class="label" for="deviceFilter">Device</label>
+            <select id="deviceFilter" class="input"><option value="">All devices</option></select>
+        </div>
+        <div class="field">
+            <label class="label" for="rtype">Type</label>
+            <select id="rtype" class="input">
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+                <option value="raw">Raw</option>
+            </select>
+        </div>
+        <div class="field">
+            <label class="label" for="filter">Search</label>
+            <div class="input-icon">{% icon "search" %}<input id="filter" type="search" class="input" placeholder="Filename…" autocomplete="off"></div>
+        </div>
     </div>
-    <div class="col-md-3">
-      <label class="form-label fw-semibold mb-1">Device</label>
-      <select id="deviceFilter" class="form-select"><option value="">— All Devices —</option></select>
-    </div>
-    <div class="col-md-2">
-      <label class="form-label fw-semibold mb-1">Type</label>
-      <select id="rtype" class="form-select">
-        <option value="image">Images</option>
-        <option value="video">Videos</option>
-        <option value="raw">Raw</option>
-      </select>
-    </div>
-    <div class="col-md-3">
-      <label class="form-label fw-semibold mb-1">Search</label>
-      <input id="filter" type="search" class="form-control" placeholder="Filter by filename…" />
-    </div>
-    <div class="col-md-2 d-flex gap-2">
-      <span class="badge text-bg-primary badge-stat" id="countBadge">0 files</span>
-    </div>
-  </div>
-
-  <!-- Bulk selection toolbar (shown only in Select mode) -->
-  <div id="bulkBar" class="d-none align-items-center gap-2 flex-wrap mb-3 p-2 rounded border bg-white shadow-sm sticky-top">
-    <span class="fw-semibold me-1"><span id="selCount">0</span> selected</span>
-    <button class="btn btn-sm btn-outline-primary" id="selAllBtn">Select all (<span id="selAllCount">0</span>)</button>
-    <button class="btn btn-sm btn-outline-secondary" id="selClearBtn">Clear</button>
-    <button class="btn btn-sm btn-success ms-auto" id="bulkDownloadBtn" disabled>
-      <i class="bi bi-download"></i> Download selected
-    </button>
-    <button class="btn btn-sm btn-danger" id="bulkDeleteBtn" disabled>
-      <i class="bi bi-trash"></i> Delete selected
-    </button>
-  </div>
-
-  <div id="status" class="small mb-2"></div>
-
-  <!-- Gallery -->
-  <div class="row g-3" id="gallery"></div>
-
-  <!-- Lazy-load sentinel / loader -->
-  <div id="sentinel" class="text-center py-4 text-muted small"></div>
 </div>
 
-<!-- File Info modal -->
-<div class="modal fade" id="infoModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+{# Bulk selection toolbar (shown only in Select mode) #}
+<div id="bulkBar" class="bulk-bar" hidden>
+    <span class="nowrap"><b id="selCount">0</b> selected</span>
+    <button class="btn btn-sm" type="button" id="selAllBtn">{% icon "list-checks" %}<span>Select all (<span id="selAllCount">0</span>)</span></button>
+    <button class="btn btn-sm btn-ghost" type="button" id="selClearBtn">Clear</button>
+    <span class="spacer"></span>
+    <button class="btn btn-sm" type="button" id="bulkDownloadBtn" disabled>{% icon "download" %}Download selected</button>
+    <button class="btn btn-sm btn-danger" type="button" id="bulkDeleteBtn" disabled>{% icon "trash" %}Delete selected</button>
+</div>
+
+<div class="stack" style="gap:12px">
+    <div class="row-between">
+        <div id="status" class="status-line small"></div>
+        <span class="badge badge-accent ml-auto" id="countBadge">0 files</span>
+    </div>
+
+    {# Gallery #}
+    <div class="media-grid" id="gallery"></div>
+
+    {# Lazy-load sentinel / loader #}
+    <div id="sentinel" class="small muted center"></div>
+</div>
+
+{# File info dialog #}
+<dialog class="modal" id="infoModal" aria-labelledby="infoTitle">
+    <div class="modal-head">
+        {% icon "info" %}<h2 id="infoTitle">File info</h2>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+    </div>
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-info-circle-fill text-info"></i> File Info</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <table class="table table-sm table-bordered align-middle mb-3"><tbody id="infoBody"></tbody></table>
-        <div class="fw-semibold mb-1">▾ Context</div>
-        <pre id="infoContext" class="ctx-pre bg-light border rounded p-2 mb-0"></pre>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
-      </div>
+        <dl class="kv" id="infoBody"></dl>
+        <div class="field">
+            <span class="label">Context</span>
+            <pre id="infoContext" class="code wrap ctx-pre"></pre>
+        </div>
     </div>
-  </div>
-</div>
+    <div class="modal-foot bordered">
+        <button class="btn btn-primary" type="button" data-close-dialog>OK</button>
+    </div>
+</dialog>
 
-<!-- Lightbox modal -->
-<div class="modal fade" id="viewModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
+{# Lightbox dialog #}
+<dialog class="modal modal-lg" id="viewModal" aria-labelledby="viewTitle">
+    <div class="modal-head">
+        <h2 class="truncate" id="viewTitle"></h2>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+    </div>
+    <div class="viewer">
+        <img id="viewImg" alt="">
+    </div>
+    <div class="modal-foot bordered">
+        <button class="btn" type="button" id="viewCopy" data-copy="">{% icon "copy" %}Copy URL</button>
+        <a id="viewOpen" class="btn" target="_blank" rel="noopener">{% icon "external-link" %}Open original</a>
+        <button class="btn btn-primary" type="button" data-close-dialog>Close</button>
+    </div>
+</dialog>
+
+{# Cloud status dialog #}
+<dialog class="modal" id="statusModal" aria-labelledby="statusTitle">
+    <div class="modal-head">
+        {% icon "heart-pulse" %}<h2 id="statusTitle">Cloud status</h2>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+    </div>
     <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title text-truncate" id="viewTitle"></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body text-center bg-dark">
-        <img id="viewImg" class="lb-img" alt="" />
-      </div>
-      <div class="modal-footer">
-        <a id="viewOpen" class="btn btn-outline-primary" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Open original</a>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
+        <dl class="kv">
+            <dt>Cloud</dt><dd><b id="stCloud"></b></dd>
+            <dt>Loaded files</dt><dd class="num" id="stFiles"></dd>
+            <dt>Devices</dt><dd class="num" id="stDevices"></dd>
+        </dl>
     </div>
-  </div>
-</div>
+    <div class="modal-foot bordered">
+        <button class="btn btn-primary" type="button" data-close-dialog>OK</button>
+    </div>
+</dialog>
 
-<!-- Go to top -->
-<button class="btn btn-primary top-btn" id="topBtn" title="Go to top"><i class="bi bi-arrow-up"></i></button>
+{# Go to top #}
+<button class="btn btn-primary btn-icon top-btn" type="button" id="topBtn" title="Go to top" aria-label="Go to top" hidden>{% icon "arrow-up" %}</button>
 {% endblock %}
 
 {% block script %}
-<!-- Bootstrap & SweetAlert2 are already loaded by base.html -->
 <script>
-(function () {
+// Runs after app.js (deferred) so window.App is available.
+document.addEventListener("DOMContentLoaded", function () {
   "use strict";
 
 const config = JSON.parse(
@@ -196,26 +209,30 @@ const config = JSON.parse(
   // Device filter.
   const NOTIF_TAG = "notifications";
 
-  const $ = (id) => document.getElementById(id);
+  const SPIN = '<span class="spinner"></span> ';
+  const byId = (id) => document.getElementById(id);
   const els = {
-    rtype: $("rtype"), scope: $("scope"),
-    deviceFilter: $("deviceFilter"), filter: $("filter"),
-    gallery: $("gallery"), status: $("status"), upStatus: $("upStatus"),
-    countBadge: $("countBadge"), sentinel: $("sentinel"),
-    dropzone: $("dropzone"), fileInput: $("fileInput"),
-    settingsBtn: $("settingsBtn"), settingsPanel: $("settingsPanel"),
-    statusBtn: $("statusBtn"), refreshBtn: $("refreshBtn"), topBtn: $("topBtn"),
-    infoBody: $("infoBody"), infoContext: $("infoContext"),
-    viewImg: $("viewImg"), viewTitle: $("viewTitle"), viewOpen: $("viewOpen"),
-    selectBtn: $("selectBtn"), bulkBar: $("bulkBar"),
-    selCount: $("selCount"), selAllCount: $("selAllCount"),
-    selAllBtn: $("selAllBtn"), selClearBtn: $("selClearBtn"),
-    bulkDownloadBtn: $("bulkDownloadBtn"), bulkDeleteBtn: $("bulkDeleteBtn"),
-    upTarget: $("upTarget"),
+    rtype: byId("rtype"), scope: byId("scope"),
+    deviceFilter: byId("deviceFilter"), filter: byId("filter"),
+    gallery: byId("gallery"), status: byId("status"), upStatus: byId("upStatus"),
+    countBadge: byId("countBadge"), sentinel: byId("sentinel"),
+    dropzone: byId("dropzone"), fileInput: byId("fileInput"),
+    settingsBtn: byId("settingsBtn"), settingsPanel: byId("settingsPanel"), uploadClose: byId("uploadClose"),
+    upProgress: byId("upProgress"), upProgressBar: byId("upProgressBar"),
+    statusBtn: byId("statusBtn"), refreshBtn: byId("refreshBtn"), topBtn: byId("topBtn"),
+    infoBody: byId("infoBody"), infoContext: byId("infoContext"),
+    viewImg: byId("viewImg"), viewTitle: byId("viewTitle"), viewOpen: byId("viewOpen"), viewCopy: byId("viewCopy"),
+    stCloud: byId("stCloud"), stFiles: byId("stFiles"), stDevices: byId("stDevices"),
+    selectBtn: byId("selectBtn"), bulkBar: byId("bulkBar"),
+    selCount: byId("selCount"), selAllCount: byId("selAllCount"),
+    selAllBtn: byId("selAllBtn"), selClearBtn: byId("selClearBtn"),
+    bulkDownloadBtn: byId("bulkDownloadBtn"), bulkDeleteBtn: byId("bulkDeleteBtn"),
+    upTarget: byId("upTarget"),
   };
 
-  const infoModal = new bootstrap.Modal($("infoModal"));
-  const viewModal = new bootstrap.Modal($("viewModal"));
+  const infoModal = byId("infoModal");
+  const viewModal = byId("viewModal");
+  const statusModal = byId("statusModal");
   let resources = [];
 
   // ---- bulk selection state ----
@@ -225,17 +242,17 @@ const config = JSON.parse(
   // ---- lazy rendering (infinite scroll) ----
   const PAGE_SIZE = 48;
   let viewList = [];   // current filtered list
-  let rendered = 0;    // how many cards are currently in the DOM
+  let rendered = 0;    // how many tiles are currently in the DOM
   let io = null;       // IntersectionObserver
 
-  function setStatus(msg, kind) {
-    els.status.className = "small mb-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
-    els.status.innerHTML = msg;
+  // Status lines: kind "err" → red with an alert icon, "ok" → green with a check, otherwise muted.
+  function statusMarkup(el, msg, kind) {
+    el.className = "status-line small " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "muted");
+    el.innerHTML = (kind === "err" ? App.icon("circle-alert", "icon-sm") : kind === "ok" ? App.icon("circle-check", "icon-sm") : "") +
+      "<span>" + msg + "</span>";
   }
-  function setUpStatus(msg, kind) {
-    els.upStatus.className = "small mt-2 " + (kind === "err" ? "text-danger" : kind === "ok" ? "text-success" : "text-muted");
-    els.upStatus.innerHTML = msg;
-  }
+  function setStatus(msg, kind) { statusMarkup(els.status, msg, kind); }
+  function setUpStatus(msg, kind) { statusMarkup(els.upStatus, msg, kind); }
 
   function deliveryUrl(cloud, rtype, publicId, version, format, transform) {
     const t = transform ? (transform + "/") : "";
@@ -254,7 +271,7 @@ const config = JSON.parse(
     return parts.length >= 3 ? parts[1] : (parts.length === 2 ? parts[0] : "");
   }
   function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
   // Signatures are computed on the SERVER — the Cloudinary API secret never reaches the browser.
   // Returns { signature, api_key, timestamp } for the given params (server injects the timestamp).
@@ -312,7 +329,8 @@ const config = JSON.parse(
 
   async function loadImages() {
     const rtype = els.rtype.value;
-    setStatus('<span class="spinner-border spinner-border-sm"></span> Loading…');
+    setStatus(SPIN + "Loading…");
+    els.refreshBtn.setAttribute("aria-busy", "true");
     try {
       // Base tag first (also covers assets whose device isn't in the device list).
       const base = await fetchTagList(rtype, TAG);
@@ -346,11 +364,11 @@ const config = JSON.parse(
       const notifCount = notif.resources.length;
       const total = resources.length;
       if (!total) {
-        setStatus('Loaded, but no images carry the tag "' + TAG + '" / "' + NOTIF_TAG +
-          '" and "Resource list" is enabled (Settings → Security).', "err");
+        setStatus('Loaded, but no images carry the tag "' + escapeHtml(TAG) + '" / "' + NOTIF_TAG +
+          '". Check the tag, and that "Resource list" is enabled (Settings → Security).', "err");
       } else if (shardHits === 0 && base.capped) {
         // No per-device tags exist → still capped at 1000. Tell the user how to fix.
-        setStatus('Loaded ' + total + ' image(s) — capped at Cloudinary\'s 1000/tag limit. ' +
+        setStatus('Loaded ' + total + ' image(s), capped at Cloudinary\'s 1000-per-tag limit. ' +
           'To show all files, tag each asset with its device_id (no per-device tags were found).', "err");
       } else {
         setStatus('Loaded ' + total + ' image(s) from ' + (shardHits + 1) +
@@ -360,7 +378,9 @@ const config = JSON.parse(
       let msg = err.message || String(err);
       if (msg === "Failed to fetch" || /NetworkError/i.test(msg))
         msg = '"Resource list" is likely OFF (Settings → Security), or the cloud name/tag is wrong.';
-      setStatus("Error: " + msg, "err");
+      setStatus("Error: " + escapeHtml(msg), "err");
+    } finally {
+      els.refreshBtn.removeAttribute("aria-busy");
     }
   }
 
@@ -374,7 +394,7 @@ const config = JSON.parse(
       deviceMappings.forEach(d => {deviceMap[d.device_id] = d.user_id;});
       const cur = els.deviceFilter.value;
 
-      els.deviceFilter.innerHTML ='<option value="">— All Devices —</option>' +
+      els.deviceFilter.innerHTML = '<option value="">All devices</option>' +
           devices.map(deviceId => {
               const label = deviceMap[deviceId] ? `${deviceId}-${deviceMap[deviceId]}` : deviceId;
               return `<option value="${escapeHtml(deviceId)}">${escapeHtml(label)}</option>`;
@@ -410,51 +430,64 @@ const config = JSON.parse(
     const fname = (r.public_id || "").split("/").pop() + (r.format ? ("." + r.format) : "");
     const sub = (r.width && r.height) ? (r.width + "×" + r.height) : "";
 
-    const col = document.createElement("div");
-    col.className = "col-6 col-md-4 col-lg-3";
-    const card = document.createElement("div");
-    card.className = "card h-100 shadow-sm";
-    if (selected.has(r.public_id)) card.classList.add("selected");
+    const tile = document.createElement("div");
+    tile.className = "media-tile";
+    if (selected.has(r.public_id)) tile.classList.add("selected");
 
     const imgWrap = document.createElement("div");
-    imgWrap.className = "card-img-top-wrap";
+    imgWrap.className = "thumb";
+    imgWrap.tabIndex = 0;
+    imgWrap.setAttribute("role", "button");
+    imgWrap.setAttribute("aria-label", "View " + fname);
     const img = document.createElement("img");
     img.loading = "lazy"; img.alt = fname; img.src = thumb;
-    img.onerror = function () { img.onerror = null; img.src = full; };
+    img.onerror = function () {
+      // Thumbnail failed → try the original; if that fails too, show a file icon.
+      img.onerror = function () {
+        img.onerror = null;
+        img.insertAdjacentHTML("afterend", App.icon(rtype === "video" ? "film" : "file", "thumb-icon"));
+        img.remove();
+      };
+      img.src = full;
+    };
     imgWrap.appendChild(img);
 
     // Selection checkbox (visible only in Select mode via CSS).
     const check = document.createElement("input");
     check.type = "checkbox";
-    check.className = "form-check-input sel-check";
+    check.className = "sel-check";
     check.dataset.pid = r.public_id;
     check.checked = selected.has(r.public_id);
+    check.setAttribute("aria-label", "Select " + fname);
     check.addEventListener("click", e => e.stopPropagation());
-    check.addEventListener("change", () => setSelected(r.public_id, check.checked, card, check));
+    check.addEventListener("change", () => setSelected(r.public_id, check.checked, tile, check));
     imgWrap.appendChild(check);
 
-    imgWrap.addEventListener("click", () => {
-      if (selectMode) { setSelected(r.public_id, !check.checked, card, check); }
+    const activate = () => {
+      if (selectMode) { setSelected(r.public_id, !check.checked, tile, check); }
       else openView(full, r.public_id);
+    };
+    imgWrap.addEventListener("click", activate);
+    imgWrap.addEventListener("keydown", e => {
+      if (e.target === imgWrap && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); activate(); }
     });
 
     const body = document.createElement("div");
-    body.className = "card-body p-2";
+    body.className = "meta";
     body.innerHTML =
-      '<div class="file-name text-truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + "</div>" +
-      '<div class="file-sub text-muted">' + escapeHtml(sub) + "</div>" +
-      (r.created_at ? '<div class="file-sub text-muted">' + escapeHtml(r.created_at) + "</div>" : "");
+      '<b class="truncate" title="' + escapeHtml(fname) + '">' + escapeHtml(fname) + "</b>" +
+      '<span class="muted">' + escapeHtml(sub) + "</span>" +
+      (r.created_at ? '<span class="faint">' + escapeHtml(r.created_at) + "</span>" : "");
 
     const btns = document.createElement("div");
-    btns.className = "btn-group btn-group-sm w-100 px-2 pb-2";
-    btns.appendChild(iconBtn("btn-outline-primary", "bi-eye", "View", () => openView(full, r.public_id)));
-    btns.appendChild(iconBtn("btn-outline-success", "bi-download", "Download", () => downloadImage(r)));
-    btns.appendChild(iconBtn("btn-outline-info", "bi-info-circle", "Info", () => showInfo(r)));
-    btns.appendChild(iconBtn("btn-outline-danger", "bi-trash", "Delete", () => deleteImage(r)));
+    btns.className = "tile-actions";
+    btns.appendChild(iconBtn("", "eye", "View", () => openView(full, r.public_id)));
+    btns.appendChild(iconBtn("", "download", "Download", () => downloadImage(r)));
+    btns.appendChild(iconBtn("", "info", "Info", () => showInfo(r)));
+    btns.appendChild(iconBtn("text-danger", "trash", "Delete", () => deleteImage(r)));
 
-    card.appendChild(imgWrap); card.appendChild(body); card.appendChild(btns);
-    col.appendChild(card);
-    return col;
+    tile.appendChild(imgWrap); tile.appendChild(body); tile.appendChild(btns);
+    return tile;
   }
 
   function appendPage() {
@@ -480,20 +513,28 @@ const config = JSON.parse(
     els.countBadge.textContent = viewList.length + " files";
     els.selAllCount.textContent = viewList.length;
     updateSelBar();
+    if (!viewList.length) {
+      els.gallery.innerHTML = '<div class="empty">' + App.icon("images") +
+        (resources.length
+          ? "<b>No files match these filters</b><span>Try another scope, device or filename.</span>"
+          : "<b>No files found</b><span>Nothing is stored under this type yet.</span>") + "</div>";
+    }
     appendPage();
   }
 
   function iconBtn(cls, icon, title, handler) {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "btn " + cls; b.title = title;
-    b.innerHTML = '<i class="bi ' + icon + '"></i>';
+    b.type = "button"; b.className = "btn btn-ghost btn-sm btn-icon " + cls; b.title = title;
+    b.setAttribute("aria-label", title);
+    b.innerHTML = App.icon(icon);
     b.addEventListener("click", e => { e.stopPropagation(); handler(); });
     return b;
   }
 
   function openView(url, name) {
-    els.viewImg.src = url; els.viewTitle.textContent = name || "";
-    els.viewOpen.href = url; viewModal.show();
+    els.viewImg.src = url; els.viewImg.alt = name || ""; els.viewTitle.textContent = name || "";
+    els.viewOpen.href = url; els.viewCopy.dataset.copy = url;
+    if (!viewModal.open) viewModal.showModal();
   }
 
   function downloadImage(r) {
@@ -506,9 +547,9 @@ const config = JSON.parse(
   }
 
   // ---- bulk selection ----
-  function setSelected(pid, on, card, check) {
+  function setSelected(pid, on, tile, check) {
     if (on) selected.add(pid); else selected.delete(pid);
-    if (card) card.classList.toggle("selected", on);
+    if (tile) tile.classList.toggle("selected", on);
     if (check) check.checked = on;
     updateSelBar();
   }
@@ -517,25 +558,24 @@ const config = JSON.parse(
     els.bulkDownloadBtn.disabled = selected.size === 0;
     els.bulkDeleteBtn.disabled = selected.size === 0;
   }
-  // Re-sync every rendered card's checkbox/highlight from the `selected` set.
+  // Re-sync every rendered tile's checkbox/highlight from the `selected` set.
   function reflectSelection() {
     els.gallery.querySelectorAll(".sel-check").forEach(cb => {
       const on = selected.has(cb.dataset.pid);
       cb.checked = on;
-      const card = cb.closest(".card");
-      if (card) card.classList.toggle("selected", on);
+      const tile = cb.closest(".media-tile");
+      if (tile) tile.classList.toggle("selected", on);
     });
     updateSelBar();
   }
   function toggleSelectMode() {
     selectMode = !selectMode;
     els.gallery.classList.toggle("select-mode", selectMode);
-    els.bulkBar.classList.toggle("d-none", !selectMode);
-    els.bulkBar.classList.toggle("d-flex", selectMode);
-    els.selectBtn.classList.toggle("active", selectMode);
+    els.bulkBar.hidden = !selectMode;
+    els.selectBtn.setAttribute("aria-pressed", String(selectMode));
     els.selectBtn.innerHTML = selectMode
-      ? '<i class="bi bi-x-lg"></i> Done'
-      : '<i class="bi bi-check2-square"></i> Select';
+      ? App.icon("x") + "Done"
+      : App.icon("square-check") + "Select";
     if (!selectMode) clearSelection();  // drop selection + highlights on exit
     updateSelBar();
   }
@@ -548,8 +588,8 @@ const config = JSON.parse(
     reflectSelection();
   }
   function selectedResources() {
-    const byId = new Map(resources.map(r => [r.public_id, r]));
-    return Array.from(selected).map(id => byId.get(id)).filter(Boolean);
+    const byPid = new Map(resources.map(r => [r.public_id, r]));
+    return Array.from(selected).map(id => byPid.get(id)).filter(Boolean);
   }
 
   // Bulk download: one signed Cloudinary ZIP (CORS-enabled Upload API), with an
@@ -581,6 +621,7 @@ const config = JSON.parse(
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
+    const ts = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
     const a = document.createElement("a");
     a.href = url; a.download = "cloud-gallery-" + ts + ".zip";
     document.body.appendChild(a); a.click(); a.remove();
@@ -590,7 +631,7 @@ const config = JSON.parse(
   async function sequentialDownload(list) {
     for (let i = 0; i < list.length; i++) {
       downloadImage(list[i]);
-      setStatus('<span class="spinner-border spinner-border-sm"></span> Downloading ' + (i + 1) + "/" + list.length + "…");
+      setStatus(SPIN + "Downloading " + (i + 1) + "/" + list.length + "…");
       await new Promise(r => setTimeout(r, 400));
     }
   }
@@ -601,23 +642,22 @@ const config = JSON.parse(
     const rtype = els.rtype.value;
 
     if (list.length > 100) {
-      const c = await Swal.fire({
-        icon: "question",
+      const confirmed = await App.confirm({
         title: "Download " + list.length + " files?",
         text: "They'll be bundled into a single ZIP.",
-        showCancelButton: true, confirmButtonText: "Download",
-        confirmButtonColor: "#198754", cancelButtonColor: "#6c757d",
+        confirmText: "Download",
+        icon: "download",
       });
-      if (!c.isConfirmed) return;
+      if (!confirmed) return;
     }
 
     els.bulkDownloadBtn.disabled = true;
-    setStatus('<span class="spinner-border spinner-border-sm"></span> Preparing ZIP of ' + list.length + " file(s)…");
+    setStatus(SPIN + "Preparing ZIP of " + list.length + " file(s)…");
     try {
       await archiveZip(list, rtype);
       setStatus("Downloaded a ZIP of " + list.length + " file(s).", "ok");
     } catch (e) {
-      setStatus("ZIP failed (" + (e.message || e) + "). Downloading files individually…", "err");
+      setStatus("ZIP failed (" + escapeHtml(e.message || e) + "). Downloading files individually…", "err");
       await sequentialDownload(list);
       setStatus("Downloaded " + list.length + " file(s) individually.", "ok");
     } finally {
@@ -642,21 +682,22 @@ const config = JSON.parse(
       ["URL", deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "")],
     ].filter(row => row[1]);
     els.infoBody.innerHTML = rows.map(row =>
-      '<tr><th class="text-muted" style="width:35%">' + row[0] + "</th><td>" + escapeHtml(String(row[1])) + "</td></tr>"
+      "<dt>" + row[0] + "</dt><dd" + (row[0] === "Public ID" || row[0] === "URL" ? ' class="mono"' : "") + ">" +
+      escapeHtml(String(row[1])) + "</dd>"
     ).join("");
 
     const ctx = r.context;
     const hasCtx = ctx && (typeof ctx === "object") && Object.keys(ctx).length > 0;
     if (hasCtx) {
-      els.infoContext.classList.remove("text-muted");
+      els.infoContext.classList.remove("muted");
       els.infoContext.textContent = JSON.stringify(ctx, null, 2);
     } else {
-      els.infoContext.classList.add("text-muted");
+      els.infoContext.classList.add("muted");
       els.infoContext.textContent =
         "No context available.\nThe browser-safe list endpoint does not return context metadata. " +
         "It's shown only for images uploaded through this page (or read via the Admin API on a backend).";
     }
-    infoModal.show();
+    if (!infoModal.open) infoModal.showModal();
   }
 
   // Signed destroy via the (CORS-enabled) Upload API. Signature = SHA-1 of
@@ -686,23 +727,20 @@ const config = JSON.parse(
   }
 
   async function deleteImage(r) {
-    const confirmRes = await Swal.fire({
-      icon: "warning",
+    const confirmed = await App.confirm({
       title: "Delete this image?",
-      html: '<code>' + escapeHtml(r.public_id || "") + "</code>",
-      showCancelButton: true,
-      confirmButtonText: "Delete",
-      confirmButtonColor: "#dc3545",
-      cancelButtonColor: "#6c757d",
+      text: (r.public_id || "") + " is permanently removed from Cloudinary. This can't be undone.",
+      confirmText: "Delete",
+      danger: true,
     });
-    if (!confirmRes.isConfirmed) return;
+    if (!confirmed) return;
 
     try {
       await destroyResource(r);
       buildDeviceFilter(); render();
-      Swal.fire({ icon: "success", title: "Deleted", timer: 1400, showConfirmButton: false });
+      App.toast("Image deleted.", "success");
     } catch (e) {
-      Swal.fire({ icon: "error", title: "Delete failed", text: e.message || String(e), confirmButtonColor: "#0d6efd" });
+      App.toast("Delete failed: " + (e.message || String(e)), "error");
     }
   }
 
@@ -710,16 +748,13 @@ const config = JSON.parse(
     const list = selectedResources();
     if (!list.length) return;
 
-    const confirmRes = await Swal.fire({
-      icon: "warning",
+    const confirmed = await App.confirm({
       title: "Delete " + list.length + " file(s)?",
       text: "This permanently removes them from Cloudinary and cannot be undone.",
-      showCancelButton: true,
-      confirmButtonText: "Delete " + list.length,
-      confirmButtonColor: "#dc3545",
-      cancelButtonColor: "#6c757d",
+      confirmText: "Delete " + list.length,
+      danger: true,
     });
-    if (!confirmRes.isConfirmed) return;
+    if (!confirmed) return;
 
     els.bulkDeleteBtn.disabled = true;
     els.bulkDownloadBtn.disabled = true;
@@ -732,17 +767,14 @@ const config = JSON.parse(
       catch (e) { fail++; }
       done++;
       if (done === list.length || done % 4 === 0)
-        setStatus('<span class="spinner-border spinner-border-sm"></span> Deleting ' +
-          done + "/" + list.length + "…");
+        setStatus(SPIN + "Deleting " + done + "/" + list.length + "…");
     });
     buildDeviceFilter(); render();
     setStatus("Deleted " + ok + " file(s)" + (fail ? (", " + fail + " failed.") : "."), fail ? "err" : "ok");
     if (fail) {
-      Swal.fire({ icon: fail === list.length ? "error" : "warning",
-        title: "Delete finished",
-        text: ok + " deleted, " + fail + " failed.", confirmButtonColor: "#0d6efd" });
+      App.toast("Delete finished: " + ok + " deleted, " + fail + " failed.", fail === list.length ? "error" : "warning");
     } else {
-      Swal.fire({ icon: "success", title: "Deleted " + ok + " file(s)", timer: 1400, showConfirmButton: false });
+      App.toast("Deleted " + ok + " file(s).", "success");
     }
   }
 
@@ -757,15 +789,22 @@ const config = JSON.parse(
     const deviceId = els.deviceFilter.value;
     if (deviceId) {
       const userId = userOf(deviceId);
-      els.upTarget.className = "small mb-2 text-success";
-      els.upTarget.innerHTML = '<i class="bi bi-tag"></i> Uploads → device <b>' +
-        escapeHtml(deviceId) + "</b>" + (userId ? (" (user " + escapeHtml(String(userId)) + ")") : "") +
-        " — tagged and foldered like the app.";
+      els.upTarget.className = "alert alert-success";
+      els.upTarget.innerHTML = App.icon("tag") + '<div class="alert-body">Uploads go to device <strong class="mono">' +
+        escapeHtml(deviceId) + "</strong>" + (userId ? (" (user " + escapeHtml(String(userId)) + ")") : "") +
+        ", tagged and foldered like the app.</div>";
     } else {
-      els.upTarget.className = "small mb-2 text-warning";
-      els.upTarget.innerHTML = '<i class="bi bi-exclamation-triangle"></i> No device selected — ' +
-        'uploads get the base tag only. Pick a Device above to tag them per-device.';
+      els.upTarget.className = "alert alert-warning";
+      els.upTarget.innerHTML = App.icon("triangle-alert") + '<div class="alert-body">No device selected: ' +
+        "uploads get the base tag only. Pick a device in the filters below to tag them per device.</div>";
     }
+  }
+
+  function setUpProgress(pct, state) {
+    els.upProgress.hidden = false;
+    els.upProgress.setAttribute("aria-valuenow", String(pct));
+    els.upProgressBar.style.width = pct + "%";
+    els.upProgressBar.className = "progress-bar" + (state ? " " + state : "");
   }
 
   async function uploadFiles(fileList) {
@@ -784,8 +823,10 @@ const config = JSON.parse(
     const folder = deviceId ? (tag + "/" + deviceId) : tag;
 
     const url = "https://api.cloudinary.com/v1_1/" + encodeURIComponent(cloud) + "/image/upload";
-    let done = 0, failed = 0;
-    setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading 0/' + files.length + '…');
+    const hint = ' Check the preset is set to "Unsigned" and the name is correct.';
+    let done = 0, failed = 0, lastError = "";
+    setUpStatus(SPIN + "Uploading 0/" + files.length + "…");
+    setUpProgress(0);
 
     for (const file of files) {
       const form = new FormData();
@@ -806,31 +847,33 @@ const config = JSON.parse(
         done++;
       } catch (e) {
         failed++;
-        setUpStatus("Upload error: " + (e.message || e) +
-          ' (check the preset is set to "Unsigned" and the name is correct).', "err");
+        lastError = e.message || String(e);
       }
-      setUpStatus('<span class="spinner-border spinner-border-sm"></span> Uploading ' + (done + failed) + '/' + files.length + '…');
+      setUpStatus(SPIN + "Uploading " + (done + failed) + "/" + files.length + "…" +
+        (failed ? " (" + failed + " failed: " + escapeHtml(lastError) + ")" : ""));
+      setUpProgress(Math.round((done + failed) / files.length * 100));
       buildDeviceFilter(); render();
     }
+    setUpProgress(100, failed ? "danger" : "success");
     if (!failed) setUpStatus("Uploaded " + done + " file(s).", "ok");
-    else if (done) setUpStatus("Uploaded " + done + ", failed " + failed + ". See error above.", "err");
+    else if (done) setUpStatus("Uploaded " + done + ", failed " + failed + ". Last error: " + escapeHtml(lastError) + "." + hint, "err");
+    else setUpStatus("Upload error: " + escapeHtml(lastError) + "." + hint, "err");
   }
 
   // Header actions
   function cloudStatus() {
     const total = resources.length;
     const devices = new Set(resources.map(r => deviceOf(r.public_id)).filter(Boolean)).size;
-    Swal.fire({
-      icon: "info",
-      title: "Cloud Status",
-      html:
-        '<div class="text-start mx-auto" style="max-width:260px">' +
-        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Cloud</span><b>' + escapeHtml(CLOUD_NAME) + "</b></div>" +
-        '<div class="d-flex justify-content-between border-bottom py-1"><span class="text-muted">Loaded files</span><b>' + total + "</b></div>" +
-        '<div class="d-flex justify-content-between py-1"><span class="text-muted">Devices</span><b>' + devices + "</b></div>" +
-        "</div>",
-      confirmButtonColor: "#0d6efd",
-    });
+    els.stCloud.textContent = CLOUD_NAME;
+    els.stFiles.textContent = total;
+    els.stDevices.textContent = devices;
+    if (!statusModal.open) statusModal.showModal();
+  }
+
+  function toggleUploadPanel() {
+    updateUploadTarget();
+    els.settingsPanel.hidden = !els.settingsPanel.hidden;
+    els.settingsBtn.setAttribute("aria-expanded", String(!els.settingsPanel.hidden));
   }
 
   // Events
@@ -845,25 +888,26 @@ const config = JSON.parse(
   els.selClearBtn.addEventListener("click", clearSelection);
   els.bulkDownloadBtn.addEventListener("click", bulkDownload);
   els.bulkDeleteBtn.addEventListener("click", bulkDelete);
-  els.settingsBtn.addEventListener("click", () => {
-    updateUploadTarget();
-    bootstrap.Collapse.getOrCreateInstance(els.settingsPanel).toggle();
-  });
+  els.settingsBtn.addEventListener("click", toggleUploadPanel);
+  els.uploadClose.addEventListener("click", toggleUploadPanel);
 
   // Go-to-top button
   els.topBtn.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
   window.addEventListener("scroll", () => {
-    els.topBtn.classList.toggle("show", window.scrollY > 300);
-  });
+    els.topBtn.hidden = !(window.scrollY > 300);
+  }, { passive: true });
   els.fileInput.addEventListener("change", e => { uploadFiles(e.target.files); e.target.value = ""; });
   els.dropzone.addEventListener("click", e => {
     if (e.target.tagName === "LABEL" || e.target.tagName === "INPUT") return;
     els.fileInput.click();
   });
+  els.dropzone.addEventListener("keydown", e => {
+    if (e.target === els.dropzone && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); els.fileInput.click(); }
+  });
   ["dragenter", "dragover"].forEach(ev =>
-    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.add("drag"); }));
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.add("dragover"); }));
   ["dragleave", "drop"].forEach(ev =>
-    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.remove("drag"); }));
+    els.dropzone.addEventListener(ev, e => { e.preventDefault(); els.dropzone.classList.remove("dragover"); }));
   els.dropzone.addEventListener("drop", e => { if (e.dataTransfer) uploadFiles(e.dataTransfer.files); });
 
   // Lazy-load: append the next page when the sentinel scrolls into view.
@@ -872,8 +916,8 @@ const config = JSON.parse(
   }, { rootMargin: "400px" });
   io.observe(els.sentinel);
 
-  // Auto-load on page open (cloud name / tag / preset are hardcoded above).
+  // Auto-load on page open (cloud name / tag / preset come from the server config above).
   loadImages();
-})();
+});
 </script>
 {% endblock %}
