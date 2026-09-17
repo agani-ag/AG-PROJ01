@@ -15,17 +15,24 @@ class MobileapiConfig(AppConfig):
 
 @receiver(connection_created)
 def _apply_sqlite_pragmas(sender, connection, **kwargs):
-    """Harden SQLite against 'database is locked' on every new connection.
+    """SQLite settings for every new connection.
 
-    WAL lets readers and one writer run concurrently (rollback-journal mode blocks readers
-    while writing — the app's ~5s chat polling + admin + cron collide under it). busy_timeout
-    makes a blocked writer wait instead of erroring immediately. Runs for SQLite only; a no-op
-    on Postgres/MySQL if the DB is ever migrated.
+    Rollback journal (DELETE), NOT WAL. WAL needs every process to share one memory-mapped index,
+    which only works on a single machine. On PythonAnywhere the web app, Bash consoles and
+    scheduled tasks run on different machines over a network filesystem, so under WAL a
+    console's `migrate` (or a scheduled task's writes) went into the -wal file, the web app
+    never saw them, and its own later writes overwrote them — the 0014 migration "applied OK"
+    and then vanished. SQLite's docs: "WAL does not work over a network filesystem."
+
+    journal_mode is stored in the DB file, so setting DELETE here also converts a database that
+    is still in WAL the first time a connection has it to itself. busy_timeout makes a writer
+    wait for a lock instead of failing with "database is locked". SQLite only; a no-op on
+    Postgres/MySQL.
     """
     if connection.vendor != "sqlite":
         return
     cursor = connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")       # persistent (stored in the DB header)
-    cursor.execute("PRAGMA synchronous=NORMAL;")     # safe with WAL, much faster than FULL
+    cursor.execute("PRAGMA journal_mode=DELETE;")    # rollback journal: safe on network filesystems
+    cursor.execute("PRAGMA synchronous=FULL;")       # the durable setting for rollback-journal mode
     cursor.execute("PRAGMA busy_timeout=20000;")     # wait up to 20s for a lock before erroring
     cursor.execute("PRAGMA foreign_keys=ON;")        # enforce FK constraints (off by default)
