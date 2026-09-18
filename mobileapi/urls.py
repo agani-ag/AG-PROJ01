@@ -2,10 +2,12 @@
 from django.urls import path
 
 from . import views
+from . import radio
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
     path("auth/logout", views.logout, name="app_logout"),
+    path("radio/channels", radio.channels, name="app_radio_channels"),
     path("account/urls", views.account_urls, name="app_account_urls"),
     path("account/me", views.account_me, name="app_account_me"),
     path("sync", views.sync, name="app_sync"),

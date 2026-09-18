@@ -37,6 +37,11 @@ urlpatterns = [
     path("telegram/discover", v.telegram_discover, name="mobile_telegram_discover"),
     path("telegram/test", v.telegram_test, name="mobile_telegram_test"),
 
+    # Radio (live channel registry + AudioSync ingest key)
+    path("radio", v.radio_page, name="mobile_radio"),
+    path("radio/save", v.radio_save, name="mobile_radio_save"),
+    path("radio/channels/<int:channel_id>/remove", v.radio_channel_remove, name="mobile_radio_channel_remove"),
+
     # Devices
     path("devices", v.devices, name="mobile_devices"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),

@@ -19,6 +19,7 @@
             <a class="nav-link" href="{% url 'mobile_reminders' %}" {% nav_active "mobile_reminders mobile_reminder_edit mobile_reminder_receipts" %}>{% icon "calendar-clock" %}<span class="nav-text">Reminders</span></a>
             <a class="nav-link" href="{% url 'mobile_push' %}" {% nav_active "mobile_push" %}>{% icon "bell-ring" %}<span class="nav-text">Push notifications</span></a>
             <a class="nav-link" href="{% url 'mobile_telegram' %}" {% nav_active "mobile_telegram" %}>{% icon "send" %}<span class="nav-text">Telegram</span></a>
+            <a class="nav-link" href="{% url 'mobile_radio' %}" {% nav_active "mobile_radio" %}>{% icon "radio" %}<span class="nav-text">Radio</span></a>
         </div>
         <div class="nav-group">
             <div class="nav-label">Logs</div>
@@ -37,12 +38,6 @@
             <a class="nav-link" href="{% url 'clicksend' %}" {% nav_active "clicksend" %}>{% icon "mail" %}<span class="nav-text">Click Send</span></a>
             <a class="nav-link" href="{% url 'cloudinary' %}" {% nav_active "cloudinary" %}>{% icon "image" %}<span class="nav-text">Cloudinary</span></a>
             <a class="nav-link" href="{% url 'video_player' %}" {% nav_active "video_player" %}>{% icon "video" %}<span class="nav-text">Video player</span></a>
-        </div>
-        <div class="nav-group">
-            <div class="nav-label">Live</div>
-            <a class="nav-link" href="{% url 'live_admin' 'radio' %}" {% nav_active "live_admin:radio" %}>{% icon "radio" %}<span class="nav-text">Radio</span></a>
-            <a class="nav-link" href="{% url 'live_admin' 'tv' %}" {% nav_active "live_admin:tv" %}>{% icon "tv" %}<span class="nav-text">TV</span></a>
-            <a class="nav-link" href="{% url 'broadcast_admin' %}" {% nav_active "broadcast_admin" %}>{% icon "cast" %}<span class="nav-text">Broadcast</span></a>
         </div>
     </nav>
     <div class="side-foot">

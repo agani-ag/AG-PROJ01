@@ -29,7 +29,7 @@ class AppAccountForm(forms.ModelForm):
 
     class Meta:
         model = AppAccount
-        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links", "show_general_links"]
+        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links", "show_general_links", "radio_enabled"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -57,7 +57,7 @@ class AppLinkForm(forms.ModelForm):
     class Meta:
         model = AppLink
         fields = ["title", "url", "description", "icon", "is_active",
-                  "notify_token_enabled", "keep_screen_on"]
+                  "notify_token_enabled"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -71,7 +71,7 @@ class GeneralLinkForm(forms.ModelForm):
 
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "is_active", "keep_screen_on"]
+        fields = ["title", "url", "description", "icon", "is_active"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

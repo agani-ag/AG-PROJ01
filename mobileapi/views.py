@@ -538,6 +538,11 @@ def _config_dict(request):
         "support_phone": cfg.support_phone or "",
         "privacy_policy_url": _public_url(request, "privacy_policy"),
         "chat_enabled": cfg.chat_enabled,
+        # Radio shows only when the master switch AND this user's per-user switch are on.
+        "radio_enabled": bool(
+            cfg.radio_enabled
+            and getattr(getattr(request, "account", None), "radio_enabled", True)
+        ),
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",

@@ -37,6 +37,7 @@ from .models import (
     AppReminder,
     AppTelegramLog,
     CronLock,
+    RadioChannel,
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
 )
@@ -346,6 +347,50 @@ def telegram_test(request):
     else:
         messages.error(request, f"Failed: {info}")
     return redirect("mobile_telegram")
+
+
+# ------------------------------------------------------------------ Radio (live channels)
+@superuser_required
+def radio_page(request):
+    """Master radio switch + ingest key (for AudioSync) + the live channel registry."""
+    from datetime import timedelta
+    cfg = AppConfig.load()
+    cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
+    channels = RadioChannel.objects.all()
+    rows = [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff} for c in channels]
+    ingest_url = request.build_absolute_uri("/radio/ingest")
+    return render(request, "mobileapi/radio.html", {
+        "cfg": cfg, "rows": rows, "ingest_url": ingest_url,
+    })
+
+
+@superuser_required
+@require_POST
+def radio_save(request):
+    import secrets
+    cfg = AppConfig.load()
+    cfg.radio_enabled = request.POST.get("radio_enabled") == "on"
+    if request.POST.get("regenerate") == "1" or not cfg.radio_ingest_key:
+        cfg.radio_ingest_key = secrets.token_urlsafe(32)
+    try:
+        cfg.radio_heartbeat_interval_seconds = max(2, int(request.POST.get("heartbeat") or 15))
+        cfg.radio_stale_after_seconds = max(10, int(request.POST.get("stale") or 45))
+    except (TypeError, ValueError):
+        pass
+    cfg.save(update_fields=[
+        "radio_enabled", "radio_ingest_key", "radio_heartbeat_interval_seconds",
+        "radio_stale_after_seconds", "updated_at",
+    ])
+    messages.success(request, "Radio settings saved.")
+    return redirect("mobile_radio")
+
+
+@superuser_required
+@require_POST
+def radio_channel_remove(request, channel_id):
+    RadioChannel.objects.filter(id=channel_id).delete()
+    messages.success(request, "Channel removed.")
+    return redirect("mobile_radio")
 
 
 # ------------------------------------------------------------------ Test Verify (action prompts)

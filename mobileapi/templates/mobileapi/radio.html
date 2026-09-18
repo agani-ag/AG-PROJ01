@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Radio{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Radio</h1>
+        <p class="page-sub">
+            Live stations. AudioSync broadcasters register their public stream URL here and heartbeat
+            while on air; stale ones drop off automatically (no cron). The app shows these as channels.
+        </p>
+    </div>
+</div>
+
+<!-- Settings -->
+<div class="card">
+    <div class="card-head" style="flex-wrap:wrap">
+        {% icon "radio" %}<h2 style="flex:1 1 auto">Settings</h2>
+        {% if cfg.radio_enabled %}
+            <span class="badge badge-success"><span class="dot"></span>Radio on</span>
+        {% else %}
+            <span class="badge">Radio off</span>
+        {% endif %}
+    </div>
+    <form method="POST" action="{% url 'mobile_radio_save' %}" class="card-body stack">
+        {% csrf_token %}
+        <div class="switch-row">
+            <div class="text"><b>Master switch</b><span class="help">Turn the in-app Radio feature on/off for everyone. (Each user also has a per-user toggle on their account.)</span></div>
+            <label class="switch"><input type="checkbox" name="radio_enabled" {% if cfg.radio_enabled %}checked{% endif %}><span class="track"></span><span class="sr-only">Radio enabled</span></label>
+        </div>
+        <div class="form-grid">
+            <div class="field">
+                <label class="label">Heartbeat interval <span class="opt">seconds</span></label>
+                <input type="number" name="heartbeat" class="input" min="2" value="{{ cfg.radio_heartbeat_interval_seconds }}">
+                <span class="help">Sent back to AudioSync — how often it pings.</span>
+            </div>
+            <div class="field">
+                <label class="label">Stale after <span class="opt">seconds</span></label>
+                <input type="number" name="stale" class="input" min="10" value="{{ cfg.radio_stale_after_seconds }}">
+                <span class="help">Drop a channel this long after its last heartbeat.</span>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">{% icon "save" %}Save</button>
+    </form>
+</div>
+
+<!-- AudioSync connection -->
+<div class="card">
+    <div class="card-head">{% icon "plug" %}<h2>Connect AudioSync</h2></div>
+    <div class="card-body stack">
+        <p class="help">In AudioSync → Settings, paste these into “Receiver API URL” and “Auth token”, tick Enable, and set a Station name.</p>
+        <div class="field">
+            <label class="label">Receiver API URL</label>
+            <input type="text" class="input mono" value="{{ ingest_url }}" readonly onclick="this.select()">
+        </div>
+        <div class="field">
+            <label class="label">Auth token (ingest key)</label>
+            {% if cfg.radio_ingest_key %}
+            <input type="text" class="input mono" value="{{ cfg.radio_ingest_key }}" readonly onclick="this.select()">
+            {% else %}
+            <span class="help">No key yet — saving Settings generates one.</span>
+            {% endif %}
+        </div>
+        <form method="POST" action="{% url 'mobile_radio_save' %}">
+            {% csrf_token %}
+            <input type="hidden" name="radio_enabled" value="{% if cfg.radio_enabled %}on{% endif %}">
+            <input type="hidden" name="heartbeat" value="{{ cfg.radio_heartbeat_interval_seconds }}">
+            <input type="hidden" name="stale" value="{{ cfg.radio_stale_after_seconds }}">
+            <input type="hidden" name="regenerate" value="1">
+            <button type="submit" class="btn btn-sm" onclick="return confirm('Regenerate the ingest key? Every AudioSync will need the new key.')">{% icon "refresh-cw" %}Regenerate key</button>
+        </form>
+    </div>
+</div>
+
+<!-- Live channels -->
+<div class="card">
+    <div class="card-head">
+        {% icon "signal" %}<h2>Channels</h2>
+        <a href="{% url 'mobile_radio' %}" class="btn btn-sm btn-ghost">{% icon "refresh-cw" %}Refresh</a>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td class="t-primary"><b>{{ r.c.name }}</b><div class="small muted break">{{ r.c.stream_url }}</div></td>
+                    <td>{{ r.c.now_playing|default:"—" }}</td>
+                    <td>{{ r.c.listeners }}</td>
+                    <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, H:i:s" }}</td>
+                    <td>
+                        {% if r.fresh %}<span class="badge badge-success"><span class="dot"></span>On air</span>
+                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>{% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}" onsubmit="return confirm('Remove this channel?')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-ghost" title="Remove">{% icon "trash-2" %}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-muted text-center">No stations on air.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -43,6 +43,10 @@ class AppAccount(models.Model):
         help_text="Include the shared 'general' links in this user's list. Turn off for single-link "
                   "(kiosk) users so their one link still auto-opens.",
     )
+    radio_enabled = models.BooleanField(
+        default=True,
+        help_text="Show the in-app Radio feature for this user (only when the master radio switch is on too).",
+    )
     # The partner that provisioned this user via the Partner API. Blank = admin-created. Every
     # Partner-API request is scoped to its own accounts through this FK.
     partner = models.ForeignKey(
@@ -290,12 +294,6 @@ class AppLink(models.Model):
         default=False,
         help_text="Inject a SyncUp notification token (window.SyncUp.token) so this site can push to this user.",
     )
-    # When on, the app keeps the screen awake on this page so its audio keeps playing (radio/music).
-    # Pairs with the app's dim "Radio mode" (black + low brightness) to limit battery drain.
-    keep_screen_on = models.BooleanField(
-        default=False,
-        help_text="Keep the screen awake on this page so its audio keeps playing (for radio/music links).",
-    )
     # A partner's own key for this link (their system's id). Unique per account, so a partner can
     # replace-by-key: upserting a user's link with the same key updates it instead of duplicating.
     external_id = models.CharField(max_length=128, null=True, blank=True)
@@ -419,6 +417,21 @@ class AppConfig(models.Model):
     telegram_bot_token = models.CharField(max_length=100, blank=True, default="")
     telegram_bot_username = models.CharField(max_length=64, blank=True, default="")
 
+    # ---- Live radio (AudioSync broadcasters register their public stream URL here) ----
+    radio_enabled = models.BooleanField(
+        default=False, help_text="Master on/off for the in-app Radio feature.",
+    )
+    radio_ingest_key = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Shared Bearer key AudioSync uses to register/heartbeat its stream URL.",
+    )
+    radio_heartbeat_interval_seconds = models.PositiveIntegerField(
+        default=15, help_text="How often (seconds) a broadcaster heartbeats — sent back to AudioSync.",
+    )
+    radio_stale_after_seconds = models.PositiveIntegerField(
+        default=45, help_text="Drop a channel this many seconds after its last heartbeat (≈3 missed beats).",
+    )
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -539,6 +552,40 @@ class AppTelegramLog(models.Model):
 
     def __str__(self):
         return f"telegram → {self.chat_id} ({self.status})"
+
+
+# =============== Live radio channels (AudioSync presence registry) ===============
+class RadioChannel(models.Model):
+    """One live radio station: an AudioSync broadcaster's public stream URL.
+
+    Liveness is heartbeat-driven and evaluated at READ time (no cron): a channel counts as live
+    only while `is_live` AND its last heartbeat is within AppConfig.radio_stale_after_seconds.
+    Keyed by a stable `broadcaster_id` so reconnects/URL-rotations update one row (no duplicates);
+    `session_id` guards against stale heartbeats/goodbyes from a previous run of the same broadcaster.
+    """
+
+    broadcaster_id = models.CharField(max_length=64, unique=True, db_index=True)
+    name = models.CharField(max_length=120, default="Radio")
+    stream_url = models.URLField(max_length=500)
+    session_id = models.CharField(max_length=64, blank=True, default="")
+    is_live = models.BooleanField(default=True)
+    now_playing = models.CharField(max_length=300, blank=True, default="")
+    listeners = models.PositiveIntegerField(default=0)
+    last_heartbeat_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def is_fresh(self, stale_after_seconds):
+        """Live AND heartbeated recently enough to still be on air."""
+        if not self.is_live:
+            return False
+        return (timezone.now() - self.last_heartbeat_at).total_seconds() <= stale_after_seconds
+
+    def __str__(self):
+        return f"{self.name} ({'live' if self.is_live else 'off'})"
 
 
 # =============== Scheduled reminders (server-authored, device-fired) ===============
