@@ -461,3 +461,28 @@ dialog.modal .modal-foot.bordered { border-top: 1px solid var(--border); padding
 
 /* ---------- Server-rendered messages (shown if JavaScript is off) ---------- */
 .flash { display: flex; flex-direction: column; gap: 8px; }
+
+/* ---------- Mini bar chart (dashboard) ---------- */
+.bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: end; gap: 6px; height: 132px; padding: 10px 2px 0; }
+.bars .bar { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.bars .bar-fill { position: relative; min-height: 2px; border-radius: 4px 4px 0 0; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.bars .bar-self { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 4px 4px 0 0; background: var(--accent); }
+.bars .bar-n { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+.bars-axis { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; padding: 6px 2px 0; font-size: 11px; color: var(--faint); text-align: center; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+/* Label · value · bar rows (breakdowns) */
+.meter { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.meter .progress { grid-column: 1 / -1; height: 6px; }
+.meter + .meter { margin-top: 12px; }
+/* Activity timeline */
+.timeline { list-style: none; margin: 0; padding: 4px 18px 12px; }
+.timeline li { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 8px 0; }
+.timeline li + li::before { content: ""; position: absolute; left: 13px; top: -8px; height: 16px; border-left: 1px dashed var(--border); }
+.timeline .t-ico { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); color: var(--muted); }
+.timeline .t-ico .icon { width: 14px; height: 14px; }
+.timeline .t-admin .t-ico { background: color-mix(in srgb, var(--warning, #d97706) 18%, transparent); color: var(--warning, #b45309); }
+/* Chips for sign-in ways */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; color: var(--text); }
+.chip .icon { width: 13px; height: 13px; color: var(--muted); }

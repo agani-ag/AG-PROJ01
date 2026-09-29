@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ device.device_model|default:"Device" }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_devices' %}">{% icon "arrow-left" "icon-sm" %}Devices</a>
+        <h1>{{ device.device_model|default:"Unknown device" }}</h1>
+        <div class="row" style="margin-top:8px;flex-wrap:wrap">
+            {% if device.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+            {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
+            <span class="badge {% if current %}badge-success{% endif %}">App v{{ device.app_version|default:"?" }}{% if not current %} · older version{% endif %}</span>
+            {% if device.account %}<span class="badge badge-info">{% icon "log-in" %}Signed in</span>{% else %}<span class="badge">Signed out</span>{% endif %}
+            <span class="small muted">Last seen {{ device.last_seen|date:"d M Y, H:i" }} ({{ device.last_seen|ago }})</span>
+        </div>
+    </div>
+    {% if device.is_active %}
+    <div class="page-actions">
+        <form method="post" action="{% url 'mobile_device_deactivate' device.id %}"
+              data-confirm="Deactivate this device?" data-confirm-text="It stops receiving push until the app registers again."
+              data-confirm-button="Deactivate" data-danger>
+            {% csrf_token %}
+            <button class="btn" type="submit">{% icon "ban" %}Deactivate</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-head">{% icon "smartphone" %}<h2>Device</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Model</dt><dd>{{ device.device_model|default:"—" }}</dd>
+                <dt>Android</dt><dd>{{ device.os_version|default:"—" }}</dd>
+                <dt>Platform</dt><dd>{{ device.platform|default:"—" }}</dd>
+                <dt>WebView</dt><dd>{{ device.webview_version|default:"—" }}</dd>
+                <dt>Installed from</dt><dd>{% if device.install_source == "com.android.vending" %}Google Play{% else %}{{ device.install_source|default:"—" }}{% endif %}</dd>
+                <dt>Device id</dt><dd class="mono small">{{ device.device_id }}</dd>
+                <dt>Push token</dt><dd>{% if device.fcm_token %}<span class="text-success">Registered</span>{% else %}<span class="muted">None (no Google Play services?)</span>{% endif %}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "globe" %}<h2>Region & app</h2></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Country</dt><dd>{{ device.country|default:"—" }} <span class="small muted">from the connection; the IP address isn't stored</span></dd>
+                <dt>Language</dt><dd>{{ device.locale|default:"—" }}</dd>
+                <dt>Time zone</dt><dd>{{ device.time_zone|default:"—" }}</dd>
+                <dt>App version</dt><dd>v{{ device.app_version|default:"?" }}</dd>
+                <dt>Notifications</dt><dd>{% if device.notifications_allowed == False %}<span class="text-danger">Blocked in Android settings</span>{% elif device.notifications_allowed %}Allowed{% else %}<span class="muted">Not reported (older app)</span>{% endif %}</dd>
+                <dt>SyncUp updates</dt><dd>{% if device.updates_enabled %}On{% else %}Off — no broadcasts{% endif %}</dd>
+                <dt>Installed</dt><dd>{{ device.installed_at|date:"d M Y, H:i" }}</dd>
+                <dt>First sign-in</dt><dd>{{ device.converted_at|date:"d M Y, H:i"|default:"Never" }}</dd>
+                <dt>Reminder sync</dt><dd>{{ device.last_reminder_sync_at|date:"d M Y, H:i"|default:"—" }}</dd>
+            </dl>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "user-round" %}<h2>Account</h2></div>
+        <div class="card-body">
+            {% if device.account %}
+            <dl class="kv">
+                <dt>Signed in as</dt><dd><a href="{% url 'mobile_account_edit' device.account.id %}">{{ device.account.name }}</a> <span class="small muted">{{ device.account.login_label }}</span></dd>
+                <dt>Browser sync</dt>
+                <dd>
+                    {% if sync %}
+                        {% if sync.enabled == False %}Off on this phone
+                        {% else %}On · synced {{ sync.last_sync|ago }}{% endif %}
+                        {% if sync.types %}<div class="small muted">{{ sync.types|join:", " }}</div>{% endif %}
+                        {% if sync.tab_count %}<div class="small muted">{{ sync.tab_count }} open tab{{ sync.tab_count|pluralize }}</div>{% endif %}
+                    {% elif current %}<span class="muted">Not synced yet</span>
+                    {% else %}<span class="muted">Not available on this version</span>{% endif %}
+                </dd>
+            </dl>
+            <form method="post" action="{% url 'mobile_account_signout' device.account.id %}" style="margin-top:14px"
+                  data-confirm="Sign out of this device?" data-confirm-text="The app signs out the next time it connects. Its bookmarks and history stay on the phone.">
+                {% csrf_token %}
+                <input type="hidden" name="device_id" value="{{ device.device_id }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <button class="btn btn-sm" type="submit">{% icon "log-out" %}Sign out this device</button>
+            </form>
+            {% else %}
+            <p class="muted">Nobody is signed in on this install. It still receives public broadcasts{% if not device.updates_enabled %} (SyncUp updates are off){% endif %}.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "key-round" %}<h2>Sign-in sessions</h2></div>
+        <ul class="list">
+            {% for t in sessions %}
+            <li class="list-item">
+                <span class="main-col">
+                    <span class="title" style="display:block"><a href="{% url 'mobile_account_edit' t.account.id %}">{{ t.account.name }}</a></span>
+                    <span class="sub" style="display:block">Signed in {{ t.created_at|date:"d M Y, H:i" }}{% if t.last_used_at %} · used {{ t.last_used_at|ago }}{% endif %}</span>
+                </span>
+                {% if t.revoked %}<span class="badge">Ended</span>
+                {% elif t.expires_at and t.expires_at < now %}<span class="badge">Expired</span>
+                {% else %}<span class="badge badge-success">Active</span>{% endif %}
+            </li>
+            {% empty %}
+            <li class="empty small">No sessions on this install.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}

@@ -13,28 +13,44 @@
 </div>
 
 <div class="card" data-table>
-    <div class="table-tools">
+    <div class="table-tools" style="flex-wrap:wrap">
         <label class="input-icon">
             <span class="sr-only">Search accounts</span>
             {% icon "search" %}
             <input class="input" type="search" id="account-search" placeholder="Search name, email, phone or username" data-table-search autocomplete="off">
         </label>
-        {# Origin filter — All / Admin-created / one partner. Server-side; submits on change. #}
-        <form method="get" class="row gap-sm">
-            <label for="partner-filter" class="small muted row gap-sm">{% icon "funnel" "icon-sm" %}Source</label>
-            <select name="partner" id="partner-filter" class="input input-sm" style="width:auto" onchange="this.form.submit()">
-                <option value="" {% if not selected_partner %}selected{% endif %}>All accounts ({{ total_count }})</option>
+        {# Server-side filters; each select submits on change. #}
+        <form method="get" class="row gap-sm" style="flex-wrap:wrap">
+            <span class="small muted row gap-sm">{% icon "funnel" "icon-sm" %}Filter</span>
+            <select name="partner" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="Source">
+                <option value="" {% if not selected_partner %}selected{% endif %}>Any source ({{ total_count }})</option>
                 <option value="admin" {% if selected_partner == 'admin' %}selected{% endif %}>Admin-created ({{ admin_count }})</option>
                 <option value="self" {% if selected_partner == 'self' %}selected{% endif %}>Self sign-up ({{ self_count }})</option>
                 {% if partners %}
-                <optgroup label="Partners">
+                <optgroup label="Connected to partner">
                     {% for p in partners %}
                     <option value="{{ p.id }}" {% if selected_partner == p.id|stringformat:'s' %}selected{% endif %}>{{ p.name }} ({{ p.user_count }})</option>
                     {% endfor %}
                 </optgroup>
                 {% endif %}
             </select>
-            {% if selected_partner %}<a href="{% url 'mobile_accounts' %}" class="btn btn-ghost btn-sm">{% icon "x" %}Clear</a>{% endif %}
+            <select name="status" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="Status">
+                <option value="" {% if not status %}selected{% endif %}>Any status</option>
+                <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+            <select name="app" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="App version">
+                <option value="" {% if not app_filter %}selected{% endif %}>Any app</option>
+                <option value="current" {% if app_filter == 'current' %}selected{% endif %}>On v{{ current_app }}+</option>
+                <option value="older" {% if app_filter == 'older' %}selected{% endif %}>Only older app</option>
+                <option value="none" {% if app_filter == 'none' %}selected{% endif %}>No device</option>
+            </select>
+            <select name="sync" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="Browser sync">
+                <option value="" {% if not sync_filter %}selected{% endif %}>Any sync</option>
+                <option value="on" {% if sync_filter == 'on' %}selected{% endif %}>Syncing</option>
+                <option value="off" {% if sync_filter == 'off' %}selected{% endif %}>Not syncing</option>
+            </select>
+            {% if filtered %}<a href="{% url 'mobile_accounts' %}" class="btn btn-ghost btn-sm">{% icon "x" %}Clear</a>{% endif %}
             <noscript><button class="btn btn-sm" type="submit">Apply</button></noscript>
         </form>
     </div>
@@ -46,16 +62,26 @@
                     <th data-sort="text">Account</th>
                     <th>Source</th>
                     <th>Status</th>
+                    <th data-sort="num">App</th>
+                    <th data-sort="text">Sync</th>
+                    <th data-sort="text">Last active</th>
                     <th data-sort="num" class="t-right">Links</th>
-                    <th data-sort="num" class="t-right">Devices</th>
-                    <th data-sort="text">Last login</th>
                     <th class="t-hide-sm"><span class="sr-only">Open</span></th>
                 </tr>
             </thead>
             <tbody>
                 {% for a in accounts %}
                 <tr data-href="{% url 'mobile_account_edit' a.id %}">
-                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a><div class="t-cell-sub">{{ a.login_label }}{% if a.username and a.email %} · @{{ a.username }}{% endif %}</div></td>
+                    <td class="t-primary">
+                        <a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a>
+                        <div class="t-cell-sub">{{ a.login_label }}</div>
+                        <div class="row gap-sm small muted" style="margin-top:2px" title="Ways to sign in">
+                            {% if a.email %}<span title="{{ a.email }}">{% icon "mail" "icon-sm" %}</span>{% endif %}
+                            {% if a.phone %}<span title="{{ a.phone }}">{% icon "phone" "icon-sm" %}</span>{% endif %}
+                            {% if a.username %}<span title="@{{ a.username }}">{% icon "at-sign" "icon-sm" %}</span>{% endif %}
+                            <span class="sr-only">{{ a.phone }} {{ a.username }}</span>
+                        </div>
+                    </td>
                     <td data-label="Source">
                         {% if a.source == "partner" %}<span class="badge badge-info" title="Created by a partner">{% icon "plug" %}{{ a.partner.name|default:"Partner" }}</span>
                         {% elif a.source == "self" %}<span class="badge badge-accent" title="Signed up in the app">{% icon "user-plus" %}Self</span>
@@ -66,20 +92,35 @@
                         {% if a.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
                         {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
                     </td>
+                    <td data-label="App" data-value="{{ a.app_code }}">
+                        {% if a.device_count %}
+                        <span class="{% if a.app_code >= current_app %}text-success{% else %}muted{% endif %}">v{{ a.app_code|default:"?" }}</span>
+                        <span class="small muted">· {{ a.device_count }} device{{ a.device_count|pluralize }}</span>
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
+                    <td data-label="Sync" data-value="{{ a.sync.last|date:'c' }}">
+                        {% if a.sync %}
+                            {% if a.sync.on %}<span class="badge badge-success" title="Last synced {{ a.sync.last|date:'d M Y, H:i' }}">{% icon "refresh-cw" %}{{ a.sync.last|ago }}</span>
+                            {% else %}<span class="badge" title="Sync turned off on their phone">Off</span>{% endif %}
+                            {% if a.sync_count %}<div class="small muted">{{ a.sync_count }} item{{ a.sync_count|pluralize }}</div>{% endif %}
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
+                    <td data-label="Last active" data-value="{{ a.last_active|date:'c' }}" class="nowrap">
+                        {{ a.last_active|date:"d M Y, H:i"|default:"—" }}
+                        {% if a.last_login %}<div class="small muted">Sign-in {{ a.last_login|date:"d M Y" }}</div>{% endif %}
+                    </td>
                     <td data-label="Links" class="t-right t-hide-sm">{{ a.link_count }}</td>
-                    <td data-label="Devices" class="t-right t-hide-sm">{{ a.device_count }}</td>
-                    <td data-label="Last login" data-value="{{ a.last_login|date:'c' }}" class="nowrap">{{ a.last_login|date:"d M Y, H:i"|default:"—" }}</td>
                     <td class="t-right t-hide-sm">{% icon "chevron-right" "icon-sm faint" %}</td>
                 </tr>
                 {% empty %}
-                <tr data-empty><td colspan="7"><div class="empty">{% icon "users" %}<b>No accounts{% if selected_partner %} from this source{% endif %}</b>{% if not selected_partner %}<a class="btn btn-primary btn-sm" href="{% url 'mobile_account_add' %}">{% icon "plus" %}New account</a>{% endif %}</div></td></tr>
+                <tr data-empty><td colspan="8"><div class="empty">{% icon "users" %}<b>No accounts{% if filtered %} match these filters{% endif %}</b>{% if not filtered %}<a class="btn btn-primary btn-sm" href="{% url 'mobile_account_add' %}">{% icon "plus" %}New account</a>{% endif %}</div></td></tr>
                 {% endfor %}
             </tbody>
         </table>
         <div class="empty" data-table-empty hidden>
             {% icon "search" %}
             <b>No accounts match "<span data-query></span>"</b>
-            <span>Try part of the name or email.</span>
+            <span>Try part of the name, email, phone or username.</span>
         </div>
     </div>
     <div class="table-foot"><span data-table-count></span></div>

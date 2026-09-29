@@ -9,7 +9,8 @@ One request does both directions (a single short request, fine on PythonAnywhere
     "since": "<cursor from the last response, or empty for a full download>",
     "changes": [ {"kind": "bookmark|history|shortcut|setting", "key": "<stable id>",
                   "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
-    "tabs": {"device_name": "Pixel 8", "tabs": [{"title": "...", "url": "..."}]}   # optional
+    "tabs": {"device_name": "Pixel 8", "tabs": [{"title": "...", "url": "..."}],   # optional
+             "state": {"enabled": true, "types": ["bookmarks", "history", ...]}}
   }
   → {"cursor": "...", "changes": [...items changed on the server since `since`...],
      "other_devices": [{"device_id", "device_name", "updated_at", "tabs": [...]}], "limits": {...}}
@@ -28,7 +29,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from .auth import app_token_required, json_body
-from .models import SyncItem
+from .models import AppDevice, SyncItem
 from .views import _bad
 
 HISTORY_DAYS = 90
@@ -112,13 +113,22 @@ def browser_sync(request):
                 {"title": str(t.get("title") or "")[:200], "url": str(t.get("url") or "")[:1000]}
                 for t in (tabs.get("tabs") or [])[:100] if isinstance(t, dict) and t.get("url")
             ]
+            # The phone's Sync switches (Settings → Sync), for the admin's per-device view.
+            raw_state = tabs.get("state") if isinstance(tabs.get("state"), dict) else {}
+            state = {
+                "enabled": bool(raw_state.get("enabled", True)),
+                "types": [str(t)[:20] for t in (raw_state.get("types") or [])][:10],
+            }
             SyncItem.objects.update_or_create(
                 account=account, kind="tabs", key=device_id,
                 defaults={
-                    "data": {"device_name": str(tabs.get("device_name") or "")[:80], "tabs": clean},
+                    "data": {"device_name": str(tabs.get("device_name") or "")[:80], "tabs": clean, "state": state},
                     "updated_ms": int(now.timestamp() * 1000), "deleted": False, "device_id": device_id,
                 },
             )
+
+        if device_id:
+            AppDevice.objects.filter(device_id=device_id).update(last_seen=now)
 
         # ---- trim history past the window (tombstones older than the window are dropped too)
         SyncItem.objects.filter(account=account, kind="history", updated_ms__lt=history_cutoff_ms).delete()

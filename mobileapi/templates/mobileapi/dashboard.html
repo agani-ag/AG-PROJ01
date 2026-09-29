@@ -32,26 +32,99 @@
     <a class="stat" href="{% url 'mobile_accounts' %}">
         <span class="stat-label">{% icon "users" %}Accounts</span>
         <span class="stat-value">{{ account_count }}</span>
-        <span class="stat-meta"><span class="text-success">{{ active_account_count }} active</span></span>
+        <span class="stat-meta">{{ s.by_source.admin }} admin · {{ s.by_source.partner }} partner · {{ s.by_source.self }} self</span>
     </a>
     <a class="stat" href="{% url 'mobile_devices' %}">
-        <span class="stat-label">{% icon "smartphone" %}Active devices</span>
-        <span class="stat-value">{{ device_count }}</span>
-        <span class="stat-meta">Signed in to the app</span>
+        <span class="stat-label">{% icon "smartphone" %}Installs</span>
+        <span class="stat-value">{{ s.installs_active }}</span>
+        <span class="stat-meta">{{ s.signed_in }} signed in · {{ s.signed_out }} signed out</span>
     </a>
-    <a class="stat" href="{% url 'mobile_general_links' %}">
-        <span class="stat-label">{% icon "link-2" %}Links</span>
-        <span class="stat-value">{{ link_count }}</span>
-        <span class="stat-meta">Per-user and general</span>
+    <a class="stat" href="{% url 'mobile_accounts' %}?partner=self">
+        <span class="stat-label">{% icon "user-plus" %}Sign-ups · 7 days</span>
+        <span class="stat-value">{{ s.signups_7 }}</span>
+        <span class="stat-meta">{{ s.signups_30 }} in the last 30 days</span>
     </a>
-    <a class="stat" href="{% url 'mobile_reminders' %}">
-        <span class="stat-label">{% icon "calendar-clock" %}Active reminders</span>
-        <span class="stat-value">{{ reminder_count }}</span>
-        <span class="stat-meta">Fired on the device</span>
+    <a class="stat" href="{% url 'mobile_accounts' %}?sync=on">
+        <span class="stat-label">{% icon "refresh-cw" %}Syncing accounts</span>
+        <span class="stat-value">{{ s.syncing_accounts }}</span>
+        <span class="stat-meta">{% if s.v6_accounts %}{{ s.sync_pct }}% of v6 users · {% endif %}{{ s.synced_items }} items</span>
     </a>
 </div>
 
-<div class="grid-2">
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "activity" %}<h2>New accounts · last 14 days</h2><span class="small muted ml-auto">{{ s.chart_total }} total</span></div>
+        <div class="card-body">
+            <div class="bars" role="img" aria-label="New accounts per day for the last 14 days">
+                {% for d in s.chart %}
+                <div class="bar" title="{{ d.day|date:'D d M' }}: {{ d.n }} new ({{ d.self }} self sign-up{{ d.self|pluralize }})">
+                    {% if d.n %}<span class="bar-n">{{ d.n }}</span>{% endif %}
+                    <div class="bar-fill" style="height:{{ d.pct }}%">{% if d.self %}<div class="bar-self" style="height:{% widthratio d.self d.n 100 %}%"></div>{% endif %}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="bars-axis">{% for d in s.chart %}<span>{% if forloop.first or forloop.last or forloop.counter|divisibleby:4 %}{{ d.day|date:"d M" }}{% endif %}</span>{% endfor %}</div>
+            <div class="legend" style="margin-top:12px">
+                <span><i style="background:var(--accent)"></i>Self sign-up</span>
+                <span><i style="background:color-mix(in srgb, var(--accent) 28%, transparent)"></i>Admin / partner</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "smartphone" %}<h2>App versions</h2><a class="small ml-auto" href="{% url 'mobile_devices' %}">Devices</a></div>
+        <div class="card-body">
+            <div class="meter">
+                <span>On the current app (v6 or later)</span><b class="num">{{ s.current_app }} · {{ s.current_pct }}%</b>
+                <div class="progress"><div class="progress-bar success" style="width:{{ s.current_pct }}%"></div></div>
+            </div>
+            <p class="help" style="margin:8px 0 14px">{{ s.older_app }} active install{{ s.older_app|pluralize }} still on an older version (no sign-up, sync or Partners page).</p>
+            <div class="grid-2" style="gap:18px">
+                <div>
+                    <div class="small muted" style="margin-bottom:6px">Versions</div>
+                    <dl class="kv">{% for v, n in s.versions %}<dt>v{{ v }}</dt><dd class="num">{{ n }}</dd>{% empty %}<dt>—</dt><dd></dd>{% endfor %}</dl>
+                </div>
+                <div>
+                    <div class="small muted" style="margin-bottom:6px">Countries</div>
+                    <dl class="kv">{% for c, n in s.countries %}<dt>{{ c }}</dt><dd class="num"><a href="{% url 'mobile_devices' %}?country={{ c }}">{{ n }}</a></dd>{% empty %}<dt>—</dt><dd></dd>{% endfor %}</dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-head">{% icon "handshake" %}<h2>Partner connections</h2><a class="small ml-auto" href="{% url 'mobile_partners' %}">Partners</a></div>
+        <div class="card-body">
+            <dl class="kv">
+                <dt><span class="badge badge-success">Enabled</span></dt><dd class="num">{{ s.partners.enabled }}</dd>
+                <dt><span class="badge badge-warning">Not enabled yet</span></dt><dd class="num">{{ s.partners.not_enabled }} <span class="small muted">waiting for the user to enter the partner password</span></dd>
+                <dt><span class="badge">Turned off by user</span></dt><dd class="num">{{ s.partners.disabled }}</dd>
+                <dt><span class="badge badge-danger">Suspended by partner</span></dt><dd class="num">{{ s.partners.suspended }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head">{% icon "gauge" %}<h2>Installs</h2></div>
+        <div class="card-body">
+            <div class="meter">
+                <span>Ever signed in</span><b class="num">{{ s.converted_pct }}%</b>
+                <div class="progress"><div class="progress-bar" style="width:{{ s.converted_pct }}%"></div></div>
+            </div>
+            <dl class="kv" style="margin-top:14px">
+                <dt>New · 7 days</dt><dd class="num">{{ s.installs_new_7 }}</dd>
+                <dt>All installs</dt><dd class="num">{{ s.installs }} <span class="small muted">({{ s.installs_active }} active)</span></dd>
+                <dt>Notifications blocked</dt><dd class="num">{% if s.notif_blocked %}<a href="{% url 'mobile_devices' %}?notif=blocked">{{ s.notif_blocked }}</a>{% else %}0{% endif %}</dd>
+                <dt>SyncUp updates off</dt><dd class="num">{% if s.updates_off %}<a href="{% url 'mobile_devices' %}?notif=updates_off">{{ s.updates_off }}</a>{% else %}0{% endif %}</dd>
+                <dt>Links · reminders</dt><dd class="num">{{ link_count }} links · {{ reminder_count }} active reminders</dd>
+            </dl>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2" style="margin-top:16px">
     <div class="card">
         <div class="card-head">
             {% icon "users" %}<h2>Recent accounts</h2>
@@ -63,9 +136,11 @@
                 <a class="list-item" href="{% url 'mobile_account_edit' a.id %}">
                     <span class="main-col">
                         <span class="title truncate" style="display:block">{{ a.name }}</span>
-                        <span class="sub truncate" style="display:block">{{ a.login_label }}</span>
+                        <span class="sub truncate" style="display:block">{{ a.login_label }} · {{ a.created_at|date:"d M" }}</span>
                     </span>
-                    {% if a.partner_id %}<span class="badge badge-info">{% icon "plug" %}{{ a.partner.name }}</span>{% else %}<span class="badge">Admin</span>{% endif %}
+                    {% if a.source == "partner" %}<span class="badge badge-info">{% icon "plug" %}{{ a.partner.name|default:"Partner" }}</span>
+                    {% elif a.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self</span>
+                    {% else %}<span class="badge">Admin</span>{% endif %}
                 </a>
             </li>
             {% empty %}

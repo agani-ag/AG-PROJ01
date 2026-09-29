@@ -10,7 +10,7 @@
         <div class="nav-group">
             <div class="nav-label">Accounts</div>
             <a class="nav-link" href="{% url 'mobile_accounts' %}" {% nav_active "mobile_accounts mobile_account_add mobile_account_edit mobile_link_add mobile_link_edit" %}>{% icon "users" %}<span class="nav-text">Accounts</span></a>
-            <a class="nav-link" href="{% url 'mobile_devices' %}" {% nav_active "mobile_devices" %}>{% icon "smartphone" %}<span class="nav-text">Devices</span></a>
+            <a class="nav-link" href="{% url 'mobile_devices' %}" {% nav_active "mobile_devices mobile_device_detail" %}>{% icon "smartphone" %}<span class="nav-text">Devices</span></a>
             <a class="nav-link" href="{% url 'mobile_general_links' %}" {% nav_active "mobile_general_links mobile_general_link_add mobile_general_link_edit" %}>{% icon "link-2" %}<span class="nav-text">General links</span></a>
             <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with n=nav_unread_chats %}{% if n %}<span class="count" title="{{ n }} unread">{{ n }}</span>{% endif %}{% endwith %}</a>
         </div>

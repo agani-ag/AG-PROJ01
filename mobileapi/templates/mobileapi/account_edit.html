@@ -7,19 +7,25 @@
         <a class="back" href="{% url 'mobile_accounts' %}">{% icon "arrow-left" "icon-sm" %}Accounts</a>
         <h1>{% if is_edit %}{{ account.name }}{% else %}New account{% endif %}</h1>
         {% if is_edit %}
-        <div class="row" style="margin-top:8px">
+        <div class="row" style="margin-top:8px;flex-wrap:wrap">
             {% if account.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
             {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
             {% if account.source == "partner" %}<span class="badge badge-info">{% icon "handshake" %}Created by {{ account.partner.name|default:"a partner" }}</span>
-            {% elif account.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self sign-up</span>{% endif %}
-            {% if account.username %}<span class="small muted">@{{ account.username }}</span>{% endif %}
-            <span class="small muted">Last login {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
+            {% elif account.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self sign-up</span>
+            {% else %}<span class="badge">Created by an admin</span>{% endif %}
+            <span class="small muted">Created {{ account.created_at|date:"d M Y" }} · Last sign-in {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
+        </div>
+        <div class="chips" style="margin-top:8px" aria-label="Ways to sign in">
+            {% if account.email %}<span class="chip">{% icon "mail" %}{{ account.email }}</span>{% endif %}
+            {% if account.phone %}<span class="chip">{% icon "phone" %}{{ account.phone }}</span>{% endif %}
+            {% if account.username %}<span class="chip">{% icon "at-sign" %}{{ account.username }}</span>{% endif %}
         </div>
         {% endif %}
     </div>
 </div>
 
 <div class="{% if is_edit %}split{% else %}stack{% endif %}">
+    <div class="stack">
     <form method="POST" class="stack" novalidate>
         {% csrf_token %}
         <div class="card">
@@ -95,7 +101,106 @@
     </form>
 
     {% if is_edit %}
+    <div class="card">
+        <div class="card-head">{% icon "activity" %}<h2>Activity</h2><span class="small muted ml-auto">Sign-ins, partners and pushes</span></div>
+        <ul class="timeline">
+            {% for e in activity %}
+            <li>
+                <span class="t-ico">{% icon e.icon %}</span>
+                <div class="main-col" style="min-width:0">
+                    <div class="truncate">{{ e.title }}</div>
+                    <div class="small muted">{{ e.at|date:"d M Y, H:i" }}{% if e.sub %} · {{ e.sub }}{% endif %}</div>
+                </div>
+            </li>
+            {% empty %}
+            <li class="empty small">Nothing yet.</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    </div>
+
+    {% if is_edit %}
     <div class="stack sticky">
+        <div class="card">
+            <div class="card-head">
+                {% icon "smartphone" %}<h2>Devices</h2>
+                <span class="small muted ml-auto">{{ session_count }} active session{{ session_count|pluralize }}</span>
+            </div>
+            <ul class="list">
+                {% for x in devices %}
+                <li class="list-item" style="align-items:flex-start">
+                    <span class="main-col">
+                        <span class="row gap-sm" style="flex-wrap:wrap">
+                            <a class="title" href="{% url 'mobile_device_detail' x.d.id %}">{{ x.d.device_model|default:x.d.platform|capfirst }}</a>
+                            <span class="badge {% if x.current %}badge-success{% endif %}" title="App version">v{{ x.d.app_version|default:"?" }}</span>
+                            {% if not x.d.is_active %}<span class="badge">Inactive</span>{% endif %}
+                        </span>
+                        <span class="sub" style="display:block">
+                            {{ x.d.os_version|default:"Android" }}{% if x.d.country %} · {{ x.d.country }}{% endif %}{% if x.d.locale %} · {{ x.d.locale }}{% endif %}
+                            · seen {{ x.d.last_seen|ago }}
+                        </span>
+                        <span class="sub" style="display:block">
+                            {% if x.signed_in_at %}Signed in {{ x.signed_in_at|date:"d M Y" }} · {% endif %}
+                            {% if x.sync %}
+                                {% if x.sync.enabled == False %}Sync off
+                                {% else %}Synced {{ x.sync.last_sync|ago }}{% if x.sync.tab_count %} · {{ x.sync.tab_count }} open tab{{ x.sync.tab_count|pluralize }}{% endif %}{% endif %}
+                            {% elif x.current %}Not synced yet{% else %}No sync on this version{% endif %}
+                        </span>
+                        {% if x.d.notifications_allowed == False or not x.d.updates_enabled %}
+                        <span class="sub" style="display:block">
+                            {% if x.d.notifications_allowed == False %}<span class="text-danger">Notifications blocked</span>{% endif %}
+                            {% if not x.d.updates_enabled %}{% if x.d.notifications_allowed == False %} · {% endif %}SyncUp updates off{% endif %}
+                        </span>
+                        {% endif %}
+                    </span>
+                    <form method="post" action="{% url 'mobile_account_signout' account.id %}"
+                          data-confirm="Sign out of this device?" data-confirm-text="The app signs out the next time it connects. Its bookmarks and history stay on the phone.">
+                        {% csrf_token %}<input type="hidden" name="device_id" value="{{ x.d.device_id }}">
+                        <button class="btn btn-sm btn-ghost" type="submit" title="Sign out this device">{% icon "log-out" %}</button>
+                    </form>
+                </li>
+                {% empty %}
+                <li class="empty small">No devices signed in.</li>
+                {% endfor %}
+            </ul>
+            {% if devices %}
+            <form method="post" action="{% url 'mobile_account_signout' account.id %}" class="card-body"
+                  data-confirm="Sign out everywhere?" data-confirm-text="Every device signs out the next time it connects.">
+                {% csrf_token %}
+                <button class="btn btn-sm" type="submit">{% icon "log-out" %}Sign out all devices</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "refresh-cw" %}<h2>Browser sync</h2>{% if sync.last_change %}<span class="small muted ml-auto">Last change {{ sync.last_change|ago }}</span>{% endif %}</div>
+            <div class="card-body">
+                {% if sync.has_data %}
+                <div class="meter">
+                    <span>Bookmarks</span><b class="num">{{ sync.bookmarks }} / {{ sync.max_bookmarks }}</b>
+                    <div class="progress"><div class="progress-bar{% if sync.bookmark_pct >= 90 %} danger{% endif %}" style="width:{{ sync.bookmark_pct }}%"></div></div>
+                </div>
+                <dl class="kv" style="margin-top:14px">
+                    <dt>History</dt><dd class="num">{{ sync.history }}{% if sync.history_first %} <span class="small muted">· {{ sync.history_first|date:"d M" }} – {{ sync.history_last|date:"d M Y" }}</span>{% endif %}</dd>
+                    <dt>Shortcuts</dt><dd class="num">{{ sync.shortcuts }}{% if sync.hidden_builtins %} <span class="small muted">· {{ sync.hidden_builtins }} built-in hidden</span>{% endif %}</dd>
+                    <dt>Settings</dt><dd class="num">{{ sync.settings }}</dd>
+                    <dt>Open tabs</dt><dd class="num">{{ sync.open_tabs }} <span class="small muted">on {{ sync.devices|length }} device{{ sync.devices|length|pluralize }}</span></dd>
+                </dl>
+                {% for r in sync.devices %}
+                <div class="row gap-sm small" style="margin-top:10px;flex-wrap:wrap">
+                    <span class="status-dot{% if r.enabled != False and r.recent %} on{% endif %}"></span>
+                    <b>{{ r.name }}</b>
+                    <span class="muted">{% if r.enabled == False %}sync off{% else %}synced {{ r.last_sync|ago }}{% endif %}{% if r.types %} · {{ r.types|join:", " }}{% endif %}</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <span class="muted small">Nothing synced yet.</span>
+                {% endif %}
+                <p class="help" style="margin-top:12px">Counts only — the admin never sees what the user browses. History is kept {{ sync.history_days }} days.</p>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-head">{% icon "handshake" %}<h2>Partners</h2></div>
             <ul class="list">
@@ -103,11 +208,12 @@
                 <li class="list-item">
                     <span class="main-col">
                         <span class="title" style="display:block">{{ c.partner.name }}</span>
-                        <span class="sub truncate" style="display:block">{% if c.external_id %}Their id: <span class="mono">{{ c.external_id }}</span> · {% endif %}added {{ c.created_at|date:"d M Y" }}</span>
+                        <span class="sub truncate" style="display:block">{% if c.external_id %}Their id: <span class="mono">{{ c.external_id }}</span> · {% endif %}added {{ c.created_at|date:"d M Y" }}{% if c.enabled_at %} · enabled {{ c.enabled_at|date:"d M Y" }}{% endif %}</span>
                     </span>
                     {% if not c.partner_active %}<span class="badge badge-danger" title="Suspended by the partner">Suspended</span>
                     {% elif c.status == "enabled" %}<span class="badge badge-success">Enabled</span>
-                    {% elif c.status == "disabled" %}<span class="badge" title="Turned off by the user">Disabled by user</span>
+                    {% elif c.status == "disabled" %}<span class="badge" title="Turned off by the user{% if c.disabled_at %} on {{ c.disabled_at|date:'d M Y' }}{% endif %}">Disabled by user</span>
+                    {% elif c.is_locked %}<span class="badge badge-warning" title="Too many wrong partner-password tries">Locked</span>
                     {% else %}<span class="badge" title="Waiting for the user to enter the partner password">Not enabled</span>{% endif %}
                 </li>
                 {% empty %}
@@ -138,48 +244,6 @@
                 <li class="empty small">No links yet.</li>
                 {% endfor %}
             </ul>
-        </div>
-
-        <div class="card">
-            <div class="card-head">
-                {% icon "smartphone" %}<h2>Devices</h2>
-                <span class="small muted">{{ session_count }} active session{{ session_count|pluralize }}</span>
-            </div>
-            <ul class="list">
-                {% for d in devices %}
-                <li class="list-item">
-                    <span class="main-col">
-                        <span class="title" style="display:block">{{ d.device_model|default:d.platform|capfirst }} · v{{ d.app_version|default:"?" }}</span>
-                        <span class="sub mono truncate" style="display:block" title="{{ d.device_id }}">{{ d.device_id }}</span>
-                    </span>
-                    {% if d.is_active %}<span class="badge badge-success" title="Last seen {{ d.last_seen|date:'d M Y, H:i' }}">{{ d.last_seen|date:"d M" }}</span>
-                    {% else %}<span class="badge" title="Inactive">Inactive</span>{% endif %}
-                    <form method="post" action="{% url 'mobile_account_signout' account.id %}"
-                          data-confirm="Sign out of this device?" data-confirm-text="The app signs out the next time it connects. Its bookmarks and history stay on the phone.">
-                        {% csrf_token %}<input type="hidden" name="device_id" value="{{ d.device_id }}">
-                        <button class="btn btn-sm btn-ghost" type="submit" title="Sign out this device">{% icon "log-out" %}</button>
-                    </form>
-                </li>
-                {% empty %}
-                <li class="empty small">No devices signed in.</li>
-                {% endfor %}
-            </ul>
-            <form method="post" action="{% url 'mobile_account_signout' account.id %}" class="card-body"
-                  data-confirm="Sign out everywhere?" data-confirm-text="Every device signs out the next time it connects.">
-                {% csrf_token %}
-                <button class="btn btn-sm" type="submit">{% icon "log-out" %}Sign out all devices</button>
-            </form>
-        </div>
-
-        <div class="card">
-            <div class="card-head">{% icon "refresh-cw" %}<h2>Browser sync</h2></div>
-            <div class="card-body small">
-                {% if sync_counts %}
-                Bookmarks <b>{{ sync_counts.bookmark|default:0 }}</b> · History <b>{{ sync_counts.history|default:0 }}</b> ·
-                Shortcuts <b>{{ sync_counts.shortcut|default:0 }}</b> · Devices with tabs <b>{{ sync_counts.tabs|default:0 }}</b>
-                <p class="help">Counts only — the admin never sees what the user browses.</p>
-                {% else %}<span class="muted">Nothing synced yet.</span>{% endif %}
-            </div>
         </div>
 
         <form method="post" action="{% url 'mobile_account_reset' account.id %}" class="card"

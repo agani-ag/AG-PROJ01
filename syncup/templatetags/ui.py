@@ -4,13 +4,16 @@
     {% icon "trash" "icon-sm" %}           → extra CSS classes
     {% nav_active "mobile_accounts mobile_account_edit" %}
                                            → aria-current="page" when the current URL name is in the list
+    {{ some_datetime|ago }}                → "just now", "5 minutes ago", "2 days ago"
 
 Icon names are Lucide names; static/icons.svg lists the ones available.
 """
 from django import template
 from django.templatetags.static import static
 from django.utils.html import format_html
+from django.utils import timezone
 from django.utils.safestring import mark_safe
+from django.utils.timesince import timesince
 
 register = template.Library()
 
@@ -36,3 +39,13 @@ def nav_active(context, url_names):
         if name == current and (not slug or match.kwargs.get("slug") == slug):
             return mark_safe('aria-current="page"')
     return ""
+
+
+@register.filter
+def ago(value):
+    """Short relative time: the largest unit only ("2 days ago", not "2 days, 3 hours ago")."""
+    if not value:
+        return ""
+    if (timezone.now() - value).total_seconds() < 60:
+        return "just now"
+    return timesince(value).split(",")[0] + " ago"

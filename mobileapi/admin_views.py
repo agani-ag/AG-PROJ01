@@ -15,10 +15,12 @@ from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .serializers import chat_message_dict
 
+from . import admin_insights as insights
 from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
@@ -61,6 +63,7 @@ def dashboard(request):
         "recent_notifications": AppNotificationLog.objects.exclude(source="chat").select_related("account", "partner")[:5],
         "fcm_configured": fcm.is_configured(),
         "chat_unread_count": AppChatMessage.objects.filter(sender="user", read_by_admin=False).count(),
+        "s": insights.dashboard_stats(),
     }
     return render(request, "mobileapi/dashboard.html", ctx)
 
@@ -70,7 +73,6 @@ def dashboard(request):
 def accounts(request):
     qs = AppAccount.objects.select_related("partner").annotate(
         link_count=Count("links", distinct=True),
-        device_count=Count("devices", distinct=True),
         partner_count=Count("partner_connections", distinct=True),
     )
     # Filter: "admin" = admin-created, "self" = self sign-ups, "<id>" = connected to one partner.
@@ -79,13 +81,47 @@ def accounts(request):
         qs = qs.filter(source=selected)
     elif selected.isdigit():
         qs = qs.filter(partner_connections__partner_id=int(selected))
+    status = request.GET.get("status") or ""
+    if status == "active":
+        qs = qs.filter(is_active=True)
+    elif status == "inactive":
+        qs = qs.filter(is_active=False)
+
+    # Device + sync facts per account (computed once, then filtered in Python — small tables).
+    devices, items, sync_state = insights.account_list_facts()
+    app_filter = request.GET.get("app") or ""
+    sync_filter = request.GET.get("sync") or ""
+    rows = []
+    for a in qs:
+        devs = devices.get(a.id, [])
+        a.device_count = len(devs)
+        a.app_code = max((d.app_version_code for d in devs), default=0)
+        a.last_active = max((d.last_seen for d in devs if d.last_seen), default=None)
+        a.sync_count = items.get(a.id, 0)
+        a.sync = sync_state.get(a.id)
+        if app_filter == "current" and a.app_code < insights.CURRENT_APP:
+            continue
+        if app_filter == "older" and not (0 < a.app_code < insights.CURRENT_APP):
+            continue
+        if app_filter == "none" and devs:
+            continue
+        if sync_filter == "on" and not (a.sync and a.sync["on"]):
+            continue
+        if sync_filter == "off" and a.sync and a.sync["on"]:
+            continue
+        rows.append(a)
     partners = AppPartner.objects.annotate(
         user_count=Count("connections", distinct=True),
     ).order_by("name")
     return render(request, "mobileapi/accounts.html", {
-        "accounts": qs,
+        "accounts": rows,
         "partners": partners,
         "selected_partner": selected,
+        "status": status,
+        "app_filter": app_filter,
+        "sync_filter": sync_filter,
+        "filtered": bool(selected or status or app_filter or sync_filter),
+        "current_app": insights.CURRENT_APP,
         "admin_count": AppAccount.objects.filter(source="admin").count(),
         "self_count": AppAccount.objects.filter(source="self").count(),
         "total_count": AppAccount.objects.count(),
@@ -118,17 +154,15 @@ def account_edit(request, account_id):
         messages.error(request, form.errors.as_text())
     else:
         form = AppAccountForm(instance=account)
-    sync_counts = dict(
-        account.sync_items.filter(deleted=False).values_list("kind").annotate(n=Count("id"))
-    )
     return render(request, "mobileapi/account_edit.html", {
         "form": form,
         "account": account,
         "is_edit": True,
         "links": account.links.select_related("partner").all(),
-        "devices": account.devices.all(),
+        "devices": insights.account_devices(account),
         "connections": account.partner_connections.select_related("partner").all(),
-        "sync_counts": sync_counts,
+        "sync": insights.sync_summary(account),
+        "activity": insights.account_activity(account),
         "session_count": account.tokens.filter(revoked=False, expires_at__gt=timezone.now()).count(),
     })
 
@@ -157,6 +191,9 @@ def account_signout(request, account_id):
         messages.success(request, f"Signed out of that device ({n} session{'s' if n != 1 else ''} ended).")
     else:
         messages.success(request, f"Signed out everywhere ({n} session{'s' if n != 1 else ''} ended).")
+    back = request.POST.get("next") or ""
+    if back.startswith("/mobile/") and url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
+        return redirect(back)
     return redirect("mobile_account_edit", account.id)
 
 
@@ -535,17 +572,57 @@ def action_test(request):
 # ------------------------------------------------------------------ Devices
 @superuser_required
 def devices(request):
-    qs = AppDevice.objects.select_related("account").all()
+    qs = AppDevice.objects.select_related("account").defer("fcm_token", "device_secret").order_by("-last_seen")
     active = AppDevice.objects.filter(is_active=True)
+    installs = AppDevice.objects.count()
+    converted = AppDevice.objects.filter(converted_at__isnull=False).count()
     stats = {
-        "installs": AppDevice.objects.count(),
+        "installs": installs,
         "active": active.count(),
         "signed_in": active.filter(account__isnull=False).count(),
         "signed_out": active.filter(account__isnull=True).count(),
-        "converted": AppDevice.objects.filter(converted_at__isnull=False).count(),
+        "converted": converted,
+        "converted_pct": round(converted * 100 / installs) if installs else 0,
         "updates_off": active.filter(updates_enabled=False).count(),
+        "notif_blocked": active.filter(notifications_allowed=False).count(),
+        "new_7": AppDevice.objects.filter(installed_at__gte=timezone.now() - timedelta(days=7)).count(),
     }
-    return render(request, "mobileapi/devices.html", {"devices": qs, "stats": stats})
+
+    # Filters (server-side, so they work across pages).
+    f = {k: (request.GET.get(k) or "").strip() for k in ("state", "app", "country", "notif", "q")}
+    if f["state"] == "signed_in":
+        qs = qs.filter(is_active=True, account__isnull=False)
+    elif f["state"] == "signed_out":
+        qs = qs.filter(is_active=True, account__isnull=True)
+    elif f["state"] == "inactive":
+        qs = qs.filter(is_active=False)
+    if f["country"]:
+        qs = qs.filter(country=f["country"])
+    if f["notif"] == "blocked":
+        qs = qs.filter(notifications_allowed=False)
+    elif f["notif"] == "updates_off":
+        qs = qs.filter(updates_enabled=False)
+    if f["q"]:
+        qs = qs.filter(
+            Q(device_model__icontains=f["q"]) | Q(device_id__icontains=f["q"]) | Q(app_version__icontains=f["q"])
+            | Q(account__name__icontains=f["q"]) | Q(account__email__icontains=f["q"]) | Q(account__phone__icontains=f["q"])
+        )
+    rows = list(qs)
+    if f["app"] == "current":
+        rows = [d for d in rows if d.app_version_code >= insights.CURRENT_APP]
+    elif f["app"] == "older":
+        rows = [d for d in rows if d.app_version_code < insights.CURRENT_APP]
+    for d in rows:
+        d.current = d.app_version_code >= insights.CURRENT_APP
+    countries = (AppDevice.objects.exclude(country="").values_list("country", flat=True)
+                 .distinct().order_by("country"))
+    page = Paginator(rows, 100).get_page(request.GET.get("page"))
+    query = request.GET.copy()
+    query.pop("page", None)
+    return render(request, "mobileapi/devices.html", {
+        "page": page, "stats": stats, "f": f, "countries": countries, "filtered": any(f.values()),
+        "query": query.urlencode(), "matched": len(rows),
+    })
 
 
 @superuser_required

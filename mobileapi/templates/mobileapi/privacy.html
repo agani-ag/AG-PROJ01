@@ -46,18 +46,39 @@
         <hr>
 
         <h2>1. Overview</h2>
-        <p>SyncUp is a private business application. Accounts are created and issued by an
-           administrator; users sign in with credentials provided to them. This policy explains
-           what data the app handles, why, and your choices.</p>
+        <p>SyncUp is a web browser with optional SyncUp accounts. You can browse without an account.
+           Accounts are either created for you by an administrator or a partner service, or created
+           by you in the app (when sign-up is available). This policy explains what data the app
+           handles, why, and your choices.</p>
 
         <h2>2. Information we collect</h2>
-        <p><strong>Account information (you provide).</strong> Your name and email address, used to
-           sign you in and identify your account. Your password is sent over an encrypted (HTTPS)
+        <p><strong>Account information (you provide, only if you sign in).</strong> Your name and an
+           email address and/or mobile number, and optionally a username you choose — used to sign
+           you in and identify your account. Your password is sent over an encrypted (HTTPS)
            connection and stored by our backend only as a secure hash. On your device, your session
            token and optional app-lock PIN are kept in encrypted storage.</p>
-        <p><strong>Device information (automatic).</strong> A per-installation device identifier,
-           your app version, and a Firebase Cloud Messaging (FCM) push token — used to deliver
-           notifications and support the app.</p>
+        <p><strong>Browser sync (only while you're signed in with Sync on).</strong> Your bookmarks,
+           your Normal-tab browsing history (kept for 90 days), your new-tab shortcuts, a few browser
+           settings (search engine, pop-up blocking, theme) and the titles and addresses of your open
+           Normal tabs are stored on our servers so they appear on your other signed-in devices.
+           <strong>They are used only for that.</strong> SyncUp staff do not view them — our
+           administrators see only counts (for example, how many bookmarks are synced) and when each
+           device last synced. Passwords, cookies, Work tabs, Incognito tabs, downloaded files and
+           site permissions are never synced. You can turn Sync (or any part of it) off, or delete
+           your synced data, in <strong>Settings → Sync</strong>. Browsing while signed out stays on
+           your device.</p>
+        <p><strong>Device information (automatic, for every install).</strong> A per-installation
+           identifier, a Firebase Cloud Messaging (FCM) push token, the app version, Android version,
+           device manufacturer and model, WebView version, language, time zone, the store the app
+           was installed from, whether notifications are allowed, and your country (worked out from
+           the connection — <strong>we do not store your IP address</strong>). Used to deliver
+           notifications, support the app and understand which devices and versions are in use. We
+           do not collect advertising IDs, hardware identifiers (such as IMEI), your phone number
+           from the device, your location, or the list of apps on your device.</p>
+        <p><strong>Partner services.</strong> If a partner service (for example your accounting
+           provider) added you to SyncUp, we keep that connection and the partner's own reference
+           for you. A partner can send you links, notices and verification prompts only after you
+           enable it with the password it gave you, and you can turn it off at any time.</p>
         <p><strong>Camera, microphone, and location (only when a feature needs them).</strong> Some
            pages you open inside the app may request your camera, microphone, or location. These are
            requested only at the moment a page asks, and the data is provided to that page.
@@ -69,9 +90,14 @@
 
         <h2>3. How we use information</h2>
         <ul>
-            <li>To authenticate you and provide the app's features.</li>
-            <li>To send you notifications and reminders you are configured to receive.</li>
-            <li>To maintain security (e.g., the optional app-lock) and to operate and support the app.</li>
+            <li>To authenticate you and provide the app's features, including syncing your browser
+                data between your own devices.</li>
+            <li>To send you notifications and reminders you are configured to receive, and
+                announcements from SyncUp (you can turn these off in <strong>Settings →
+                Notifications → SyncUp updates</strong>).</li>
+            <li>To maintain security (e.g., the optional app-lock, limits on sign-in attempts) and to
+                operate and support the app, using counts and device details — not the contents of
+                your browsing.</li>
         </ul>
         <p>We do <strong>not</strong> sell your personal information and do <strong>not</strong> use
            it for advertising.</p>
@@ -81,6 +107,9 @@
             <li><strong>Google Firebase</strong> (Cloud Messaging and Remote Config) delivers push
                 notifications and configuration —
                 <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+            <li><strong>Partner services</strong> you have enabled receive only what they need to
+                reach you (for example, whether a verification prompt was answered). They never
+                receive your synced browser data.</li>
             <li><strong>Web content you open in the app</strong> may be operated by us or third
                 parties; any camera/microphone/location/file access you grant goes to the page you
                 opened, under that page's own terms.</li>
@@ -89,20 +118,28 @@
 
         <h2>5. Data security</h2>
         <ul>
-            <li>Network traffic uses HTTPS (encrypted in transit); the app does not permit cleartext traffic.</li>
+            <li>Communication between the app and SyncUp's servers uses HTTPS (encrypted in
+                transit). Web pages you choose to open may use plain HTTP, like in any browser.</li>
             <li>Session tokens and the app-lock PIN are held in Android's encrypted storage.</li>
-            <li>Sign-in tokens expire automatically and can be revoked.</li>
+            <li>Sign-in tokens expire automatically and can be revoked; you or an administrator can
+                sign a device out.</li>
         </ul>
 
         <h2>6. Data retention and deletion</h2>
         <ul>
-            <li>Account data is retained while your account is active.</li>
-            <li><strong>Delete your account in the app:</strong> open <strong>Profile → Delete
-                account</strong>. This deactivates your account, revokes your sessions on all
-                devices, and removes your locally stored data.</li>
+            <li>Account data is retained while your account is active. Synced history older than 90
+                days is removed automatically.</li>
+            <li><strong>Delete your synced data:</strong> <strong>Settings → Sync → Delete synced
+                data</strong> erases it from our servers (each device keeps its own copy until you
+                clear it there).</li>
+            <li><strong>Delete your account in the app:</strong> open <strong>Settings → Delete
+                account</strong>. This deactivates your account, erases your synced browser data,
+                signs you out on all devices, and removes your locally stored session data.</li>
+            <li>Installs nobody has signed in on are removed from our records after 6 months without
+                use.</li>
             <li>You may also request deletion by contacting us at the address below.</li>
-            <li>Uninstalling the app removes locally stored data (session token, PIN, cached
-                reminders) from your device.</li>
+            <li>Uninstalling the app removes locally stored data (browsing data, session token, PIN,
+                cached reminders) from your device.</li>
         </ul>
 
         <h2>7. Children</h2>

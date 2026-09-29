@@ -1,6 +1,7 @@
 """HTML admin routes for the SyncUp mobile API — mounted at /mobile/ (superuser-only)."""
 from django.urls import path
 
+from . import admin_insights as insights
 from . import admin_views as v
 
 urlpatterns = [
@@ -46,6 +47,7 @@ urlpatterns = [
 
     # Devices
     path("devices", v.devices, name="mobile_devices"),
+    path("devices/<int:device_pk>", insights.device_detail, name="mobile_device_detail"),
     path("devices/<int:device_id>/deactivate", v.device_deactivate, name="mobile_device_deactivate"),
 
     # Config + Push + Remote Config
