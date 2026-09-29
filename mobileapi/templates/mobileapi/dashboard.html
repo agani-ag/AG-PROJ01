@@ -63,7 +63,7 @@
                 <a class="list-item" href="{% url 'mobile_account_edit' a.id %}">
                     <span class="main-col">
                         <span class="title truncate" style="display:block">{{ a.name }}</span>
-                        <span class="sub truncate" style="display:block">{{ a.email }}</span>
+                        <span class="sub truncate" style="display:block">{{ a.login_label }}</span>
                     </span>
                     {% if a.partner_id %}<span class="badge badge-info">{% icon "plug" %}{{ a.partner.name }}</span>{% else %}<span class="badge">Admin</span>{% endif %}
                 </a>

@@ -17,7 +17,7 @@
         <label class="input-icon">
             <span class="sr-only">Search accounts</span>
             {% icon "search" %}
-            <input class="input" type="search" id="account-search" placeholder="Search name or email" data-table-search autocomplete="off">
+            <input class="input" type="search" id="account-search" placeholder="Search name, email, phone or username" data-table-search autocomplete="off">
         </label>
         {# Origin filter — All / Admin-created / one partner. Server-side; submits on change. #}
         <form method="get" class="row gap-sm">
@@ -25,6 +25,7 @@
             <select name="partner" id="partner-filter" class="input input-sm" style="width:auto" onchange="this.form.submit()">
                 <option value="" {% if not selected_partner %}selected{% endif %}>All accounts ({{ total_count }})</option>
                 <option value="admin" {% if selected_partner == 'admin' %}selected{% endif %}>Admin-created ({{ admin_count }})</option>
+                <option value="self" {% if selected_partner == 'self' %}selected{% endif %}>Self sign-up ({{ self_count }})</option>
                 {% if partners %}
                 <optgroup label="Partners">
                     {% for p in partners %}
@@ -54,10 +55,12 @@
             <tbody>
                 {% for a in accounts %}
                 <tr data-href="{% url 'mobile_account_edit' a.id %}">
-                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a><div class="t-cell-sub">{{ a.email }}</div></td>
+                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a><div class="t-cell-sub">{{ a.login_label }}{% if a.username and a.email %} · @{{ a.username }}{% endif %}</div></td>
                     <td data-label="Source">
-                        {% if a.partner_id %}<span class="badge badge-info" title="Provisioned via Partner API">{% icon "plug" %}{{ a.partner.name }}</span>
+                        {% if a.source == "partner" %}<span class="badge badge-info" title="Created by a partner">{% icon "plug" %}{{ a.partner.name|default:"Partner" }}</span>
+                        {% elif a.source == "self" %}<span class="badge badge-accent" title="Signed up in the app">{% icon "user-plus" %}Self</span>
                         {% else %}<span class="badge" title="Created in the admin">Admin</span>{% endif %}
+                        {% if a.partner_count > 1 or a.partner_count and a.source != "partner" %}<span class="small muted">{{ a.partner_count }} partner{{ a.partner_count|pluralize }}</span>{% endif %}
                     </td>
                     <td data-label="Status">
                         {% if a.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>

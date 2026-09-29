@@ -212,7 +212,7 @@ def chat_inbox_list(request):
     for a in accounts:
         last = a.chat_messages.order_by("-created_at").first()
         data.append({
-            "id": a.id, "name": a.name, "email": a.email, "unread": a.unread,
+            "id": a.id, "name": a.name, "email": a.login_label, "unread": a.unread,
             "last_body": (last.body[:90] if last else ""),
             "last_sender": (last.sender if last else ""),
             "last_at_ms": int(a.last_message_at.timestamp() * 1000) if a.last_message_at else 0,
@@ -246,7 +246,7 @@ def chat_inbox_thread(request, account_id):
     )
     return JsonResponse({
         "account": {
-            "id": target.id, "name": target.name, "email": target.email,
+            "id": target.id, "name": target.name, "email": target.login_label,
             "online": target.is_active_on_chat(30),
             "last_seen_ms": int(target.chat_last_seen_at.timestamp() * 1000) if target.chat_last_seen_at else 0,
         },

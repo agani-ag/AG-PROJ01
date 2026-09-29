@@ -3,10 +3,21 @@ from django.urls import path
 
 from . import views
 from . import radio
+from . import account_views
+from . import browser_sync
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
     path("auth/logout", views.logout, name="app_logout"),
+    path("auth/signup", account_views.signup, name="app_signup"),
+    path("account/profile", account_views.profile_update, name="app_profile_update"),
+    path("account/username-check", account_views.username_check, name="app_username_check"),
+    path("account/partners", account_views.partners, name="app_partners"),
+    path("account/partners/<int:connection_id>/enable", account_views.partner_enable, name="app_partner_enable"),
+    path("account/partners/<int:connection_id>/disable", account_views.partner_disable, name="app_partner_disable"),
+    path("device/hello", account_views.device_hello, name="app_device_hello"),
+    path("browser/sync", browser_sync.browser_sync, name="app_browser_sync"),
+    path("browser/sync/delete", browser_sync.browser_sync_delete, name="app_browser_sync_delete"),
     path("radio/channels", radio.channels, name="app_radio_channels"),
     path("account/urls", views.account_urls, name="app_account_urls"),
     path("account/me", views.account_me, name="app_account_me"),

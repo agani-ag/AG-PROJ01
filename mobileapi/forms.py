@@ -6,6 +6,7 @@ from datetime import timezone as dt_timezone
 from django import forms
 from django.utils import timezone
 
+from .identity import normalize_email, normalize_phone, normalize_username
 from .models import AppAccount, AppConfig, AppLink, AppReminder
 
 
@@ -29,11 +30,41 @@ class AppAccountForm(forms.ModelForm):
 
     class Meta:
         model = AppAccount
-        fields = ["name", "email", "is_active", "admin_chat_mode", "can_manage_links", "show_general_links", "radio_enabled"]
+        fields = ["name", "email", "phone", "username", "is_active", "admin_chat_mode",
+                  "show_general_links", "chat_enabled", "radio_enabled"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _style(self.fields)
+        # Admin/partner accounts always have an email; only a self-signed-up account may have a
+        # phone instead.
+        self.fields["email"].required = self.instance.source != "self"
+        self.fields["phone"].help_text = "Indian mobile number, e.g. 98765 43210 (optional)."
+        self.fields["username"].help_text = "Optional. 3–30 letters, numbers, dots or underscores."
+
+    def _identifier(self, field, normalizer):
+        raw = self.cleaned_data.get(field)
+        if not raw:
+            return None
+        value, err = normalizer(raw)
+        if err:
+            raise forms.ValidationError(err)
+        return value
+
+    def clean_email(self):
+        return self._identifier("email", normalize_email)
+
+    def clean_phone(self):
+        return self._identifier("phone", normalize_phone)
+
+    def clean_username(self):
+        return self._identifier("username", normalize_username)
+
+    def clean(self):
+        data = super().clean()
+        if self.instance.source == "self" and not (data.get("email") or data.get("phone")):
+            raise forms.ValidationError("A self sign-up account needs an email or a phone number.")
+        return data
 
     def clean_new_password(self):
         pw = self.cleaned_data.get("new_password")
@@ -96,6 +127,7 @@ class AppConfigForm(forms.ModelForm):
             "announcement_fullscreen",
             "announcement_blocking",
             "chat_enabled",
+            "signup_enabled",
             "cron_dispatch_interval_minutes",
             "cleanup_log_days",
             "cleanup_chat_days",
@@ -128,11 +160,20 @@ FCM_OPTION_KEYS = (
 )
 
 
+PUSH_AUDIENCE_CHOICES = [
+    ("everyone", "Everyone — every install, signed in or not"),
+    ("signed_out", "Signed out — installs nobody is signed in on"),
+    ("signed_in", "Signed in — every signed-in user"),
+    ("account", "One account"),
+]
+
+
 class PushForm(forms.Form):
+    audience = forms.ChoiceField(choices=PUSH_AUDIENCE_CHOICES, initial="everyone", label="Send to")
     account = forms.ModelChoiceField(
         queryset=AppAccount.objects.filter(is_active=True),
         required=False,
-        empty_label="All devices (broadcast)",
+        empty_label="Choose an account…",
     )
     title = forms.CharField(max_length=200)
     body = forms.CharField(widget=forms.Textarea(attrs={"rows": 3}))
@@ -263,6 +304,12 @@ class PushForm(forms.Form):
         if not isinstance(parsed, dict):
             raise forms.ValidationError("Raw overrides must be a JSON object, e.g. {\"collapse_key\":\"x\"}.")
         return raw
+
+    def clean(self):
+        data = super().clean()
+        if data.get("audience") == "account" and not data.get("account"):
+            self.add_error("account", "Choose the account to send to.")
+        return data
 
     def fcm_options(self):
         """Collected advanced options as the dict fcm.build_android_config expects (post-clean).

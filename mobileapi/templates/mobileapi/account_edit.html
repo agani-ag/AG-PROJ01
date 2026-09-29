@@ -10,7 +10,9 @@
         <div class="row" style="margin-top:8px">
             {% if account.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
             {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
-            {% if account.partner_id %}<span class="badge badge-info">{% icon "handshake" %}Provisioned by {{ account.partner.name }}</span>{% endif %}
+            {% if account.source == "partner" %}<span class="badge badge-info">{% icon "handshake" %}Created by {{ account.partner.name|default:"a partner" }}</span>
+            {% elif account.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self sign-up</span>{% endif %}
+            {% if account.username %}<span class="small muted">@{{ account.username }}</span>{% endif %}
             <span class="small muted">Last login {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
         </div>
         {% endif %}
@@ -33,6 +35,18 @@
                         <label class="label" for="{{ form.email.id_for_label }}">Email</label>
                         {{ form.email }}
                         {% for e in form.email.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                    </div>
+                    <div class="field{% if form.phone.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.phone.id_for_label }}">Phone <span class="opt">optional</span></label>
+                        {{ form.phone }}
+                        {% for e in form.phone.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        <span class="help">{{ form.phone.help_text }}</span>
+                    </div>
+                    <div class="field{% if form.username.errors %} invalid{% endif %}">
+                        <label class="label" for="{{ form.username.id_for_label }}">Username <span class="opt">optional</span></label>
+                        {{ form.username }}
+                        {% for e in form.username.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                        <span class="help">{{ form.username.help_text }}</span>
                     </div>
                     <div class="field span-2{% if form.new_password.errors %} invalid{% endif %}">
                         <label class="label" for="{{ form.new_password.id_for_label }}">{% if is_edit %}Reset password <span class="opt">optional</span>{% else %}Password{% endif %}</label>
@@ -60,12 +74,12 @@
                     <label class="switch">{{ form.admin_chat_mode }}<span class="track"></span><span class="sr-only">Support agent</span></label>
                 </div>
                 <div class="switch-row">
-                    <div class="text"><b>Can manage links</b><span class="help">Lets the user add and remove their own links in the app.</span></div>
-                    <label class="switch">{{ form.can_manage_links }}<span class="track"></span><span class="sr-only">Can manage links</span></label>
-                </div>
-                <div class="switch-row">
                     <div class="text"><b>Show general links</b><span class="help">Include the shared general links. Turn off for single-link (kiosk) users.</span></div>
                     <label class="switch">{{ form.show_general_links }}<span class="track"></span><span class="sr-only">Show general links</span></label>
+                </div>
+                <div class="switch-row">
+                    <div class="text"><b>Chat with admin</b><span class="help">Show Chat for this user (only when the master chat switch is on).</span></div>
+                    <label class="switch">{{ form.chat_enabled }}<span class="track"></span><span class="sr-only">Chat</span></label>
                 </div>
                 <div class="switch-row">
                     <div class="text"><b>Radio</b><span class="help">Show the in-app Radio feature for this user (only when the master radio switch is on).</span></div>
@@ -83,6 +97,26 @@
     {% if is_edit %}
     <div class="stack sticky">
         <div class="card">
+            <div class="card-head">{% icon "handshake" %}<h2>Partners</h2></div>
+            <ul class="list">
+                {% for c in connections %}
+                <li class="list-item">
+                    <span class="main-col">
+                        <span class="title" style="display:block">{{ c.partner.name }}</span>
+                        <span class="sub truncate" style="display:block">{% if c.external_id %}Their id: <span class="mono">{{ c.external_id }}</span> · {% endif %}added {{ c.created_at|date:"d M Y" }}</span>
+                    </span>
+                    {% if not c.partner_active %}<span class="badge badge-danger" title="Suspended by the partner">Suspended</span>
+                    {% elif c.status == "enabled" %}<span class="badge badge-success">Enabled</span>
+                    {% elif c.status == "disabled" %}<span class="badge" title="Turned off by the user">Disabled by user</span>
+                    {% else %}<span class="badge" title="Waiting for the user to enter the partner password">Not enabled</span>{% endif %}
+                </li>
+                {% empty %}
+                <li class="empty small">Not connected to any partner.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="card">
             <div class="card-head">
                 {% icon "link-2" %}<h2>Links</h2>
                 <a href="{% url 'mobile_link_add' %}?account={{ account.id }}" class="btn btn-sm">{% icon "plus" %}Add</a>
@@ -96,7 +130,7 @@
                             <span class="sub truncate" style="display:block">{{ link.url }}</span>
                         </span>
                         {% if not link.is_active %}<span class="badge badge-danger">Off</span>{% endif %}
-                        {% if link.created_by_user %}<span class="badge" title="Added by the user">{% icon "user" %}User</span>
+                        {% if link.partner %}<span class="badge badge-info" title="Owned by a partner">{% icon "plug" %}{{ link.partner.name }}</span>
                         {% else %}<span class="badge badge-accent" title="Added by an admin">{% icon "shield-user" %}Admin</span>{% endif %}
                     </a>
                 </li>
@@ -107,22 +141,60 @@
         </div>
 
         <div class="card">
-            <div class="card-head">{% icon "smartphone" %}<h2>Devices</h2></div>
+            <div class="card-head">
+                {% icon "smartphone" %}<h2>Devices</h2>
+                <span class="small muted">{{ session_count }} active session{{ session_count|pluralize }}</span>
+            </div>
             <ul class="list">
                 {% for d in devices %}
                 <li class="list-item">
                     <span class="main-col">
-                        <span class="title" style="display:block">{{ d.platform|capfirst }} · {{ d.app_version|default:"version unknown" }}</span>
+                        <span class="title" style="display:block">{{ d.device_model|default:d.platform|capfirst }} · v{{ d.app_version|default:"?" }}</span>
                         <span class="sub mono truncate" style="display:block" title="{{ d.device_id }}">{{ d.device_id }}</span>
                     </span>
                     {% if d.is_active %}<span class="badge badge-success" title="Last seen {{ d.last_seen|date:'d M Y, H:i' }}">{{ d.last_seen|date:"d M" }}</span>
                     {% else %}<span class="badge" title="Inactive">Inactive</span>{% endif %}
+                    <form method="post" action="{% url 'mobile_account_signout' account.id %}"
+                          data-confirm="Sign out of this device?" data-confirm-text="The app signs out the next time it connects. Its bookmarks and history stay on the phone.">
+                        {% csrf_token %}<input type="hidden" name="device_id" value="{{ d.device_id }}">
+                        <button class="btn btn-sm btn-ghost" type="submit" title="Sign out this device">{% icon "log-out" %}</button>
+                    </form>
                 </li>
                 {% empty %}
-                <li class="empty small">No devices registered.</li>
+                <li class="empty small">No devices signed in.</li>
                 {% endfor %}
             </ul>
+            <form method="post" action="{% url 'mobile_account_signout' account.id %}" class="card-body"
+                  data-confirm="Sign out everywhere?" data-confirm-text="Every device signs out the next time it connects.">
+                {% csrf_token %}
+                <button class="btn btn-sm" type="submit">{% icon "log-out" %}Sign out all devices</button>
+            </form>
         </div>
+
+        <div class="card">
+            <div class="card-head">{% icon "refresh-cw" %}<h2>Browser sync</h2></div>
+            <div class="card-body small">
+                {% if sync_counts %}
+                Bookmarks <b>{{ sync_counts.bookmark|default:0 }}</b> · History <b>{{ sync_counts.history|default:0 }}</b> ·
+                Shortcuts <b>{{ sync_counts.shortcut|default:0 }}</b> · Devices with tabs <b>{{ sync_counts.tabs|default:0 }}</b>
+                <p class="help">Counts only — the admin never sees what the user browses.</p>
+                {% else %}<span class="muted">Nothing synced yet.</span>{% endif %}
+            </div>
+        </div>
+
+        <form method="post" action="{% url 'mobile_account_reset' account.id %}" class="card"
+              data-confirm="Reset {{ account.name }}?" data-confirm-text="Sets a new password and signs out every device." data-danger>
+            {% csrf_token %}
+            <div class="card-body stack" style="gap:10px">
+                <div><b>Reset account</b><p class="help">For recovering an account — for example when someone signed up with another person's email. Sets a new password and signs out every device.</p></div>
+                <div class="input-group">
+                    <input class="input" type="password" name="new_password" placeholder="New password (6+ characters)" autocomplete="new-password" id="reset-pw">
+                    <button class="btn btn-icon" type="button" data-reveal="#reset-pw" aria-label="Show">{% icon "eye" %}</button>
+                </div>
+                <label class="check small"><input type="checkbox" name="wipe_sync"> Also erase their synced bookmarks, history and tabs</label>
+                <button type="submit" class="btn btn-sm" style="align-self:flex-start">{% icon "rotate-ccw" %}Reset account…</button>
+            </div>
+        </form>
 
         <form method="post" action="{% url 'mobile_account_delete' account.id %}" class="card card-danger"
               data-confirm="Delete {{ account.name }}?" data-confirm-text="This also removes their links, devices and sign-in tokens. It can't be undone."

@@ -27,6 +27,9 @@ from .models import (
 )
 
 
+STALE_PUBLIC_INSTALL_DAYS = 180
+
+
 def run_cleanup(vacuum=False):
     cfg = AppConfig.load()
     now = timezone.now()
@@ -54,6 +57,12 @@ def run_cleanup(vacuum=False):
         stats["inactive_devices"] = (
             AppDevice.objects.filter(is_active=False, last_seen__lt=cutoff).delete()[0]
         )
+
+    # Always: signed-out installs nobody has opened in 6 months (they'd only get broadcasts). Installs
+    # with an account are never removed here; FCM "unregistered" tokens are switched off on send.
+    stats["stale_public_installs"] = AppDevice.objects.filter(
+        account__isnull=True, last_seen__lt=now - timedelta(days=STALE_PUBLIC_INSTALL_DAYS),
+    ).delete()[0]
 
     if cfg.cleanup_done_reminder_days:
         cutoff = now - timedelta(days=cfg.cleanup_done_reminder_days)

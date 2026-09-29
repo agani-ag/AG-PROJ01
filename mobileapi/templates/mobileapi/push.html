@@ -43,11 +43,15 @@
     <div class="card">
         <div class="card-head">{% icon "bell-ring" %}<h2>Message</h2></div>
         <div class="card-body form">
-            <div class="field{% if form.account.errors %} invalid{% endif %}">
-                <label class="label" for="{{ form.account.id_for_label }}">Send to</label>
+            <div class="field{% if form.audience.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.audience.id_for_label }}">Send to</label>
+                {{ form.audience }}
+                <span class="help">Everyone / Signed out / Signed in go out in one send (a topic), however many installs there are. Their link opens in a Normal tab.</span>
+            </div>
+            <div class="field{% if form.account.errors %} invalid{% endif %}" id="account-field">
+                <label class="label" for="{{ form.account.id_for_label }}">Account</label>
                 {{ form.account }}
                 {% for e in form.account.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                <span class="help">Leave as “All devices” to broadcast.</span>
             </div>
             <div class="field{% if form.title.errors %} invalid{% endif %}">
                 <label class="label" for="{{ form.title.id_for_label }}">Title <span class="counter" id="title-count" aria-hidden="true"></span></label>
@@ -274,6 +278,11 @@
 (function () {
     var form = document.getElementById("push-form");
     var account = document.getElementById("{{ form.account.id_for_label }}");
+    var audience = document.getElementById("{{ form.audience.id_for_label }}");
+    var accountField = document.getElementById("account-field");
+    function syncAudience() { accountField.hidden = audience.value !== "account"; }
+    audience.addEventListener("change", function () { syncAudience(); syncText(); });
+    syncAudience();
     var title = document.getElementById("{{ form.title.id_for_label }}");
     var body = document.getElementById("{{ form.body.id_for_label }}");
     var image = document.getElementById("{{ form.image_url.id_for_label }}");
@@ -289,8 +298,9 @@
         pvTitle.textContent = title.value;
         pvBody.textContent = body.value;
         counter.textContent = title.value.length + (maxLen ? " / " + maxLen : "");
-        var opt = account.options[account.selectedIndex];
-        pvTarget.textContent = opt ? opt.text : "";
+        var src = audience.value === "account" ? account : audience;
+        var opt = src.options[src.selectedIndex];
+        pvTarget.textContent = opt ? opt.text.split(" — ")[0] : "";
     }
     var imgTimer;
     function syncImage() {

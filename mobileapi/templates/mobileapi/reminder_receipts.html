@@ -6,7 +6,7 @@
     <div class="titles">
         <a class="back" href="{% url 'mobile_reminders' %}">{% icon "arrow-left" "icon-sm" %}Reminders</a>
         <h1>Delivery detail</h1>
-        <p class="page-sub">“{{ reminder.title }}” · {{ reminder.account.email|default:"All accounts (broadcast)" }}</p>
+        <p class="page-sub">“{{ reminder.title }}” · {{ reminder.account.login_label|default:"All accounts (broadcast)" }}</p>
     </div>
 </div>
 

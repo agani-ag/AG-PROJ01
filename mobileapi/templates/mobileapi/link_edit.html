@@ -7,10 +7,10 @@
     <div class="titles">
         <a class="back" href="{% url 'mobile_account_edit' account.id %}">{% icon "arrow-left" "icon-sm" %}{{ account.name }}</a>
         <h1>{% if is_edit %}Edit link{% else %}Add link{% endif %}</h1>
-        <p class="page-sub">For {{ account.name }} &lt;{{ account.email }}&gt;</p>
+        <p class="page-sub">For {{ account.name }} &lt;{{ account.login_label }}&gt;</p>
         {% if is_edit %}
         <div class="row" style="margin-top:8px">
-            {% if link.created_by_user %}<span class="badge badge-info">{% icon "user" %}Added by user</span>
+            {% if link.partner %}<span class="badge badge-info">{% icon "plug" %}{{ link.partner.name }}</span>
             {% else %}<span class="badge badge-accent">{% icon "shield-user" %}Added by admin</span>{% endif %}
         </div>
         {% endif %}

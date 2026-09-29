@@ -23,7 +23,10 @@ from django.views.decorators.http import require_http_methods
 
 from . import fcm
 from .auth import app_token_required, json_body
+from .identity import BAD_LOGIN_MESSAGE, LOGIN_MODES, NORMALIZERS
 from .models import (
+    PartnerConnection,
+    SyncItem,
     AppAccount,
     AppActionRequest,
     AppAuthToken,
@@ -47,18 +50,57 @@ def _bad(msg, status=400):
     return JsonResponse({"success": False, "message": msg}, status=status)
 
 
-def _upsert_device(account, device_id, fcm_token, platform="android", app_version=None):
-    AppDevice.objects.update_or_create(
-        account=account,
-        device_id=device_id,
-        defaults={
-            "fcm_token": fcm_token,
-            "platform": platform or "android",
-            "app_version": app_version,
-            "last_seen": timezone.now(),
-            "is_active": True,
-        },
+def _client_ip(request):
+    """Caller's IP for rate limiting only (never stored). Cloudflare/tunnel headers first."""
+    return (
+        request.META.get("HTTP_CF_CONNECTING_IP")
+        or (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")[0].strip()
+        or request.META.get("REMOTE_ADDR", "")
     )
+
+
+def _rate_limited(key, limit, window_seconds):
+    """Simple fixed-window counter (per process — good enough to blunt brute force)."""
+    count = cache.get(key, 0)
+    if count >= limit:
+        return True
+    cache.set(key, count + 1, window_seconds)
+    return False
+
+
+def _upsert_device(account, device_id, fcm_token, platform="android", app_version=None, token=None):
+    """Register/refresh an install (one row per device_id) and attach the signed-in account.
+
+    Used by login and devices/register (every app version). A different account signing in on the
+    same phone simply takes the row over. The session token is linked to the device so the admin
+    can sign out one device."""
+    now = timezone.now()
+    device, created = AppDevice.objects.get_or_create(
+        device_id=device_id,
+        defaults={"account": account, "fcm_token": fcm_token, "installed_at": now},
+    )
+    device.account = account
+    device.fcm_token = fcm_token or device.fcm_token
+    device.platform = platform or "android"
+    if app_version:
+        device.app_version = app_version
+    device.last_seen = now
+    device.is_active = True
+    if account and not device.converted_at:
+        device.converted_at = now
+    device.save()
+    if token is not None and token.device_id != device_id:
+        token.device_id = device_id[:255]
+        token.save(update_fields=["device_id"])
+    return device
+
+
+def _find_account(mode, raw):
+    """Resolve a sign-in identifier for one login mode → (account | None)."""
+    value, err = NORMALIZERS[mode](raw)
+    if err:
+        return None
+    return AppAccount.objects.filter(**{mode: value}).first()
 
 
 # --------------------------------------------------------------------------- #
@@ -70,27 +112,37 @@ def login(request):
     data = json_body(request)
     if data is None:
         return _bad("Invalid JSON")
-    email = (data.get("email") or "").strip().lower()
+    # v6 sends {"login_mode": "email|phone|username", "login": "..."}; v5 sends only {"email": ...},
+    # which is the email mode.
+    mode = (data.get("login_mode") or "email").strip().lower()
+    if mode not in LOGIN_MODES:
+        return _bad("login_mode must be email, phone or username")
+    identifier = data.get("login") if data.get("login") is not None else data.get("email")
+    identifier = (identifier or "").strip()
     password = data.get("password") or ""
-    if not email or not password:
-        return _bad("Email and password are required")
+    if not identifier or not password:
+        return _bad("Email and password are required" if mode == "email" else "Enter your details and password")
+    if _rate_limited(f"login:{_client_ip(request)}", 20, 300):
+        return _bad("Too many attempts. Try again in a few minutes.", status=429)
 
-    account = AppAccount.objects.filter(email=email).first()
+    account = _find_account(mode, identifier)
     if not account or not account.check_password(password):
-        return _bad("Invalid email or password", status=401)
+        return _bad(BAD_LOGIN_MESSAGE[mode], status=401)
     if not account.is_active:
         return _bad("Account is inactive", status=403)
+    return _issue_session(account, data)
 
-    # Optional device registration on login.
-    device_id = data.get("device_id")
+
+def _issue_session(account, data):
+    """Common tail of login and sign-up: optional device registration + a new token."""
+    device_id = (data.get("device_id") or "").strip()
+    token = AppAuthToken.issue(account, device_id=device_id)
     fcm_token = data.get("fcm_token")
     if device_id and fcm_token:
-        _upsert_device(account, device_id, fcm_token, data.get("platform", "android"), data.get("app_version"))
+        _upsert_device(account, device_id, fcm_token, data.get("platform", "android"), data.get("app_version"), token)
 
     account.last_login = timezone.now()
     account.save(update_fields=["last_login"])
-
-    token = AppAuthToken.issue(account)
     return JsonResponse({
         "access_token": token.key,
         "token_type": "Bearer",
@@ -130,44 +182,22 @@ def account_me(request):
 
 
 # --------------------------------------------------------------------------- #
-# 3a. Self-managed links (only when the account has can_manage_links)
+# 3a. Self-managed links — removed (links come from the admin and partners only)
 # --------------------------------------------------------------------------- #
 @csrf_exempt
 @require_http_methods(["POST"])
 @app_token_required
 def account_link_add(request):
-    """Add a link the user created themselves. Returns the refreshed link list."""
-    if not request.account.can_manage_links:
-        return _bad("You don't have permission to manage links", status=403)
-    data = json_body(request)
-    if data is None:
-        return _bad("Invalid JSON")
-    title = (data.get("title") or "").strip()
-    url = (data.get("url") or "").strip()
-    description = (data.get("description") or "").strip()
-    if not title or not url:
-        return _bad("Title and URL are required")
-    if not url.lower().startswith("https://"):
-        return _bad("URL must start with https:// (the in-app browser blocks non-secure links)")
-    AppLink.objects.create(
-        account=request.account, title=title[:100], url=url[:500],
-        description=(description[:200] or None), created_by_user=True, is_active=True,
-    )
-    return JsonResponse(links_for(request.account), safe=False)
+    """Removed feature: links now come only from the admin and partners."""
+    return _bad("Adding your own links is no longer available", status=403)
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 @app_token_required
 def account_link_delete(request, link_id):
-    """Remove a link — only one the caller added themselves. Returns the refreshed list."""
-    if not request.account.can_manage_links:
-        return _bad("You don't have permission to manage links", status=403)
-    link = AppLink.objects.filter(id=link_id, account=request.account, created_by_user=True).first()
-    if not link:
-        return _bad("Link not found or can't be removed", status=404)
-    link.delete()
-    return JsonResponse(links_for(request.account), safe=False)
+    """Removed feature: links now come only from the admin and partners."""
+    return _bad("Links can't be removed from the app", status=403)
 
 
 # --------------------------------------------------------------------------- #
@@ -314,7 +344,8 @@ def change_password(request):
     if len(new) < 6:
         return _bad("New password must be at least 6 characters")
     account.set_password(new)
-    account.save(update_fields=["password", "updated_at"])
+    account.partner_signin = False
+    account.save(update_fields=["password", "partner_signin", "updated_at"])
     # Revoke all other tokens; keep the one making this request.
     AppAuthToken.objects.filter(account=account).exclude(id=request.auth_token.id).update(revoked=True)
     return JsonResponse({"success": True})
@@ -334,7 +365,8 @@ def device_register(request):
     fcm_token = data.get("fcm_token")
     if not device_id or not fcm_token:
         return _bad("device_id and fcm_token are required")
-    _upsert_device(request.account, device_id, fcm_token, data.get("platform", "android"), data.get("app_version"))
+    _upsert_device(request.account, device_id, fcm_token, data.get("platform", "android"),
+                   data.get("app_version"), request.auth_token)
     return JsonResponse({"success": True})
 
 
@@ -348,7 +380,9 @@ def device_unregister(request):
     device_id = data.get("device_id")
     if not device_id:
         return _bad("device_id is required")
-    AppDevice.objects.filter(account=request.account, device_id=device_id).update(is_active=False)
+    # Sign-out: the install stays registered (it keeps getting public broadcasts); only the account
+    # is detached.
+    AppDevice.objects.filter(account=request.account, device_id=device_id).update(account=None)
     return JsonResponse({"success": True})
 
 
@@ -365,7 +399,8 @@ def delete_account(request):
     account.is_active = False
     account.save(update_fields=["is_active", "updated_at"])
     AppAuthToken.objects.filter(account=account).update(revoked=True)
-    AppDevice.objects.filter(account=account).update(is_active=False)
+    AppDevice.objects.filter(account=account).update(account=None)
+    SyncItem.objects.filter(account=account).delete()  # synced browser data is erased for good
     return JsonResponse({"success": True})
 
 
@@ -537,8 +572,12 @@ def _config_dict(request):
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
         "privacy_policy_url": _public_url(request, "privacy_policy"),
-        "chat_enabled": cfg.chat_enabled,
-        # Radio shows only when the master switch AND this user's per-user switch are on.
+        # Chat and Radio show only when the master switch AND this user's own switch are on.
+        "chat_enabled": bool(
+            cfg.chat_enabled
+            and getattr(getattr(request, "account", None), "chat_enabled", True)
+        ),
+        "signup_enabled": cfg.signup_enabled,
         "radio_enabled": bool(
             cfg.radio_enabled
             and getattr(getattr(request, "account", None), "radio_enabled", True)
@@ -632,6 +671,11 @@ def action_respond(request, action_id):
     return JsonResponse({"success": True})
 
 
+def _partner_external_id(partner_id, account_id):
+    conn = PartnerConnection.objects.filter(partner_id=partner_id, account_id=account_id).first()
+    return (conn.external_id or "") if conn else ""
+
+
 def _deliver_action_callback(a):
     """Synchronously POST the (signed) result to the partner's callback URL. Best-effort — if the
     partner's server is momentarily down the delivery is lost and the partner re-requests."""
@@ -641,7 +685,7 @@ def _deliver_action_callback(a):
         "type": a.action_type,
         "status": "completed",
         "value": (a.response or {}).get("value"),
-        "user": {"id": str(a.account_id), "external_id": a.account.external_id or ""},
+        "user": {"id": str(a.account_id), "external_id": _partner_external_id(a.partner_id, a.account_id)},
         "responded_at": responded_at,
     }
     # A "notice" is read-and-acknowledge — give the partner the plain contract they asked for.
@@ -680,4 +724,8 @@ def sync(request):
         "urls": links_for(request.account),
         "chat_unread": _chat_unread_count(request.account),
         "config": _config_dict(request),
+        # Partners that added this user and are waiting to be enabled (Partners page badge).
+        "partners_waiting": PartnerConnection.objects.filter(
+            account=request.account, status="not_enabled", partner_active=True, partner__is_active=True,
+        ).count(),
     })

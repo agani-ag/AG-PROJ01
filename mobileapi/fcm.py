@@ -8,6 +8,7 @@ the project's existing credentials (own code, no import of the other app's helpe
     FIREBASE_PROJECT_ID     e.g. "syncup-f470b"
     SERVICE_ACCOUNT_FILE    path to the service-account JSON (abs, or relative to BASE_DIR)
 """
+import copy
 import json
 import logging
 import os
@@ -323,6 +324,81 @@ def push(tokens, title, body, *, source, account=None, partner=None, link=None, 
             row.save()
         except Exception:  # noqa: BLE001 — a logging hiccup must never undo a delivered push
             logger.exception("Could not record push in AppNotificationLog")
+    return PushResult(delivered, failed, status, error, row)
+
+
+# --------------------------------------------------------------------------- #
+# Topic broadcasts — one FCM call reaches every install subscribed to the topic
+# --------------------------------------------------------------------------- #
+# The v6+ app subscribes every install to "all" (while SyncUp updates are on), plus "public" while
+# signed out or "users" while signed in. v5 installs never subscribe, so the Push page also sends to
+# their tokens directly.
+TOPICS = {"everyone": "syncup_all", "signed_out": "syncup_public", "signed_in": "syncup_users"}
+AUDIENCE_LABELS = {"everyone": "Everyone", "signed_out": "Signed out", "signed_in": "Signed in"}
+UPDATES_CHANNEL = "syncup_updates"  # created by the v6 app ("SyncUp updates")
+
+
+def send_topic(topic, title, body, data=None, image=None, android=None, timeout=15):
+    """Send one message to an FCM topic. Returns True when FCM accepted it (delivery then happens
+    to every subscribed install; FCM doesn't report per-device results for topics)."""
+    project_id = getattr(settings, "FIREBASE_PROJECT_ID", None)
+    if not project_id:
+        raise FCMError("FIREBASE_PROJECT_ID is not set")
+    notification = {"title": title, "body": body}
+    if image:
+        notification["image"] = image
+    message = {"topic": topic, "notification": notification}
+    if data:
+        message["data"] = {str(k): str(v) for k, v in data.items()}
+    if android:
+        message["android"] = android
+    resp = requests.post(
+        _SEND_URL.format(project_id=project_id),
+        headers={"Authorization": f"Bearer {_access_token()}", "Content-Type": "application/json"},
+        data=json.dumps({"message": message}), timeout=timeout,
+    )
+    if resp.status_code != 200:
+        raise FCMError(f"Topic send failed ({resp.status_code}): {resp.text[:200]}")
+    return True
+
+
+def push_audience(audience, title, body, *, source, data=None, image=None, android=None,
+                  direct_tokens=None, timeout=15):
+    """Broadcast to an audience (everyone / signed_out / signed_in): one topic send for v6+ installs
+    plus a direct send to `direct_tokens` (v5 installs). Logged as one row; the per-device counts
+    cover only the direct part."""
+    from .models import AppNotificationLog
+
+    direct_tokens = [t for t in (direct_tokens or []) if t]
+    delivered = failed = 0
+    error = ""
+    status = "sent"
+    # v6+ installs: tag the message as a broadcast and show it on the app's "SyncUp updates"
+    # channel unless the Push form picked a channel. (v5 installs, sent to directly, keep the
+    # form's options as they are — they don't have that channel.)
+    topic_data = dict(data or {}, audience=audience)
+    topic_android = copy.deepcopy(android) if android else {}
+    topic_android.setdefault("notification", {}).setdefault("channel_id", UPDATES_CHANNEL)
+    if not is_configured():
+        status = "not_configured"
+    else:
+        try:
+            send_topic(TOPICS[audience], title, body, data=topic_data, image=image, android=topic_android,
+                       timeout=timeout)
+            if direct_tokens:
+                delivered, failed = send(direct_tokens, title, body, data=data, image=image,
+                                         timeout=timeout, android=android)
+        except Exception as e:  # noqa: BLE001 — reported on the log row
+            status, error = "error", str(e)[:500]
+    row = AppNotificationLog(
+        source=source, status=status, audience=audience, title=(title or "")[:200], body=body,
+        data=data or None, image_url=image or None, devices=len(direct_tokens),
+        success_count=delivered, fail_count=failed, error=error or None,
+    )
+    try:
+        row.save()
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not record push in AppNotificationLog")
     return PushResult(delivered, failed, status, error, row)
 
 

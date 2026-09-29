@@ -19,7 +19,7 @@
                 <select name="account" id="account" class="input" required>
                     <option value="">— choose a user —</option>
                     {% for a in accounts %}
-                    <option value="{{ a.id }}">{{ a.name }} &lt;{{ a.email }}&gt;</option>
+                    <option value="{{ a.id }}">{{ a.name }} &lt;{{ a.login_label }}&gt;</option>
                     {% endfor %}
                 </select>
             </div>
@@ -121,7 +121,7 @@
                 <tr>
                     <td data-label="When" data-value="{{ r.created_at|date:'c' }}" class="nowrap t-hide-sm">{{ r.created_at|date:"d M, H:i:s" }}</td>
                     <td class="t-primary">
-                        <div class="t-cell-main break">{{ r.account.email }}</div>
+                        <div class="t-cell-main break">{{ r.account.login_label }}</div>
                         <div class="t-cell-sub sm-only">{{ r.created_at|date:"d M, H:i:s" }}</div>
                     </td>
                     <td data-label="Type"><span class="badge">{{ r.get_action_type_display }}</span></td>

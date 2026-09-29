@@ -21,11 +21,27 @@ TOKEN_TTL_DAYS = 60
 
 
 # =============== App account (mobile-only credentials) ===============
+ACCOUNT_SOURCE_CHOICES = [
+    ("admin", "Admin"),
+    ("partner", "Partner"),
+    ("self", "Self sign-up"),
+]
+
+
 class AppAccount(models.Model):
-    """A mobile app user. Separate from Django `User` (which is admin-only)."""
+    """A mobile app user. Separate from Django `User` (which is admin-only).
+
+    Signs in with a password plus ONE of: email, phone (India, stored +91XXXXXXXXXX) or username.
+    Each is unique when set. Admin/partner-created accounts always have an email; a self-signed-up
+    account has an email and/or a phone, and can add a username later from the app.
+    """
 
     name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, null=True, blank=True)
+    phone = models.CharField(max_length=16, unique=True, null=True, blank=True)
+    username = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    # How the account came to exist (drives the Accounts filter and a few partner rules).
+    source = models.CharField(max_length=10, choices=ACCOUNT_SOURCE_CHOICES, default="admin")
     password = models.CharField(max_length=128)  # PBKDF2 hash, never plaintext
     is_active = models.BooleanField(default=True)
     # Support agent: when on, this user's in-app Chat opens the full support inbox (all users'
@@ -33,10 +49,6 @@ class AppAccount(models.Model):
     admin_chat_mode = models.BooleanField(
         default=False,
         help_text="Support agent — their app Chat opens the admin inbox instead of a personal chat.",
-    )
-    can_manage_links = models.BooleanField(
-        default=False,
-        help_text="Lets the user add/remove their own links from the app (only links they added).",
     )
     show_general_links = models.BooleanField(
         default=True,
@@ -47,14 +59,18 @@ class AppAccount(models.Model):
         default=True,
         help_text="Show the in-app Radio feature for this user (only when the master radio switch is on too).",
     )
-    # The partner that provisioned this user via the Partner API. Blank = admin-created. Every
-    # Partner-API request is scoped to its own accounts through this FK.
+    chat_enabled = models.BooleanField(
+        default=True,
+        help_text="Show Chat with admin for this user (only when the master chat switch is on too).",
+    )
+    # Partner-first accounts sign in with the partner password until the user sets their own; while
+    # this is on, a password reset by that partner also resets the SyncUp sign-in.
+    partner_signin = models.BooleanField(default=False)
+    # The partner that CREATED this account (partner-first). Blank = admin or self sign-up. Partner
+    # access itself lives on PartnerConnection (one per partner); this only records the origin.
     partner = models.ForeignKey(
         "AppPartner", on_delete=models.SET_NULL, null=True, blank=True, related_name="accounts",
     )
-    # The partner's OWN id for this user (their system's key). Unique per partner, so a partner
-    # can address / upsert / sync users by their own id without ever storing our internal id.
-    external_id = models.CharField(max_length=128, null=True, blank=True)
     last_login = models.DateTimeField(null=True, blank=True)
     # Last time this user's app polled the chat screen — used to skip the admin-reply push
     # while they're actively looking at the chat.
@@ -70,14 +86,6 @@ class AppAccount(models.Model):
 
     class Meta:
         ordering = ["name"]
-        constraints = [
-            # A partner's external_id is unique within that partner (nulls — admin users — ignored).
-            models.UniqueConstraint(
-                fields=["partner", "external_id"],
-                condition=models.Q(external_id__isnull=False),
-                name="uniq_partner_external_id",
-            ),
-        ]
 
     def set_password(self, raw_password):
         self.password = make_password(raw_password)
@@ -107,14 +115,21 @@ class AppAccount(models.Model):
         return (timezone.now() - self.admin_last_seen_at).total_seconds() < window_seconds
 
     def save(self, *args, **kwargs):
-        if self.email:
-            self.email = self.email.strip().lower()
+        # Blank identifiers are stored as NULL so the unique constraints ignore them.
+        self.email = (self.email or "").strip().lower() or None
+        self.phone = (self.phone or "").strip() or None
+        self.username = (self.username or "").strip().lower() or None
         if self.name:
             self.name = self.name.strip()
         super().save(*args, **kwargs)
 
+    @property
+    def login_label(self):
+        """The best identifier to show for this account (email, then phone, then @username)."""
+        return self.email or self.phone or (f"@{self.username}" if self.username else f"#{self.pk}")
+
     def __str__(self):
-        return f"{self.name} <{self.email}>"
+        return f"{self.name} <{self.login_label}>"
 
 
 # =============== Bearer token ===============
@@ -127,16 +142,20 @@ class AppAuthToken(models.Model):
     last_used_at = models.DateTimeField(null=True, blank=True)
     revoked = models.BooleanField(default=False)
     expires_at = models.DateTimeField(null=True, blank=True)
+    # The install this token signed in on (set at login or when the device registers), so the admin
+    # can sign out one device. Blank for older tokens — "sign out all" still covers those.
+    device_id = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]
 
     @classmethod
-    def issue(cls, account, ttl_days=TOKEN_TTL_DAYS):
+    def issue(cls, account, ttl_days=TOKEN_TTL_DAYS, device_id=""):
         return cls.objects.create(
             key=secrets.token_hex(20),
             account=account,
             expires_at=timezone.now() + timedelta(days=ttl_days),
+            device_id=(device_id or "")[:255],
         )
 
     @property
@@ -148,7 +167,7 @@ class AppAuthToken(models.Model):
         return True
 
     def __str__(self):
-        return f"{self.account.email} · {self.key[:8]}…"
+        return f"{self.account.login_label} · {self.key[:8]}…"
 
 
 # =============== Partner (B2B provisioning API) ===============
@@ -203,6 +222,69 @@ class AppPartner(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# =============== Partner connection (a partner's access key on an account) ===============
+PARTNER_CONNECTION_STATUS = [
+    ("not_enabled", "Not enabled"),
+    ("enabled", "Enabled"),
+    ("disabled", "Disabled by user"),
+]
+
+# Wrong partner passwords allowed on the app's Partners page before a cool-down.
+PARTNER_MAX_ATTEMPTS = 5
+PARTNER_LOCK_MINUTES = 15
+
+
+class PartnerConnection(models.Model):
+    """One partner's link to one SyncUp account. The account belongs to the person; each partner
+    that adds them gets a connection with its OWN partner password. The user enables a partner in
+    the app by entering that password, and can disable it any time. Only an enabled connection
+    (that the partner hasn't suspended) lets the partner's links, prompts and pushes through."""
+
+    partner = models.ForeignKey(AppPartner, on_delete=models.CASCADE, related_name="connections")
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="partner_connections")
+    # The partner's own id for this user (their system's key), unique within the partner.
+    external_id = models.CharField(max_length=128, null=True, blank=True)
+    password = models.CharField(max_length=128)  # hash of the partner password
+    status = models.CharField(max_length=12, choices=PARTNER_CONNECTION_STATUS, default="not_enabled")
+    # The partner can suspend its own access (Partner API is_active / DELETE) without touching the account.
+    partner_active = models.BooleanField(default=True)
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    enabled_at = models.DateTimeField(null=True, blank=True)
+    disabled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["partner__name"]
+        constraints = [
+            models.UniqueConstraint(fields=["partner", "account"], name="uniq_partner_account"),
+            models.UniqueConstraint(
+                fields=["partner", "external_id"],
+                condition=models.Q(external_id__isnull=False),
+                name="uniq_connection_external_id",
+            ),
+        ]
+
+    def set_password(self, raw_password):
+        self.password = make_password(raw_password)
+
+    def check_password(self, raw_password):
+        return check_password(raw_password, self.password)
+
+    @property
+    def is_live(self):
+        """True when this partner can currently reach the user (enabled, not suspended)."""
+        return self.status == "enabled" and self.partner_active and self.partner.is_active
+
+    @property
+    def is_locked(self):
+        return bool(self.locked_until and self.locked_until > timezone.now())
+
+    def __str__(self):
+        return f"{self.partner.name} ↔ {self.account.login_label} ({self.status})"
 
 
 # =============== Action / verification request (partner ↔ user bridge) ===============
@@ -286,8 +368,6 @@ class AppLink(models.Model):
     description = models.CharField(max_length=200, null=True, blank=True)
     icon = models.CharField(max_length=50, null=True, blank=True, choices=APP_ICON_CHOICES)
     is_active = models.BooleanField(default=True)
-    # True when the end user added it themselves (self-manage) — only these are user-removable.
-    created_by_user = models.BooleanField(default=False)
     # When on, the app injects window.SyncUp={token} into this page so the site can push
     # notifications to this exact user (via POST /app/v1/partner/notify). Uncheck to revoke.
     notify_token_enabled = models.BooleanField(
@@ -297,6 +377,11 @@ class AppLink(models.Model):
     # A partner's own key for this link (their system's id). Unique per account, so a partner can
     # replace-by-key: upserting a user's link with the same key updates it instead of duplicating.
     external_id = models.CharField(max_length=128, null=True, blank=True)
+    # The partner that owns this link (blank = SyncUp admin link). A partner link is shown only
+    # while that partner's connection on the account is enabled, grouped under the partner's name.
+    partner = models.ForeignKey(
+        AppPartner, on_delete=models.CASCADE, null=True, blank=True, related_name="links",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -321,13 +406,18 @@ class AppLink(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.title} ({self.account.email})"
+        return f"{self.title} ({self.account.login_label if self.account_id else 'general'})"
 
 
 # =============== FCM device registration ===============
 class AppDevice(models.Model):
-    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="devices")
-    device_id = models.CharField(max_length=255)
+    """One app install. `account` is whoever is signed in on it right now (blank = signed out);
+    signing out detaches the account but the install keeps receiving public broadcasts."""
+
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name="devices",
+    )
+    device_id = models.CharField(max_length=255, unique=True)
     fcm_token = models.TextField()
     platform = models.CharField(max_length=50, default="android")
     app_version = models.CharField(max_length=50, null=True, blank=True)
@@ -335,15 +425,36 @@ class AppDevice(models.Model):
     # When this device last pulled the reminder list (its background/foreground reminder sync).
     last_reminder_sync_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    # ---- Install registry (every install says hello, signed in or not) ----
+    # Issued on the first hello; later hellos for this device_id must present it, so nobody can
+    # take over another install's row by guessing its id. Blank for rows from older app versions.
+    device_secret = models.CharField(max_length=64, blank=True, default="")
+    installed_at = models.DateTimeField(default=timezone.now)
+    converted_at = models.DateTimeField(null=True, blank=True, help_text="First time an account signed in here.")
+    os_version = models.CharField(max_length=40, blank=True, default="")
+    locale = models.CharField(max_length=20, blank=True, default="")
+    time_zone = models.CharField(max_length=60, blank=True, default="")
+    country = models.CharField(max_length=4, blank=True, default="")  # from the connection; IP never stored
+    device_model = models.CharField(max_length=80, blank=True, default="")
+    webview_version = models.CharField(max_length=40, blank=True, default="")
+    install_source = models.CharField(max_length=60, blank=True, default="")
+    notifications_allowed = models.BooleanField(null=True, blank=True)
+    updates_enabled = models.BooleanField(default=True, help_text="The app's 'SyncUp updates' switch.")
 
     class Meta:
         ordering = ["-last_seen"]
-        constraints = [
-            models.UniqueConstraint(fields=["account", "device_id"], name="unique_account_device"),
-        ]
+
+    @property
+    def app_version_code(self):
+        """The numeric app version (e.g. '6' → 6); 0 when unknown."""
+        try:
+            return int(str(self.app_version or "").split(".")[0])
+        except ValueError:
+            return 0
 
     def __str__(self):
-        return f"{self.account.email} · {self.device_id}"
+        who = self.account.login_label if self.account_id else "signed out"
+        return f"{who} · {self.device_id}"
 
 
 # =============== Server-driven config (singleton) ===============
@@ -382,6 +493,10 @@ class AppConfig(models.Model):
     chat_enabled = models.BooleanField(
         default=True,
         help_text="Show the in-app chat button for everyone. Turn off to hide chat across the app.",
+    )
+    signup_enabled = models.BooleanField(
+        default=False,
+        help_text="Show 'Create account' in the app. Off = only admins and partners create accounts.",
     )
     # Master defaults for the Android/FCM block applied to every push (the send form can override
     # per-send). Stored as the friendly option keys the Push form reads/writes — see
@@ -492,6 +607,8 @@ class AppNotificationLog(models.Model):
         AppLink, on_delete=models.SET_NULL, null=True, blank=True, related_name="push_logs",
     )
     source = models.CharField(max_length=20, choices=PUSH_SOURCE_CHOICES, default="other", db_index=True)
+    # Set for Push-page broadcasts to an audience (everyone / signed_out / signed_in) sent via topics.
+    audience = models.CharField(max_length=12, blank=True, default="")
     status = models.CharField(max_length=20, choices=PUSH_STATUS_CHOICES, blank=True, default="",
                               db_index=True)
     title = models.CharField(max_length=200)
@@ -510,8 +627,12 @@ class AppNotificationLog(models.Model):
     @property
     def target_label(self):
         """Who the push was for, in words."""
+        if self.audience:
+            label = {"everyone": "Everyone", "signed_out": "Signed out", "signed_in": "Signed in"}.get(
+                self.audience, self.audience)
+            return f"{label} (topic)"
         if self.account_id:
-            return self.account.email
+            return self.account.login_label
         if self.source == "chat":
             return "Support agents"
         if self.partner_id:
@@ -808,3 +929,41 @@ class AppChatMessage(models.Model):
 
     def __str__(self):
         return f"{self.account.email} · {self.sender} · {self.body[:24]}"
+
+
+# =============== Browser sync (a signed-in user's own Normal-section data) ===============
+SYNC_KINDS = [
+    ("bookmark", "Bookmark"),
+    ("history", "History"),
+    ("shortcut", "Home shortcut"),
+    ("setting", "Setting"),
+    ("tabs", "Open tabs (one row per device)"),
+]
+
+
+class SyncItem(models.Model):
+    """One synced browser item. Keyed by (account, kind, key) where `key` is the app's own stable id
+    (a UUID for bookmarks/history/shortcuts, the setting name, or the device id for 'tabs').
+
+    The latest change wins: an incoming change applies only if its `updated_ms` (the phone's clock
+    when the user made the change) is newer. Deletions are kept as tombstones (`deleted`) so they
+    reach every device; `changed_at` is the server time used as the sync cursor."""
+
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="sync_items")
+    kind = models.CharField(max_length=10, choices=SYNC_KINDS)
+    key = models.CharField(max_length=128)
+    data = models.JSONField(default=dict, blank=True)
+    updated_ms = models.BigIntegerField(default=0)
+    deleted = models.BooleanField(default=False)
+    device_id = models.CharField(max_length=255, blank=True, default="")  # last writer
+    changed_at = models.DateTimeField(auto_now=True, db_index=True)
+
+    class Meta:
+        ordering = ["changed_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["account", "kind", "key"], name="uniq_sync_item"),
+        ]
+        indexes = [models.Index(fields=["account", "changed_at"])]
+
+    def __str__(self):
+        return f"{self.account_id} · {self.kind} · {self.key[:12]}"

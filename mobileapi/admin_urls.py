@@ -11,6 +11,8 @@ urlpatterns = [
     path("accounts/add", v.account_add, name="mobile_account_add"),
     path("accounts/<int:account_id>", v.account_edit, name="mobile_account_edit"),
     path("accounts/<int:account_id>/delete", v.account_delete, name="mobile_account_delete"),
+    path("accounts/<int:account_id>/signout", v.account_signout, name="mobile_account_signout"),
+    path("accounts/<int:account_id>/reset", v.account_reset, name="mobile_account_reset"),
 
     # Links
     path("links/add", v.link_add, name="mobile_link_add"),

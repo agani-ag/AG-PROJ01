@@ -184,7 +184,7 @@
                     </td>
                     <td data-label="Target">
                         <div style="min-width:0">
-                            <div class="truncate" style="max-width:180px" title="{{ r.account.email|default:'All accounts' }}">{{ r.account.email|default:"All accounts" }}</div>
+                            <div class="truncate" style="max-width:180px" title="{{ r.account.login_label|default:'All accounts' }}">{{ r.account.login_label|default:"All accounts" }}</div>
                             {% if r.link %}<div class="small muted truncate" style="max-width:180px" title="Opens link: {{ r.link.title }}">{% icon "link-2" "icon-sm" %} {{ r.link.title }}</div>{% endif %}
                         </div>
                     </td>

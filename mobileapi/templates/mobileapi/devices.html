@@ -5,8 +5,17 @@
 <div class="page-head">
     <div class="titles">
         <h1>Devices</h1>
-        <p class="page-sub">Phones signed in to the SyncUp app</p>
+        <p class="page-sub">Every install of the SyncUp app — signed in or not</p>
     </div>
+</div>
+
+<div class="stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+    <div class="card"><div class="card-body"><div class="small muted">Installs</div><b style="font-size:22px">{{ stats.installs }}</b></div></div>
+    <div class="card"><div class="card-body"><div class="small muted">Active</div><b style="font-size:22px">{{ stats.active }}</b></div></div>
+    <div class="card"><div class="card-body"><div class="small muted">Signed in</div><b style="font-size:22px">{{ stats.signed_in }}</b></div></div>
+    <div class="card"><div class="card-body"><div class="small muted">Signed out</div><b style="font-size:22px">{{ stats.signed_out }}</b></div></div>
+    <div class="card"><div class="card-body"><div class="small muted">Ever signed in</div><b style="font-size:22px">{{ stats.converted }}</b></div></div>
+    <div class="card"><div class="card-body"><div class="small muted">Updates switched off</div><b style="font-size:22px">{{ stats.updates_off }}</b></div></div>
 </div>
 
 <div class="card" data-table>
@@ -14,7 +23,7 @@
         <label class="input-icon">
             <span class="sr-only">Search devices</span>
             {% icon "search" %}
-            <input class="input" type="search" id="device-search" placeholder="Search email, device ID or version" data-table-search autocomplete="off">
+            <input class="input" type="search" id="device-search" placeholder="Search account, device, model or version" data-table-search autocomplete="off">
         </label>
     </div>
     <div class="table-wrap">
@@ -23,6 +32,7 @@
                 <tr>
                     <th data-sort="text">Account</th>
                     <th>Device ID</th>
+                    <th data-sort="text">Phone</th>
                     <th data-sort="text">Version</th>
                     <th data-sort="text">Last seen</th>
                     <th data-sort="text">Last reminder sync</th>
@@ -33,8 +43,9 @@
             <tbody>
                 {% for d in devices %}
                 <tr>
-                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.email }}</a></td>
+                    <td class="t-primary">{% if d.account %}<a class="t-cell-main" href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.login_label }}</a>{% else %}<span class="muted">Signed out</span>{% endif %}</td>
                     <td data-label="Device ID"><span class="mono small muted break">{{ d.device_id }}</span></td>
+                    <td data-label="Phone">{{ d.device_model|default:"—" }}{% if d.country %} <span class="small muted">· {{ d.country }}</span>{% endif %}</td>
                     <td data-label="Version">{{ d.app_version|default:"—" }}</td>
                     <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{{ d.last_seen|date:"d M Y, H:i" }}</td>
                     <td data-label="Reminder sync" data-value="{{ d.last_reminder_sync_at|date:'c' }}" class="nowrap">{{ d.last_reminder_sync_at|date:"d M Y, H:i"|default:"—" }}</td>
@@ -45,7 +56,7 @@
                     <td class="t-right">
                         {% if d.is_active %}
                         <form method="post" action="{% url 'mobile_device_deactivate' d.id %}"
-                              data-confirm="Deactivate this device?" data-confirm-text="It stops receiving push until {{ d.account.email }} signs in again."
+                              data-confirm="Deactivate this device?" data-confirm-text="It stops receiving push until the app registers again."
                               data-confirm-button="Deactivate" data-danger>
                             {% csrf_token %}
                             <button class="btn btn-sm" type="submit" title="Deactivate">{% icon "ban" %}Deactivate</button>
@@ -54,7 +65,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr data-empty><td colspan="7"><div class="empty">{% icon "smartphone" %}<b>No devices registered</b><span>Devices appear here after a user signs in to the app.</span></div></td></tr>
+                <tr data-empty><td colspan="8"><div class="empty">{% icon "smartphone" %}<b>No devices registered</b><span>Every install appears here once the app opens.</span></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>

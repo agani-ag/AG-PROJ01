@@ -26,6 +26,7 @@ from . import telegram as tg
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from .models import (
+    AppAuthToken,
     AppAccount,
     AppActionRequest,
     AppChatMessage,
@@ -70,21 +71,23 @@ def accounts(request):
     qs = AppAccount.objects.select_related("partner").annotate(
         link_count=Count("links", distinct=True),
         device_count=Count("devices", distinct=True),
+        partner_count=Count("partner_connections", distinct=True),
     )
-    # Filter by origin: "admin" = admin-created (no partner), "<id>" = one partner, "" = all.
+    # Filter: "admin" = admin-created, "self" = self sign-ups, "<id>" = connected to one partner.
     selected = (request.GET.get("partner") or "").strip()
-    if selected == "admin":
-        qs = qs.filter(partner__isnull=True)
+    if selected in ("admin", "self"):
+        qs = qs.filter(source=selected)
     elif selected.isdigit():
-        qs = qs.filter(partner_id=int(selected))
+        qs = qs.filter(partner_connections__partner_id=int(selected))
     partners = AppPartner.objects.annotate(
-        user_count=Count("accounts", distinct=True),
+        user_count=Count("connections", distinct=True),
     ).order_by("name")
     return render(request, "mobileapi/accounts.html", {
         "accounts": qs,
         "partners": partners,
         "selected_partner": selected,
-        "admin_count": AppAccount.objects.filter(partner__isnull=True).count(),
+        "admin_count": AppAccount.objects.filter(source="admin").count(),
+        "self_count": AppAccount.objects.filter(source="self").count(),
         "total_count": AppAccount.objects.count(),
     })
 
@@ -115,13 +118,71 @@ def account_edit(request, account_id):
         messages.error(request, form.errors.as_text())
     else:
         form = AppAccountForm(instance=account)
+    sync_counts = dict(
+        account.sync_items.filter(deleted=False).values_list("kind").annotate(n=Count("id"))
+    )
     return render(request, "mobileapi/account_edit.html", {
         "form": form,
         "account": account,
         "is_edit": True,
-        "links": account.links.all(),
+        "links": account.links.select_related("partner").all(),
         "devices": account.devices.all(),
+        "connections": account.partner_connections.select_related("partner").all(),
+        "sync_counts": sync_counts,
+        "session_count": account.tokens.filter(revoked=False, expires_at__gt=timezone.now()).count(),
     })
+
+
+def _sign_out(account, device_id=None):
+    """Revoke the account's sign-in tokens (one install, or all) and detach it from those installs.
+    The app signs itself out at its next server call (every app version handles the 401)."""
+    tokens = AppAuthToken.objects.filter(account=account, revoked=False)
+    devices = AppDevice.objects.filter(account=account)
+    if device_id:
+        tokens = tokens.filter(device_id=device_id)
+        devices = devices.filter(device_id=device_id)
+    revoked = tokens.update(revoked=True)
+    devices.update(account=None)
+    return revoked
+
+
+@superuser_required
+@require_POST
+def account_signout(request, account_id):
+    """Sign the account out of one device (POST device_id) or of every device."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    device_id = (request.POST.get("device_id") or "").strip()
+    n = _sign_out(account, device_id or None)
+    if device_id:
+        messages.success(request, f"Signed out of that device ({n} session{'s' if n != 1 else ''} ended).")
+    else:
+        messages.success(request, f"Signed out everywhere ({n} session{'s' if n != 1 else ''} ended).")
+    return redirect("mobile_account_edit", account.id)
+
+
+@superuser_required
+@require_POST
+def account_reset(request, account_id):
+    """Recover an account (e.g. someone signed up with another person's email): set a new password,
+    sign out every device, and optionally erase the synced browser data."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    pw = request.POST.get("new_password") or ""
+    if len(pw) < 6:
+        messages.error(request, "Reset needs a new password of at least 6 characters.")
+        return redirect("mobile_account_edit", account.id)
+    account.set_password(pw)
+    account.partner_signin = False  # the admin set this password; partner resets no longer apply
+    account.save(update_fields=["password", "partner_signin", "updated_at"])
+    n = _sign_out(account)
+    wiped = 0
+    if request.POST.get("wipe_sync"):
+        wiped = account.sync_items.all().delete()[0]
+    messages.success(
+        request,
+        f"Account reset: new password set, {n} session(s) signed out"
+        + (f", {wiped} synced item(s) erased." if wiped else "."),
+    )
+    return redirect("mobile_account_edit", account.id)
 
 
 @superuser_required
@@ -457,7 +518,7 @@ def action_test(request):
             delivered = partner_api.send_action_push(action)
             messages.success(
                 request,
-                f"Sent a {atype} prompt to {account.email} — {delivered} device(s). Complete it on "
+                f"Sent a {atype} prompt to {account.login_label} — {delivered} device(s). Complete it on "
                 "the phone, then refresh this page to see the response below.",
             )
         return redirect("mobile_action_test")
@@ -475,7 +536,16 @@ def action_test(request):
 @superuser_required
 def devices(request):
     qs = AppDevice.objects.select_related("account").all()
-    return render(request, "mobileapi/devices.html", {"devices": qs})
+    active = AppDevice.objects.filter(is_active=True)
+    stats = {
+        "installs": AppDevice.objects.count(),
+        "active": active.count(),
+        "signed_in": active.filter(account__isnull=False).count(),
+        "signed_out": active.filter(account__isnull=True).count(),
+        "converted": AppDevice.objects.filter(converted_at__isnull=False).count(),
+        "updates_off": active.filter(updates_enabled=False).count(),
+    }
+    return render(request, "mobileapi/devices.html", {"devices": qs, "stats": stats})
 
 
 @superuser_required
@@ -539,16 +609,15 @@ def push(request):
     if request.method == "POST":
         form = PushForm(request.POST)
         if form.is_valid():
-            account = form.cleaned_data["account"]
+            audience = form.cleaned_data["audience"]
+            account = form.cleaned_data["account"] if audience == "account" else None
             title = form.cleaned_data["title"]
             body = form.cleaned_data["body"]
             link_url = form.cleaned_data.get("link_url")
             image_url = form.cleaned_data.get("image_url")
-            data = {"link_url": link_url} if link_url else None  # tap target (opens in-app WebView)
-            device_qs = AppDevice.objects.filter(is_active=True)
-            if account:
-                device_qs = device_qs.filter(account=account)
-            tokens = list(device_qs.values_list("fcm_token", flat=True))
+            data = {"link_url": link_url} if link_url else None  # tap target
+            if data and audience != "account":
+                data["open_in"] = "normal"  # a broadcast link opens in a Normal tab (v6); v5 ignores it
 
             # Advanced FCM (AndroidConfig) options, optionally persisted as master defaults.
             fcm_opts = form.fcm_options()
@@ -560,14 +629,33 @@ def push(request):
                 cfg.save()
             android = fcm.build_android_config(fcm_opts)
 
-            result = fcm.push(tokens, title, body, source="admin", account=account, data=data,
-                              image=image_url or None, android=android)
+            if account:
+                tokens = list(
+                    AppDevice.objects.filter(is_active=True, account=account).values_list("fcm_token", flat=True)
+                )
+                result = fcm.push(tokens, title, body, source="admin", account=account, data=data,
+                                  image=image_url or None, android=android)
+            else:
+                # v6+ installs get it through the topic; v5 installs (no topics) are sent to directly.
+                v5 = [d for d in AppDevice.objects.filter(is_active=True).exclude(fcm_token="")
+                      if d.app_version_code < 6]
+                if audience == "signed_in":
+                    v5 = [d for d in v5 if d.account_id]
+                elif audience == "signed_out":
+                    v5 = [d for d in v5 if not d.account_id]
+                result = fcm.push_audience(audience, title, body, source="admin", data=data,
+                                           image=image_url or None, android=android,
+                                           direct_tokens=[d.fcm_token for d in v5])
             if result.status == "not_configured":
                 messages.warning(request, "Saved, but NOT sent — FCM is not configured.")
             elif result.status == "no_devices":
                 messages.warning(request, "No active devices to send to.")
             elif result.status == "error":
                 messages.error(request, f"Push failed: {result.error}")
+            elif not account:
+                label = fcm.AUDIENCE_LABELS.get(audience, audience)
+                extra = f" + {result.delivered} older-app device(s) directly" if result.log.devices else ""
+                messages.success(request, f"Broadcast sent to {label} (topic){extra}.")
             else:
                 messages.success(request, f"Push sent: {result.delivered} ok, {result.failed} failed.")
             return redirect("mobile_push")
@@ -752,7 +840,7 @@ def reminder_receipts(request, reminder_id):
     for r in receipts:
         d = device_map.get((r.account_id, r.device_id))
         rows.append({
-            "account": r.account.email if r.account else "—",
+            "account": r.account.login_label if r.account else "—",
             "device_id": r.device_id,
             "platform": d.platform if d else "",
             "app_version": d.app_version if d else "",
@@ -839,7 +927,7 @@ def chat_list_json(request):
         data.append({
             "id": a.id,
             "name": a.name,
-            "email": a.email,
+            "email": a.login_label,
             "unread": a.unread,
             "last_body": (last.body[:90] if last else ""),
             "last_sender": (last.sender if last else ""),
@@ -870,7 +958,7 @@ def chat_thread_json(request, account_id):
     )
     return JsonResponse({
         "account": {
-            "id": account.id, "name": account.name, "email": account.email,
+            "id": account.id, "name": account.name, "email": account.login_label,
             "active": account.is_active,
             "online": account.is_active_on_chat(30),
             "last_seen_ms": int(account.chat_last_seen_at.timestamp() * 1000) if account.chat_last_seen_at else 0,

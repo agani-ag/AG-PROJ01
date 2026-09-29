@@ -2,7 +2,17 @@
 Partner provisioning API — mounted at /partner/v1/ (see partner_urls.py).
 
 A partner authenticates with its API key (`Authorization: Bearer <key>`) and manages ONLY its own
-users and their links, scoped through AppAccount.partner. Built for a growing user base:
+users and their links, scoped through PartnerConnection (the partner's access key on a SyncUp
+account). A SyncUp account belongs to the person; each partner that adds them gets a connection
+with its own partner password:
+
+  * a NEW email → we create the account; the partner password is also its sign-in, and the
+    connection is enabled straight away (exactly how partner users worked before);
+  * an email that ALREADY has a SyncUp account → a "not enabled" connection; the user enables it in
+    the app (Partners page) with the password the partner gave them. Until then the partner's links
+    are kept hidden and its notifications/prompts are refused with the reason.
+
+Built for a growing user base:
 
   * users can be addressed by our internal id OR the partner's own `external_id`,
   * `PUT /users/external/<id>` upserts (idempotent nightly sync, no 409 churn),
@@ -25,9 +35,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import fcm, telegram
+from .identity import normalize_email
 from .models import (
     AppAccount, AppActionRequest, AppDevice, AppLink, AppNotificationLog, AppPartner,
-    AppTelegramLog,
+    AppTelegramLog, PartnerConnection,
 )
 from .serializers import link_dict
 
@@ -53,13 +64,17 @@ def _https(url):
     return url if url.lower().startswith("https://") else None
 
 
-def _user_json(a):
+def _user_json(c):
+    """A partner's view of one user = its connection. `status`: enabled | not_enabled | disabled
+    (disabled = the user turned this partner off). `is_active` is the partner's own on/off."""
+    a = c.account
     return {
         "id": str(a.id),
-        "external_id": a.external_id or "",
+        "external_id": c.external_id or "",
         "name": a.name,
-        "email": a.email,
-        "is_active": a.is_active,
+        "email": a.email or "",
+        "is_active": c.partner_active and a.is_active,
+        "status": c.status,
     }
 
 
@@ -71,9 +86,21 @@ def _link_json(link):
     return data
 
 
-def _user_with_links(a):
-    """User + its links — returned from create/upsert so a login can be issued in one call."""
-    return {"user": _user_json(a), "links": [_link_json(link) for link in a.links.all()]}
+def _user_with_links(c):
+    """User + this partner's links for them — returned from create/upsert."""
+    links = c.account.links.filter(partner=c.partner)
+    return {"user": _user_json(c), "links": [_link_json(link) for link in links]}
+
+
+def _not_reachable(c):
+    """Why this partner can't reach the user right now (None = it can). Refusals say why."""
+    if not c.partner_active or not c.account.is_active:
+        return "User is deactivated"
+    if c.status == "not_enabled":
+        return f"User hasn't enabled {c.partner.name} yet"
+    if c.status == "disabled":
+        return f"User disabled {c.partner.name}"
+    return None
 
 
 def partner_api_required(view):
@@ -109,71 +136,138 @@ def partner_api_required(view):
 
 
 def _by_id(partner, user_id):
-    return AppAccount.objects.filter(id=user_id, partner=partner).first()
+    return (
+        PartnerConnection.objects.select_related("account", "partner")
+        .filter(partner=partner, account_id=user_id).first()
+    )
 
 
 def _by_external(partner, external_id):
-    return AppAccount.objects.filter(partner=partner, external_id=external_id).first()
+    return (
+        PartnerConnection.objects.select_related("account", "partner")
+        .filter(partner=partner, external_id=external_id).first()
+    )
 
 
-def _apply_user_fields(account, data):
-    """Set name/is_active/password/external_id from a payload. Returns an error string or None."""
-    if data.get("name"):
-        account.name = data["name"].strip()
+def _owns_signin(c):
+    """True when this partner created the account and it still signs in with the partner password —
+    then the partner's password resets and on/off also apply to the SyncUp sign-in (as before)."""
+    a = c.account
+    return a.partner_id == c.partner_id and a.partner_signin
+
+
+def _apply_user_fields(c, data):
+    """Apply name / is_active / password / external_id from a payload to a connection (and, for a
+    partner-first account the partner still controls, to the account). Returns an error or None."""
+    a = c.account
+    owns = _owns_signin(c)
+    if data.get("name") and owns:
+        a.name = data["name"].strip()
     if "is_active" in data:
-        account.is_active = bool(data.get("is_active"))
+        c.partner_active = bool(data.get("is_active"))
+        if owns and not a.partner_connections.exclude(id=c.id).exists():
+            a.is_active = c.partner_active  # the only partner of an account it still controls
+        if not c.partner_active:
+            _cancel_pending(c)
     if "external_id" in data:
-        account.external_id = (data.get("external_id") or "").strip() or None
+        c.external_id = (data.get("external_id") or "").strip() or None
     if data.get("password"):
         if len(data["password"]) < 6:
             return "password must be at least 6 characters"
-        account.set_password(data["password"])
+        c.set_password(data["password"])
+        if owns:
+            a.set_password(data["password"])  # partner-first: reset also resets the sign-in
     return None
 
 
-def _create_user(partner, data, existing_emails=None, existing_keys=None):
-    """Create a new account for the partner. Returns (JsonResponse, account | None).
+def _save(c):
+    c.account.save()
+    c.save()
 
-    For bulk, pass pre-fetched `existing_emails` / `existing_keys` sets so uniqueness is checked
-    in memory (no per-user query); successful creates are added back so intra-batch dups are caught."""
+
+def _cancel_pending(c):
+    """The partner stepped away from this user: anything it had waiting is cancelled."""
+    AppActionRequest.objects.filter(partner=c.partner, account=c.account, status="pending").update(status="expired")
+
+
+def _new_connection_push(c):
+    """Tell an existing SyncUp user (on v6+) that a partner added them."""
+    tokens = [
+        d.fcm_token for d in AppDevice.objects.filter(account=c.account, is_active=True).exclude(fcm_token="")
+        if d.app_version_code >= 6
+    ]
+    if tokens:
+        fcm.push(
+            tokens, f"{c.partner.name} added you",
+            f"Open SyncUp → Partners and enter the password {c.partner.name} gave you to turn it on.",
+            source="partner_api", account=c.account, partner=c.partner, data={"type": "partners"},
+        )
+
+
+def _create_user(partner, data, existing_keys=None):
+    """Add a user for the partner. Returns (JsonResponse, connection | None).
+
+    A new email creates the SyncUp account (partner password = sign-in, enabled at once). An email
+    that already has an account gets a "not enabled" connection the user turns on in the app. A user
+    this partner already has → 409. `existing_keys` (bulk) is the partner's external_ids, kept
+    current so an in-batch duplicate is caught."""
     name = (data.get("name") or "").strip()
-    email = (data.get("email") or "").strip().lower()
+    email, email_err = normalize_email(data.get("email"))
     password = data.get("password") or ""
     external_id = (data.get("external_id") or "").strip() or None
-    if not name or not email:
+    if not name or not data.get("email"):
         return _err("name and email are required"), None
+    if email_err:
+        return _err(email_err), None
     if len(password) < 6:
         return _err("password must be at least 6 characters"), None
-    email_taken = email in existing_emails if existing_emails is not None \
-        else AppAccount.objects.filter(email=email).exists()
-    if email_taken:
-        return _err("A user with this email already exists", 409), None
     if external_id:
         key_taken = external_id in existing_keys if existing_keys is not None \
-            else bool(_by_external(partner, external_id))
+            else PartnerConnection.objects.filter(partner=partner, external_id=external_id).exists()
         if key_taken:
             return _err("A user with this external_id already exists", 409), None
-    # Partner users are single-purpose (their partner's link[s] only), so the shared "general links"
-    # are OFF by default — the SyncUp admin can turn them on per user from the Edit Account page.
-    account = AppAccount(
-        name=name, email=email, partner=partner, external_id=external_id,
-        show_general_links=False,
-    )
-    account.set_password(password)
+
+    account = AppAccount.objects.filter(email=email).first()
+    if account and PartnerConnection.objects.filter(partner=partner, account=account).exists():
+        return _err("A user with this email already exists", 409), None
+
     try:
-        account.save()
+        if account is None:
+            # Partner users are single-purpose (their partner's links only), so the shared "general
+            # links" are OFF by default — the SyncUp admin can turn them on per user.
+            account = AppAccount(
+                name=name, email=email, partner=partner, source="partner", partner_signin=True,
+                show_general_links=False,
+            )
+            account.set_password(password)
+            account.save()
+            c = PartnerConnection(partner=partner, account=account, external_id=external_id,
+                                  password=account.password, status="enabled", enabled_at=timezone.now())
+            c.save()
+        else:
+            c = PartnerConnection(partner=partner, account=account, external_id=external_id)
+            c.set_password(password)
+            c.save()
+            _new_connection_push(c)
     except IntegrityError:
         return _err("A user with this email or external_id already exists", 409), None
-    # Keep the in-memory sets current so a later duplicate in the same batch is caught.
-    if existing_emails is not None:
-        existing_emails.add(email)
     if existing_keys is not None and external_id:
         existing_keys.add(external_id)
-    _apply_links(account, data.get("links"))
-    return None, account
+    _apply_links(account, partner, data.get("links"))
+    return None, c
 
 
-def _apply_links(account, links):
+def _created_response(c):
+    body = {"success": True, "created": True, **_user_with_links(c)}
+    if c.status == "not_enabled":
+        body["message"] = (
+            f"This person already has a SyncUp account. They need to open SyncUp → Partners and enter "
+            f"the password you set to turn {c.partner.name} on."
+        )
+    return JsonResponse(body, status=201)
+
+
+def _apply_links(account, partner, links):
     """Replace-by-key upsert of a user's links, so provisioning a login (user + link) is one call.
     Each item: {external_id (key), title, url [https], description?, icon?}. A matching key updates
     the existing link; no key creates a new one. Invalid entries are skipped."""
@@ -192,10 +286,15 @@ def _apply_links(account, links):
             "icon": (item.get("icon") or "").strip() or None,
         }
         key = (item.get("external_id") or "").strip() or None
-        if key:
-            AppLink.objects.update_or_create(account=account, external_id=key, defaults=fields)
-        else:
-            AppLink.objects.create(account=account, **fields)
+        try:
+            if key:
+                AppLink.objects.update_or_create(
+                    account=account, external_id=key, defaults={**fields, "partner": partner},
+                )
+            else:
+                AppLink.objects.create(account=account, partner=partner, **fields)
+        except IntegrityError:
+            continue  # the key is already used by another partner's link on this account
 
 
 # --------------------------------------------------------------------------- users: collection
@@ -206,17 +305,17 @@ def users(request):
         data = _json(request)
         if data is None:
             return _err("Invalid JSON")
-        err, account = _create_user(request.partner, data)
+        err, c = _create_user(request.partner, data)
         if err:
             return err
-        return JsonResponse({"success": True, **_user_with_links(account)}, status=201)
+        return _created_response(c)
 
     # GET — cursor-paginated, optionally filtered by email or external_id.
-    qs = AppAccount.objects.filter(partner=request.partner)
+    qs = PartnerConnection.objects.filter(partner=request.partner).select_related("account", "partner")
     email = (request.GET.get("email") or "").strip().lower()
     ext = (request.GET.get("external_id") or "").strip()
     if email:
-        qs = qs.filter(email=email)
+        qs = qs.filter(account__email=email)
     if ext:
         qs = qs.filter(external_id=ext)
     try:
@@ -226,16 +325,16 @@ def users(request):
     cursor = request.GET.get("cursor")
     if cursor:
         try:
-            qs = qs.filter(id__gt=int(cursor))
+            qs = qs.filter(account_id__gt=int(cursor))
         except (TypeError, ValueError):
             return _err("Invalid cursor")
-    rows = list(qs.order_by("id")[: limit + 1])
+    rows = list(qs.order_by("account_id")[: limit + 1])
     has_more = len(rows) > limit
     rows = rows[:limit]
     return JsonResponse({
         "success": True,
-        "users": [_user_json(a) for a in rows],
-        "next_cursor": str(rows[-1].id) if has_more else None,
+        "users": [_user_json(c) for c in rows],
+        "next_cursor": str(rows[-1].account_id) if has_more else None,
     })
 
 
@@ -253,15 +352,10 @@ def users_bulk(request):
     if len(items) > MAX_BULK:
         return _err(f"Too many users in one call (max {MAX_BULK})")
 
-    # Pre-fetch which emails / external_ids in this batch already exist — two queries total instead
-    # of two per user. _create_user then checks in memory and keeps the sets current.
-    emails = [(it.get("email") or "").strip().lower() for it in items if isinstance(it, dict)]
+    # Pre-fetch this batch's external_ids in one query; _create_user keeps the set current.
     keys = [(it.get("external_id") or "").strip() for it in items if isinstance(it, dict)]
-    existing_emails = set(
-        AppAccount.objects.filter(email__in=[e for e in emails if e]).values_list("email", flat=True)
-    )
     existing_keys = set(
-        AppAccount.objects.filter(
+        PartnerConnection.objects.filter(
             partner=request.partner, external_id__in=[k for k in keys if k],
         ).values_list("external_id", flat=True)
     )
@@ -271,83 +365,90 @@ def users_bulk(request):
         if not isinstance(item, dict):
             results.append({"index": i, "status": "error", "message": "not an object"})
             continue
-        err, account = _create_user(request.partner, item, existing_emails, existing_keys)
+        err, c = _create_user(request.partner, item, existing_keys)
         if err:
             body = json.loads(err.content)
             results.append({"index": i, "status": "error", "message": body.get("message")})
         else:
-            results.append({"index": i, "status": "created", "user": _user_json(account)})
+            results.append({"index": i, "status": "created", "user": _user_json(c)})
     created = sum(1 for r in results if r["status"] == "created")
     return JsonResponse({"success": True, "created": created, "results": results})
 
 
 # --------------------------------------------------------------------------- users: single
-def _user_detail(request, account):
-    """Shared GET/PATCH/DELETE handler once the account is resolved (id or external_id)."""
+def _user_detail(request, c):
+    """Shared GET/PATCH/DELETE handler once the connection is resolved (id or external_id).
+    DELETE switches this partner off for the user (reversible with PATCH is_active=true); the
+    SyncUp account itself stays — except an account this partner still fully controls, which is
+    deactivated as before."""
     if request.method == "GET":
-        return JsonResponse({"success": True, "user": _user_json(account)})
+        return JsonResponse({"success": True, "user": _user_json(c)})
     if request.method == "DELETE":
-        account.is_active = False
-        account.save(update_fields=["is_active"])
+        _apply_user_fields(c, {"is_active": False})
+        _save(c)
         return JsonResponse({"success": True, "message": "User deactivated"})
     data = _json(request)  # PATCH
     if data is None:
         return _err("Invalid JSON")
-    err = _apply_user_fields(account, data)
+    err = _apply_user_fields(c, data)
     if err:
         return _err(err)
     try:
-        account.save()
+        _save(c)
     except IntegrityError:
         return _err("external_id already in use", 409)
-    return JsonResponse({"success": True, "user": _user_json(account)})
+    return JsonResponse({"success": True, "user": _user_json(c)})
 
 
 @partner_api_required
 @require_http_methods(["GET", "PATCH", "DELETE"])
 def user_by_id(request, user_id):
-    account = _by_id(request.partner, user_id)
-    if not account:
+    c = _by_id(request.partner, user_id)
+    if not c:
         return _err("User not found", 404)
-    return _user_detail(request, account)
+    return _user_detail(request, c)
 
 
 @partner_api_required
 @require_http_methods(["GET", "PATCH", "DELETE", "PUT"])
 def user_by_external(request, external_id):
-    account = _by_external(request.partner, external_id)
+    c = _by_external(request.partner, external_id)
     if request.method == "PUT":
         # Upsert: create if missing, else update — idempotent for nightly sync.
         data = _json(request)
         if data is None:
             return _err("Invalid JSON")
-        if account:
-            err = _apply_user_fields(account, {**data, "external_id": external_id})
+        if c:
+            err = _apply_user_fields(c, {**data, "external_id": external_id})
             if err:
                 return _err(err)
             new_email = (data.get("email") or "").strip().lower()
-            if new_email and new_email != account.email:
-                if AppAccount.objects.filter(email=new_email).exclude(id=account.id).exists():
+            if new_email and new_email != c.account.email:
+                # Only an account this partner still fully controls can have its email changed.
+                if not _owns_signin(c):
+                    return _err("This user's email is managed by the user, not the partner", 409)
+                if AppAccount.objects.filter(email=new_email).exclude(id=c.account_id).exists():
                     return _err("A user with this email already exists", 409)
-                account.email = new_email
+                c.account.email = new_email
             try:
-                account.save()
+                _save(c)
             except IntegrityError:
                 return _err("Conflict saving user", 409)
-            _apply_links(account, data.get("links"))  # replace-by-key link upsert
-            return JsonResponse({"success": True, "created": False, **_user_with_links(account)})
-        err, account = _create_user(request.partner, {**data, "external_id": external_id})
+            _apply_links(c.account, request.partner, data.get("links"))  # replace-by-key link upsert
+            return JsonResponse({"success": True, "created": False, **_user_with_links(c)})
+        err, c = _create_user(request.partner, {**data, "external_id": external_id})
         if err:
             return err
-        return JsonResponse({"success": True, "created": True, **_user_with_links(account)}, status=201)
+        return _created_response(c)
 
-    if not account:
+    if not c:
         return _err("User not found", 404)
-    return _user_detail(request, account)
+    return _user_detail(request, c)
 
 
 # --------------------------------------------------------------------------- links
-def _links_collection(request, account):
+def _links_collection(request, c):
+    account = c.account
     if request.method == "POST":
         data = _json(request)
         if data is None:
@@ -363,41 +464,45 @@ def _links_collection(request, account):
             "icon": (data.get("icon") or "").strip() or None,
         }
         # If a key is given, upsert by it (replace-by-key) so a repeat add doesn't duplicate.
-        if key:
-            link, _ = AppLink.objects.update_or_create(
-                account=account, external_id=key, defaults=fields,
-            )
-        else:
-            link = AppLink.objects.create(account=account, **fields)
+        # Links for a user who hasn't enabled this partner yet are kept, hidden until they do.
+        try:
+            if key:
+                link, _ = AppLink.objects.update_or_create(
+                    account=account, external_id=key, defaults={**fields, "partner": c.partner},
+                )
+            else:
+                link = AppLink.objects.create(account=account, partner=c.partner, **fields)
+        except IntegrityError:
+            return _err("external_id already used by another link for this user", 409)
         return JsonResponse({"success": True, "link": _link_json(link)}, status=201)
     return JsonResponse(
-        {"success": True, "links": [_link_json(link) for link in account.links.all()]}
+        {"success": True, "links": [_link_json(link) for link in account.links.filter(partner=c.partner)]}
     )
 
 
 @partner_api_required
 @require_http_methods(["GET", "POST"])
 def links_by_user_id(request, user_id):
-    account = _by_id(request.partner, user_id)
-    if not account:
+    c = _by_id(request.partner, user_id)
+    if not c:
         return _err("User not found", 404)
-    return _links_collection(request, account)
+    return _links_collection(request, c)
 
 
 @partner_api_required
 @require_http_methods(["GET", "POST"])
 def links_by_user_external(request, external_id):
-    account = _by_external(request.partner, external_id)
-    if not account:
+    c = _by_external(request.partner, external_id)
+    if not c:
         return _err("User not found", 404)
-    return _links_collection(request, account)
+    return _links_collection(request, c)
 
 
 @partner_api_required
 @require_http_methods(["PATCH", "DELETE"])
 def link_detail(request, link_id):
     link = (
-        AppLink.objects.filter(id=link_id, account__partner=request.partner)
+        AppLink.objects.filter(id=link_id, partner=request.partner)
         .select_related("account").first()
     )
     if not link:
@@ -464,9 +569,12 @@ def _push(tokens, title, body, url, *, account=None, partner=None, save_log=True
 @partner_api_required
 @require_http_methods(["POST"])
 def notify_user_by_id(request, user_id):
-    account = _by_id(request.partner, user_id)
-    if not account or not account.is_active:
+    c = _by_id(request.partner, user_id)
+    if not c:
         return _err("User not found", 404)
+    if _not_reachable(c):
+        return _err(_not_reachable(c), 409)
+    account = c.account
     parsed, err = _notify_payload(request)
     if err:
         return err
@@ -479,9 +587,12 @@ def notify_user_by_id(request, user_id):
 @partner_api_required
 @require_http_methods(["POST"])
 def notify_user_by_external(request, external_id):
-    account = _by_external(request.partner, external_id)
-    if not account or not account.is_active:
+    c = _by_external(request.partner, external_id)
+    if not c:
         return _err("User not found", 404)
+    if _not_reachable(c):
+        return _err(_not_reachable(c), 409)
+    account = c.account
     parsed, err = _notify_payload(request)
     if err:
         return err
@@ -499,9 +610,12 @@ def notify_all(request):
     if err:
         return err
     title, body, url = parsed
-    tokens = _tokens_for_accounts(
-        {"account__partner": request.partner, "account__is_active": True}
-    )
+    tokens = _tokens_for_accounts({
+        "account__is_active": True,
+        "account__partner_connections__partner": request.partner,
+        "account__partner_connections__status": "enabled",
+        "account__partner_connections__partner_active": True,
+    })
     delivered = _push(tokens, title, body, url, partner=request.partner).delivered
     return JsonResponse({"success": True, "delivered": delivered})
 
@@ -528,15 +642,15 @@ def notify_bulk(request):
     int_ids = {int(it["user_id"]) for it in items
                if isinstance(it, dict) and str(it.get("user_id") or "").isdigit()}
     by_ext, by_id = {}, {}
-    for a in AppAccount.objects.filter(partner=request.partner).filter(
-        Q(external_id__in=ext_ids) | Q(id__in=int_ids)
+    for c in PartnerConnection.objects.select_related("account", "partner").filter(partner=request.partner).filter(
+        Q(external_id__in=ext_ids) | Q(account_id__in=int_ids)
     ):
-        by_id[a.id] = a
-        if a.external_id:
-            by_ext[a.external_id] = a
+        by_id[c.account_id] = c
+        if c.external_id:
+            by_ext[c.external_id] = c
     tokens_by_acc = {}
     for acc_id, tok in (
-        AppDevice.objects.filter(is_active=True, account__partner=request.partner)
+        AppDevice.objects.filter(is_active=True, account_id__in=list(by_id))
         .exclude(fcm_token="").exclude(fcm_token__isnull=True)
         .values_list("account_id", "fcm_token")
     ):
@@ -549,18 +663,21 @@ def notify_bulk(request):
         if not isinstance(it, dict):
             results[i] = {"error": "each message must be an object"}
             continue
-        ref, acc = {}, None
+        ref, conn = {}, None
         if it.get("external_id"):
             ref["external_id"] = str(it["external_id"]).strip()
-            acc = by_ext.get(ref["external_id"])
+            conn = by_ext.get(ref["external_id"])
         elif str(it.get("user_id") or "").isdigit():
             ref["user_id"] = int(it["user_id"])
-            acc = by_id.get(ref["user_id"])
+            conn = by_id.get(ref["user_id"])
+        acc = conn.account if conn else None
         title = (it.get("title") or "").strip()
         body = (it.get("body") or "").strip()
         url = (it.get("url") or "").strip()
-        if not acc or not acc.is_active:
+        if not conn:
             results[i] = {**ref, "error": "User not found"}
+        elif _not_reachable(conn):
+            results[i] = {**ref, "error": _not_reachable(conn)}
         elif not title:
             results[i] = {**ref, "error": "title is required"}
         elif url and not url.lower().startswith("https://"):
@@ -785,27 +902,36 @@ def _action_response(action):
 @partner_api_required
 @require_http_methods(["POST"])
 def action_by_id(request, user_id):
-    account = _by_id(request.partner, user_id)
-    if not account or not account.is_active:
+    c = _by_id(request.partner, user_id)
+    if not c:
         return _err("User not found", 404)
+    if _not_reachable(c):
+        return _err(_not_reachable(c), 409)
     data = _json(request)
     if data is None:
         return _err("Invalid JSON")
-    err, action = _create_action(request.partner, account, data)
+    err, action = _create_action(request.partner, c.account, data)
     return err or _action_response(action)
 
 
 @partner_api_required
 @require_http_methods(["POST"])
 def action_by_external(request, external_id):
-    account = _by_external(request.partner, external_id)
-    if not account or not account.is_active:
+    c = _by_external(request.partner, external_id)
+    if not c:
         return _err("User not found", 404)
+    if _not_reachable(c):
+        return _err(_not_reachable(c), 409)
     data = _json(request)
     if data is None:
         return _err("Invalid JSON")
-    err, action = _create_action(request.partner, account, data)
+    err, action = _create_action(request.partner, c.account, data)
     return err or _action_response(action)
+
+
+def _external_id_for(a):
+    c = PartnerConnection.objects.filter(partner_id=a.partner_id, account_id=a.account_id).first()
+    return (c.external_id or "") if c else ""
 
 
 def _action_status_dict(a):
@@ -817,7 +943,7 @@ def _action_status_dict(a):
         "type": a.action_type,
         "status": a.status,  # pending | completed | expired
         "value": resp.get("value"),
-        "user": {"id": str(a.account_id), "external_id": a.account.external_id or ""},
+        "user": {"id": str(a.account_id), "external_id": _external_id_for(a)},
         "delivered": a.delivered,
         "created_at": a.created_at.isoformat(),
         "expires_at": a.expires_at.isoformat(),

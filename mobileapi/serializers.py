@@ -2,7 +2,7 @@
 from django.core import signing
 from django.db.models import Q
 
-from .models import AppLink, AppReminder
+from .models import AppLink, AppReminder, PartnerConnection
 
 # Salt for the per-link "partner notify" token injected as window.SyncUp.token.
 PARTNER_NOTIFY_SALT = "syncup-partner-notify"
@@ -13,11 +13,14 @@ def make_notify_token(link):
 
 
 def account_dict(account):
+    # `email` is always a string: v5 builds read it as non-null, so a phone-only account sends "".
     return {
         "id": str(account.id),
         "name": account.name,
-        "email": account.email,
-        "can_manage_links": account.can_manage_links,
+        "email": account.email or "",
+        "phone": account.phone or "",
+        "username": account.username or "",
+        "source": account.source,
     }
 
 
@@ -28,24 +31,40 @@ def link_dict(link):
         "url": link.url,
         "description": link.description or "",
         "icon": link.icon or "",
-        # The app shows a remove (✕) only on links the user added themselves.
-        "can_remove": link.created_by_user,
+        # Where the link comes from, for grouping on the app's Work home: a partner (by name) or
+        # SyncUp (the admin). Older app versions ignore these.
+        "source": "partner" if link.partner_id else "admin",
+        "source_name": link.partner.name if link.partner_id else "",
         # Non-empty only when the link opts in AND belongs to a user — the partner token is
         # per-user, so general (account-less) links never carry one.
         "notify_token": make_notify_token(link) if (link.notify_token_enabled and link.account_id) else "",
     }
 
 
+def live_partner_ids(account):
+    """Partners that can currently reach this user: enabled by the user and not suspended."""
+    return list(
+        PartnerConnection.objects.filter(
+            account=account, status="enabled", partner_active=True, partner__is_active=True,
+        ).values_list("partner_id", flat=True)
+    )
+
+
 def links_for(account):
     """The app's URL list: this user's own active links, then the shared general links.
 
-    General links (account is null) are appended only when the account opts in
-    (show_general_links) — off for single-link kiosk users so their one link still auto-opens.
+    A partner's links appear only while that partner's connection is enabled (and not suspended);
+    admin links (no partner) always appear. General links (account is null) are appended only when
+    the account opts in (show_general_links).
     """
-    own = AppLink.objects.filter(is_active=True, account=account).order_by("title")
+    own = (
+        AppLink.objects.filter(is_active=True, account=account)
+        .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))
+        .select_related("partner").order_by("title")
+    )
     result = [link_dict(link) for link in own]
     if account.show_general_links:
-        general = AppLink.objects.filter(is_active=True, account__isnull=True).order_by("title")
+        general = AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title")
         result += [link_dict(link) for link in general]
     return result
 

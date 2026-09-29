@@ -62,6 +62,10 @@
                 <div class="text"><b>Enable in-app chat</b><span class="help">When on, users (and support agents) see the chat button in the app. Turn off to hide chat everywhere.</span></div>
                 <label class="switch">{{ form.chat_enabled }}<span class="track"></span><span class="sr-only">Enable in-app chat</span></label>
             </div>
+            <div class="switch-row" style="padding-block:4px">
+                <div class="text"><b>Allow sign-up</b><span class="help">When on, the app shows "Create account" (email or phone, no verification). New accounts only get browser sync until you enable Work links, Chat or Radio for them.</span></div>
+                <label class="switch">{{ form.signup_enabled }}<span class="track"></span><span class="sr-only">Allow sign-up</span></label>
+            </div>
             <div class="field{% if form.feature_flags.errors %} invalid{% endif %}">
                 <label class="label" for="{{ form.feature_flags.id_for_label }}">Feature flags (JSON)</label>
                 {{ form.feature_flags }}
