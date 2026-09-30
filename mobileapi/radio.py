@@ -117,9 +117,9 @@ def ingest(request):
 @require_http_methods(["GET"])
 @app_token_required
 def channels(request):
-    """The app's live channel list. `enabled` = master switch AND this user's per-user switch."""
+    """The app's live channel list. `enabled` = the Radio page's switch (one place, for everyone)."""
     cfg = AppConfig.load()
-    enabled = bool(cfg.radio_enabled and request.account.radio_enabled)
+    enabled = bool(cfg.radio_enabled)
     if not enabled:
         return JsonResponse({"enabled": False, "channels": []})
 

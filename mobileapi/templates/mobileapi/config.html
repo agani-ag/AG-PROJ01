@@ -63,7 +63,7 @@
                 <label class="switch">{{ form.chat_enabled }}<span class="track"></span><span class="sr-only">Enable in-app chat</span></label>
             </div>
             <div class="switch-row" style="padding-block:4px">
-                <div class="text"><b>Allow sign-up</b><span class="help">When on, the app shows "Create account" (email or phone, no verification). New accounts only get browser sync until you enable Work links, Chat or Radio for them.</span></div>
+                <div class="text"><b>Allow sign-up</b><span class="help">When on, the app shows "Create account" (email or phone, no verification). New accounts only get browser sync until you enable SyncUp links or Chat for them. Radio follows the switch on the Radio page, for everyone.</span></div>
                 <label class="switch">{{ form.signup_enabled }}<span class="track"></span><span class="sr-only">Allow sign-up</span></label>
             </div>
             <div class="field{% if form.feature_flags.errors %} invalid{% endif %}">

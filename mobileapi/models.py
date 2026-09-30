@@ -55,6 +55,8 @@ class AppAccount(models.Model):
         help_text="Include the shared 'general' links in this user's list. Turn off for single-link "
                   "(kiosk) users so their one link still auto-opens.",
     )
+    # No longer used: Radio is on/off for everyone from the Radio page (AppConfig.radio_enabled).
+    # Kept unchanged so no migration is needed; safe to drop later.
     radio_enabled = models.BooleanField(
         default=True,
         help_text="Show the in-app Radio feature for this user (only when the master radio switch is on too).",

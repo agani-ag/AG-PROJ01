@@ -25,7 +25,7 @@
     <form method="POST" action="{% url 'mobile_radio_save' %}" class="card-body stack">
         {% csrf_token %}
         <div class="switch-row">
-            <div class="text"><b>Master switch</b><span class="help">Turn the in-app Radio feature on/off for everyone. (Each user also has a per-user toggle on their account.)</span></div>
+            <div class="text"><b>Master switch</b><span class="help">Turns the in-app Radio on or off for every user at once. There is no per-user setting.</span></div>
             <label class="switch"><input type="checkbox" name="radio_enabled" {% if cfg.radio_enabled %}checked{% endif %}><span class="track"></span><span class="sr-only">Radio enabled</span></label>
         </div>
         <div class="form-grid">

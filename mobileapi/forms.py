@@ -31,7 +31,7 @@ class AppAccountForm(forms.ModelForm):
     class Meta:
         model = AppAccount
         fields = ["name", "email", "phone", "username", "is_active", "admin_chat_mode",
-                  "show_general_links", "chat_enabled", "radio_enabled"]
+                  "show_general_links", "chat_enabled"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

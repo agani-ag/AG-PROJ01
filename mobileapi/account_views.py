@@ -79,7 +79,7 @@ def signup(request):
 
     account = AppAccount(
         name=name[:100], email=email, phone=phone, source="self",
-        show_general_links=False, chat_enabled=False, radio_enabled=False,
+        show_general_links=False, chat_enabled=False,
     )
     account.set_password(password)
     try:

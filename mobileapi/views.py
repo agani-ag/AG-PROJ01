@@ -578,10 +578,8 @@ def _config_dict(request):
             and getattr(getattr(request, "account", None), "chat_enabled", True)
         ),
         "signup_enabled": cfg.signup_enabled,
-        "radio_enabled": bool(
-            cfg.radio_enabled
-            and getattr(getattr(request, "account", None), "radio_enabled", True)
-        ),
+        # One switch for everyone (the admin Radio page).
+        "radio_enabled": bool(cfg.radio_enabled),
         "announcement": {
             "active": cfg.announcement_active,
             "title": cfg.announcement_title or "",
@@ -727,5 +725,9 @@ def sync(request):
         # Partners that added this user and are waiting to be enabled (Partners page badge).
         "partners_waiting": PartnerConnection.objects.filter(
             account=request.account, status="not_enabled", partner_active=True, partner__is_active=True,
+        ).count(),
+        # Any partner connection at all — the app shows its Partners page only to these users.
+        "partner_count": PartnerConnection.objects.filter(
+            account=request.account, partner__is_active=True,
         ).count(),
     })
