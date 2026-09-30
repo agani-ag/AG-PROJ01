@@ -135,11 +135,11 @@ def profile_update(request):
         else:
             changes["username"] = None
 
-    # Keep at least one way to sign in: admin/partner accounts keep their email; any account keeps
-    # an email or a phone.
+    # Keep at least one way to sign in: an admin/partner account that HAS an email keeps it (the
+    # admin or partner manages it); any account keeps an email or a phone.
     new_email = changes.get("email", account.email)
     new_phone = changes.get("phone", account.phone)
-    if account.source != "self" and not new_email:
+    if account.source != "self" and account.email and not new_email:
         return _bad("This account's email can't be removed")
     if not new_email and not new_phone:
         return _bad("Keep an email or a phone number to sign in with")

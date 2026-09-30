@@ -36,9 +36,9 @@ class AppAccountForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _style(self.fields)
-        # Admin/partner accounts always have an email; only a self-signed-up account may have a
-        # phone instead.
-        self.fields["email"].required = self.instance.source != "self"
+        # A new account made here is given an email; an existing one only has to keep ONE sign-in
+        # identifier, since a self sign-up or a partner-added user may have just a phone.
+        self.fields["email"].required = not self.instance.pk
         self.fields["phone"].help_text = "Indian mobile number, e.g. 98765 43210 (optional)."
         self.fields["username"].help_text = "Optional. 3–30 letters, numbers, dots or underscores."
 
@@ -62,8 +62,8 @@ class AppAccountForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        if self.instance.source == "self" and not (data.get("email") or data.get("phone")):
-            raise forms.ValidationError("A self sign-up account needs an email or a phone number.")
+        if not (data.get("email") or data.get("phone")):
+            raise forms.ValidationError("An account needs an email or a phone number.")
         return data
 
     def clean_new_password(self):

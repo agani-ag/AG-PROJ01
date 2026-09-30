@@ -6,15 +6,18 @@ users and their links, scoped through PartnerConnection (the partner's access ke
 account). A SyncUp account belongs to the person; each partner that adds them gets a connection
 with its own partner password:
 
-  * a NEW email → we create the account; the partner password is also its sign-in, and the
-    connection is enabled straight away (exactly how partner users worked before);
-  * an email that ALREADY has a SyncUp account → a "not enabled" connection; the user enables it in
-    the app (Partners page) with the password the partner gave them. Until then the partner's links
-    are kept hidden and its notifications/prompts are refused with the reason.
+  * a NEW email or phone → we create the account; the partner password is also its sign-in, and
+    the connection is enabled straight away (exactly how partner users worked before);
+  * an email or phone that ALREADY has a SyncUp account → a "not enabled" connection; the user
+    enables it in the app (Partners page) with the password the partner gave them. Until then the
+    partner's links are kept hidden and its notifications/prompts are refused with the reason.
 
 Built for a growing user base:
 
   * users can be addressed by our internal id OR the partner's own `external_id`,
+  * a user is created or matched by `email` and/or `phone` (India, stored +91XXXXXXXXXX); the
+    `username` is the person's own handle, set in the app — partners can read and search it, never
+    write it,
   * `PUT /users/external/<id>` upserts (idempotent nightly sync, no 409 churn),
   * list endpoints are cursor-paginated and filterable,
   * a bulk-create endpoint provisions many users in one call.
@@ -35,7 +38,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import fcm, telegram
-from .identity import normalize_email
+from .identity import normalize_email, normalize_phone
 from .models import (
     AppAccount, AppActionRequest, AppDevice, AppLink, AppNotificationLog, AppPartner,
     AppTelegramLog, PartnerConnection,
@@ -66,13 +69,17 @@ def _https(url):
 
 def _user_json(c):
     """A partner's view of one user = its connection. `status`: enabled | not_enabled | disabled
-    (disabled = the user turned this partner off). `is_active` is the partner's own on/off."""
+    (disabled = the user turned this partner off). `is_active` is the partner's own on/off.
+    `email` / `phone` are the sign-in identifiers (either can be empty, never both); `username` is
+    the person's own handle — read-only for partners."""
     a = c.account
     return {
         "id": str(a.id),
         "external_id": c.external_id or "",
         "name": a.name,
         "email": a.email or "",
+        "phone": a.phone or "",
+        "username": a.username or "",
         "is_active": c.partner_active and a.is_active,
         "status": c.status,
     }
@@ -156,9 +163,68 @@ def _owns_signin(c):
     return a.partner_id == c.partner_id and a.partner_signin
 
 
+def _identity_fields(data):
+    """Normalise the `email` / `phone` a partner sent. Returns (email, phone, error); a value is
+    None when the key was absent or empty. The username is never taken from a partner payload."""
+    email = phone = None
+    if (data.get("email") or "").strip():
+        email, err = normalize_email(data.get("email"))
+        if err:
+            return None, None, err
+    if (data.get("phone") or "").strip():
+        phone, err = normalize_phone(data.get("phone"))
+        if err:
+            return None, None, err
+    return email, phone, None
+
+
+def _identity_q(email, phone):
+    """Match an account by either identifier the partner gave — never by an empty one."""
+    q = Q()
+    if email:
+        q |= Q(email=email)
+    if phone:
+        q |= Q(phone=phone)
+    return q
+
+
+def _apply_identity(c, data):
+    """Change the user's email / phone — only for an account this partner still fully controls.
+    Either can be cleared with "" as long as the other is kept, so a partner can move a user from
+    email to phone. An absent key or an unchanged value is a no-op, so a nightly sync that resends
+    the same email never conflicts. Returns None or (message, status)."""
+    a = c.account
+    changes = {}
+    for field, normalizer in (("email", normalize_email), ("phone", normalize_phone)):
+        if field not in data:
+            continue
+        raw = (data.get(field) or "").strip()
+        if not raw:
+            if getattr(a, field):
+                changes[field] = None
+            continue
+        value, err = normalizer(raw)
+        if err:
+            return err, 400
+        if value != getattr(a, field):
+            if AppAccount.objects.filter(**{field: value}).exclude(id=a.id).exists():
+                return f"A user with this {field} already exists", 409
+            changes[field] = value
+    if not changes:
+        return None
+    if not _owns_signin(c):
+        return "This user's email and phone are managed by the user, not the partner", 409
+    if not changes.get("email", a.email) and not changes.get("phone", a.phone):
+        return "Keep an email or a phone number for the user to sign in with", 400
+    for field, value in changes.items():
+        setattr(a, field, value)
+    return None
+
+
 def _apply_user_fields(c, data):
-    """Apply name / is_active / password / external_id from a payload to a connection (and, for a
-    partner-first account the partner still controls, to the account). Returns an error or None."""
+    """Apply name / is_active / password / external_id / email / phone from a payload to a connection
+    (and, for a partner-first account the partner still controls, to the account). Returns None or
+    (message, status)."""
     a = c.account
     owns = _owns_signin(c)
     if data.get("name") and owns:
@@ -173,11 +239,11 @@ def _apply_user_fields(c, data):
         c.external_id = (data.get("external_id") or "").strip() or None
     if data.get("password"):
         if len(data["password"]) < 6:
-            return "password must be at least 6 characters"
+            return "password must be at least 6 characters", 400
         c.set_password(data["password"])
         if owns:
             a.set_password(data["password"])  # partner-first: reset also resets the sign-in
-    return None
+    return _apply_identity(c, data)
 
 
 def _save(c):
@@ -207,18 +273,22 @@ def _new_connection_push(c):
 def _create_user(partner, data, existing_keys=None):
     """Add a user for the partner. Returns (JsonResponse, connection | None).
 
-    A new email creates the SyncUp account (partner password = sign-in, enabled at once). An email
-    that already has an account gets a "not enabled" connection the user turns on in the app. A user
-    this partner already has → 409. `existing_keys` (bulk) is the partner's external_ids, kept
-    current so an in-batch duplicate is caught."""
+    The person is identified by `email` and/or `phone` (at least one). An identifier we don't know
+    creates the SyncUp account (partner password = sign-in, enabled at once). One that already has
+    an account gets a "not enabled" connection the user turns on in the app — that account's own
+    email/phone are left as they are, because they belong to the person, not the partner. A user this
+    partner already has → 409. `existing_keys` (bulk) is the partner's external_ids, kept current so
+    an in-batch duplicate is caught."""
     name = (data.get("name") or "").strip()
-    email, email_err = normalize_email(data.get("email"))
+    email, phone, id_err = _identity_fields(data)
     password = data.get("password") or ""
     external_id = (data.get("external_id") or "").strip() or None
-    if not name or not data.get("email"):
-        return _err("name and email are required"), None
-    if email_err:
-        return _err(email_err), None
+    if not name:
+        return _err("name is required"), None
+    if id_err:
+        return _err(id_err), None
+    if not email and not phone:
+        return _err("email or phone is required"), None
     if len(password) < 6:
         return _err("password must be at least 6 characters"), None
     if external_id:
@@ -227,17 +297,22 @@ def _create_user(partner, data, existing_keys=None):
         if key_taken:
             return _err("A user with this external_id already exists", 409), None
 
-    account = AppAccount.objects.filter(email=email).first()
+    # Both identifiers are unique, so this matches at most two accounts — and two means the partner
+    # sent an email and a phone belonging to different people.
+    matches = list(AppAccount.objects.filter(_identity_q(email, phone))[:2])
+    if len(matches) > 1:
+        return _err("This email and phone belong to two different SyncUp users", 409), None
+    account = matches[0] if matches else None
     if account and PartnerConnection.objects.filter(partner=partner, account=account).exists():
-        return _err("A user with this email already exists", 409), None
+        return _err("A user with this email or phone already exists", 409), None
 
     try:
         if account is None:
             # Partner users are single-purpose (their partner's links only), so the shared "general
             # links" are OFF by default — the SyncUp admin can turn them on per user.
             account = AppAccount(
-                name=name, email=email, partner=partner, source="partner", partner_signin=True,
-                show_general_links=False,
+                name=name, email=email, phone=phone, partner=partner, source="partner",
+                partner_signin=True, show_general_links=False,
             )
             account.set_password(password)
             account.save()
@@ -250,7 +325,7 @@ def _create_user(partner, data, existing_keys=None):
             c.save()
             _new_connection_push(c)
     except IntegrityError:
-        return _err("A user with this email or external_id already exists", 409), None
+        return _err("A user with this email, phone or external_id already exists", 409), None
     if existing_keys is not None and external_id:
         existing_keys.add(external_id)
     _apply_links(account, partner, data.get("links"))
@@ -310,12 +385,21 @@ def users(request):
             return err
         return _created_response(c)
 
-    # GET — cursor-paginated, optionally filtered by email or external_id.
+    # GET — cursor-paginated, optionally filtered by email, phone, username or external_id.
     qs = PartnerConnection.objects.filter(partner=request.partner).select_related("account", "partner")
     email = (request.GET.get("email") or "").strip().lower()
+    raw_phone = (request.GET.get("phone") or "").strip()
+    uname = (request.GET.get("username") or "").strip().lstrip("@").lower()
     ext = (request.GET.get("external_id") or "").strip()
     if email:
         qs = qs.filter(account__email=email)
+    if raw_phone:
+        phone, err = normalize_phone(raw_phone)
+        if err:
+            return _err(err)
+        qs = qs.filter(account__phone=phone)
+    if uname:
+        qs = qs.filter(account__username=uname)
     if ext:
         qs = qs.filter(external_id=ext)
     try:
@@ -392,7 +476,7 @@ def _user_detail(request, c):
         return _err("Invalid JSON")
     err = _apply_user_fields(c, data)
     if err:
-        return _err(err)
+        return _err(*err)
     try:
         _save(c)
     except IntegrityError:
@@ -419,17 +503,11 @@ def user_by_external(request, external_id):
         if data is None:
             return _err("Invalid JSON")
         if c:
+            # email / phone changes are handled by _apply_user_fields (partner-controlled accounts
+            # only), so a nightly sync can PUT the same body every night without churn.
             err = _apply_user_fields(c, {**data, "external_id": external_id})
             if err:
-                return _err(err)
-            new_email = (data.get("email") or "").strip().lower()
-            if new_email and new_email != c.account.email:
-                # Only an account this partner still fully controls can have its email changed.
-                if not _owns_signin(c):
-                    return _err("This user's email is managed by the user, not the partner", 409)
-                if AppAccount.objects.filter(email=new_email).exclude(id=c.account_id).exists():
-                    return _err("A user with this email already exists", 409)
-                c.account.email = new_email
+                return _err(*err)
             try:
                 _save(c)
             except IntegrityError:

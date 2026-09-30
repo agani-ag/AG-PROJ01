@@ -32,8 +32,9 @@ class AppAccount(models.Model):
     """A mobile app user. Separate from Django `User` (which is admin-only).
 
     Signs in with a password plus ONE of: email, phone (India, stored +91XXXXXXXXXX) or username.
-    Each is unique when set. Admin/partner-created accounts always have an email; a self-signed-up
-    account has an email and/or a phone, and can add a username later from the app.
+    Each is unique when set. Every account keeps at least one of email / phone; a self sign-up or a
+    partner-added user may have only a phone. The username is always the person's own, added later
+    from the app.
     """
 
     name = models.CharField(max_length=100)
@@ -332,7 +333,7 @@ class AppActionRequest(models.Model):
         return timezone.now() >= self.expires_at
 
     def __str__(self):
-        return f"{self.action_type} → {self.account.email} ({self.status})"
+        return f"{self.action_type} → {self.account.login_label} ({self.status})"
 
 
 # Icon names understood by the app (empty = auto-pick from the title).
@@ -832,7 +833,7 @@ class AppReminder(models.Model):
         return nxt
 
     def __str__(self):
-        target = self.account.email if self.account else "all accounts"
+        target = self.account.login_label if self.account else "all accounts"
         return f"{self.title} → {target} @ {self.scheduled_at:%Y-%m-%d %H:%M}"
 
 
@@ -930,7 +931,7 @@ class AppChatMessage(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.account.email} · {self.sender} · {self.body[:24]}"
+        return f"{self.account.login_label} · {self.sender} · {self.body[:24]}"
 
 
 # =============== Browser sync (a signed-in user's own Normal-section data) ===============
