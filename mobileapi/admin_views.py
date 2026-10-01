@@ -37,6 +37,7 @@ from .models import (
     AppLink,
     AppNotificationLog,
     AppPartner,
+    PartnerTelegramChat,
     AppReminder,
     AppTelegramLog,
     CronLock,
@@ -381,6 +382,8 @@ def telegram_page(request):
     logs = AppTelegramLog.objects.select_related("partner")[:50]
     return render(request, "mobileapi/telegram.html", {
         "cfg": cfg,
+        # Partners + the chats each may send to (empty list = that partner can't send anywhere).
+        "partners": AppPartner.objects.prefetch_related("telegram_chats").order_by("name"),
         "configured": bool((cfg.telegram_bot_token or "").strip()),
         "bot_link": bot_link,
         "logs": logs,
@@ -390,10 +393,11 @@ def telegram_page(request):
 @superuser_required
 @require_POST
 def telegram_save(request):
-    """Save the bot token (and, if the token verifies, its username)."""
+    """Save the bot token (and, if the token verifies, its username) plus our own report chat id."""
     cfg = AppConfig.load()
     token = (request.POST.get("telegram_bot_token") or "").strip()
     cfg.telegram_bot_token = token
+    cfg.telegram_admin_chat_id = (request.POST.get("telegram_admin_chat_id") or "").strip()[:64]
     # Refresh the username from Telegram so the bot link/QR are correct for whatever token was pasted.
     if token:
         me = tg.get_me(token=token)
@@ -402,21 +406,78 @@ def telegram_save(request):
             messages.success(request, f"Saved. Connected as @{cfg.telegram_bot_username}.")
         else:
             cfg.telegram_bot_username = ""
-            messages.warning(request, "Token saved, but Telegram didn't accept it — check the token.")
+            messages.warning(request, "Token saved, but we couldn't confirm it with Telegram just now — "
+                                      "click “Verify connection” to finish setting it up.")
     else:
         cfg.telegram_bot_username = ""
         messages.success(request, "Telegram bot token cleared (relay disabled).")
-    cfg.save(update_fields=["telegram_bot_token", "telegram_bot_username", "updated_at"])
+    cfg.save(update_fields=["telegram_bot_token", "telegram_bot_username",
+                            "telegram_admin_chat_id", "updated_at"])
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_partner_chat_add(request, partner_id):
+    """Allow a partner to send to one more chat id."""
+    partner = get_object_or_404(AppPartner, id=partner_id)
+    chat_id = (request.POST.get("chat_id") or "").strip()[:64]
+    label = (request.POST.get("label") or "").strip()[:120]
+    if not chat_id:
+        messages.error(request, "Enter the chat id to allow.")
+    else:
+        _, created = PartnerTelegramChat.objects.get_or_create(
+            partner=partner, chat_id=chat_id, defaults={"label": label},
+        )
+        if created:
+            messages.success(request, f"{partner.name} can now send to {label or chat_id}.")
+        else:
+            messages.info(request, f"{partner.name} could already send to {chat_id}.")
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_partner_chat_delete(request, chat_pk):
+    """Stop a partner sending to a chat."""
+    chat = get_object_or_404(PartnerTelegramChat.objects.select_related("partner"), id=chat_pk)
+    name, label = chat.partner.name, chat.label or chat.chat_id
+    chat.delete()
+    messages.success(request, f"{name} can no longer send to {label}.")
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_partner_allow_any(request, partner_id):
+    """Toggle a partner's 'may send to any chat' escape hatch."""
+    partner = get_object_or_404(AppPartner, id=partner_id)
+    partner.telegram_allow_any = not partner.telegram_allow_any
+    partner.save(update_fields=["telegram_allow_any"])
+    messages.success(request, f"{partner.name} may now send to "
+                              f"{'any chat the bot can reach' if partner.telegram_allow_any else 'its allowed chats only'}.")
     return redirect("mobile_telegram")
 
 
 @superuser_required
 def telegram_verify(request):
-    """AJAX: confirm the saved token works (getMe). Returns the bot identity or an error."""
+    """AJAX: confirm the saved token works (getMe) AND remember the bot's username.
+
+    The username is what drives the "Connected as @bot" badge, the bot link and the QR code, so
+    storing it here repairs a page still showing "Token set, not verified" — which happens when
+    Telegram was unreachable at the moment the token was saved."""
     me = tg.get_me()
-    if me:
-        return JsonResponse({"ok": True, "username": me.get("username", ""), "name": me.get("first_name", "")})
-    return JsonResponse({"ok": False, "error": "Telegram did not accept the saved token."})
+    if not me:
+        return JsonResponse({"ok": False, "error": "Telegram did not accept the saved token."})
+    cfg = AppConfig.load()
+    username = me.get("username", "") or ""
+    changed = bool(username) and username != cfg.telegram_bot_username
+    if changed:
+        cfg.telegram_bot_username = username
+        cfg.save(update_fields=["telegram_bot_username", "updated_at"])
+    return JsonResponse({
+        "ok": True, "username": username, "name": me.get("first_name", ""), "changed": changed,
+    })
 
 
 @superuser_required

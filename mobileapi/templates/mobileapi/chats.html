@@ -5,13 +5,17 @@
 {% block head %}
 <style>
     /* Full-height inbox: the page fills the viewport under the top bar; list and thread scroll on their own. */
-    .page.page-chat { max-width: 1400px; height: calc(100vh - var(--top-h)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px)); min-height: 460px; padding-bottom: 24px; }
-    .chat-inbox { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); overflow: hidden; }
+    /* Edge to edge under the top bar: no page gutters, no card chrome — the inbox IS the page. */
+    .page.page-chat { max-width: none; padding: 0; gap: 0; height: calc(100vh - var(--top-h)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px)); min-height: 460px; }
+    .page-chat .flash { padding: 12px 16px 0; }
+    .chat-inbox { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); overflow: hidden;
+        border: 0; border-radius: 0; box-shadow: none; }
 
     /* ---- Conversation list ---- */
     .chat-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
     .chat-search { padding: 10px 12px; border-bottom: 1px solid var(--border); }
     .chat-search .input { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+    .chat-count { margin-top: 7px; font-size: 12.5px; color: var(--muted); }
     .conv-list { flex: 1; min-height: 0; overflow-y: auto; }
     .conv-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px 10px 9px; border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
     .conv-item:hover { background: var(--surface-2); }
@@ -102,24 +106,13 @@
         #threadMessages { padding: 12px 12px 8px; }
         #typingRow { padding: 0 12px 12px; }
         .composer .kbd-hint { display: none; }
-        .page.page-chat.thread-open { padding: 0; gap: 0; }
-        .page-chat.thread-open > .page-head { display: none; }
         .page-chat.thread-open .chat-inbox { border: 0; border-radius: 0; box-shadow: none; }
         .page-chat.thread-open .composer { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
     }
-    @media (max-width: 640px) { .page.page-chat { padding-bottom: 16px; } }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-head">
-    <div class="titles">
-        <a class="back" href="{% url 'mobile_dashboard' %}">{% icon "arrow-left" "icon-sm" %}Dashboard</a>
-        <h1>Messages</h1>
-        <p class="page-sub" id="listStatus">Chats with app users</p>
-    </div>
-</div>
-
 <div class="card chat-inbox" id="chatInbox">
     <!-- Conversation list -->
     <section class="chat-list" aria-label="Conversations">
@@ -129,6 +122,7 @@
                 {% icon "search" %}
                 <input id="chatSearch" class="input" type="search" placeholder="Search name or email" autocomplete="off">
             </label>
+            <p class="chat-count" id="listStatus">Chats with app users</p>
         </div>
         <div id="convList" class="conv-list">
             <div class="empty"><span class="spinner"></span></div>

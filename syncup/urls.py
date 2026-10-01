@@ -1,4 +1,6 @@
 from django.urls import path
+from mobileapi import partner_api
+
 from .views import auth, views, media
 
 urlpatterns = [
@@ -16,7 +18,8 @@ urlpatterns = [
     path('download/sqlite', auth.download_sqlite, name='download_sqlite'),
 
     # API URLs
-    path('api/telegram/send', views.send_telegram_message_api, name='send_telegram_message_api'),
+    # Legacy path kept for existing callers; now needs the partner API key (Authorization: Bearer).
+    path('api/telegram/send', partner_api.telegram_send_compat, name='send_telegram_message_api'),
 
     # Services (Media menu) — Click Send / Cloudinary / Video Player, superuser-only
     path('services/clicksend', media.clicksend, name='clicksend'),

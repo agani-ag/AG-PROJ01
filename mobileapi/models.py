@@ -191,6 +191,13 @@ class AppPartner(models.Model):
     rate_limit_per_min = models.PositiveIntegerField(
         default=120, help_text="Max Partner-API requests per minute for this partner.",
     )
+    # Telegram relay: by default a partner may only send to the chats listed in its
+    # PartnerTelegramChat allowlist, so one partner can't message another partner's group.
+    telegram_allow_any = models.BooleanField(
+        default=False,
+        help_text="Let this partner send Telegram messages to ANY chat our bot can reach "
+                  "(skips its allowed-chats list). Leave off unless you trust it completely.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
 
@@ -225,6 +232,56 @@ class AppPartner(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# =============== Telegram chats a partner may send to ===============
+class PartnerTelegramChat(models.Model):
+    """One Telegram chat id a partner is allowed to send to (its own group or a person's DM).
+
+    The partner tells us the chat id after adding our bot to its group; the admin saves it here
+    from the Telegram page. Sends to any other chat are refused, so partners stay isolated from
+    each other's groups. A partner with `telegram_allow_any` on skips this list entirely.
+    """
+
+    partner = models.ForeignKey(
+        AppPartner, on_delete=models.CASCADE, related_name="telegram_chats",
+    )
+    chat_id = models.CharField(max_length=64)
+    label = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text="What this chat is, e.g. “Acme ops group”. Shown in the logs instead of the raw id.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["partner__name", "label", "chat_id"]
+        constraints = [
+            models.UniqueConstraint(fields=["partner", "chat_id"], name="uniq_partner_telegram_chat"),
+        ]
+        indexes = [models.Index(fields=["partner", "chat_id"])]
+
+    @classmethod
+    def allows(cls, partner, chat_id):
+        """True if this partner may send to chat_id."""
+        if partner is None:
+            return False
+        if partner.telegram_allow_any:
+            return True
+        return cls.objects.filter(
+            partner=partner, chat_id=str(chat_id).strip(), is_active=True,
+        ).exists()
+
+    @classmethod
+    def touch(cls, partner, chat_id):
+        """Record that a chat was just used (shown on the Telegram page)."""
+        cls.objects.filter(partner=partner, chat_id=str(chat_id).strip()).update(
+            last_used_at=timezone.now(),
+        )
+
+    def __str__(self):
+        return f"{self.partner.name} → {self.label or self.chat_id}"
 
 
 # =============== Partner connection (a partner's access key on an account) ===============
@@ -565,6 +622,12 @@ class AppConfig(models.Model):
     # Telegram relay disabled. The username is auto-filled from getMe when the token is verified.
     telegram_bot_token = models.CharField(max_length=100, blank=True, default="")
     telegram_bot_username = models.CharField(max_length=64, blank=True, default="")
+    # Our own chat/group: where server-side reports (manage.py telegram_push) are delivered.
+    # Add the bot above to that group, then paste its chat id here (Telegram page → Discover chats).
+    telegram_admin_chat_id = models.CharField(
+        max_length=64, blank=True, default="",
+        help_text="Chat id for our own reports and alerts, e.g. -1001234567890.",
+    )
 
     # ---- Live radio (AudioSync broadcasters register their public stream URL here) ----
     radio_enabled = models.BooleanField(

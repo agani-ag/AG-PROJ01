@@ -43,7 +43,7 @@ from . import fcm, telegram
 from .identity import normalize_email, normalize_phone
 from .models import (
     AppAccount, AppActionRequest, AppDevice, AppLink, AppNotificationLog, AppPartner,
-    AppTelegramLog, PartnerConnection,
+    AppTelegramLog, PartnerConnection, PartnerTelegramChat,
 )
 from .serializers import link_dict
 
@@ -836,9 +836,24 @@ def notify_bulk(request):
 
 
 # --------------------------------------------------------------------------- Telegram relay
+TELEGRAM_NOT_ALLOWED = ("chat_id is not on this partner's allowed list — "
+                        "ask us to add it on the Telegram page")
+
+
 def _telegram_one(partner, chat_id, text, parse_mode):
-    """Send one Telegram message + log it. Returns a per-item result dict."""
+    """Send one Telegram message + log it. Returns a per-item result dict.
+
+    A partner may only send to its own chats (PartnerTelegramChat), so it can't message another
+    partner's group. Refusals are logged too, so abuse and misconfiguration are visible."""
+    if not PartnerTelegramChat.allows(partner, chat_id):
+        AppTelegramLog.objects.create(
+            partner=partner, chat_id=str(chat_id)[:64], text=text or "",
+            status="failed", error=TELEGRAM_NOT_ALLOWED,
+        )
+        return {"chat_id": str(chat_id), "error": TELEGRAM_NOT_ALLOWED}
     ok, info = telegram.send(chat_id, text, parse_mode=parse_mode)
+    if ok:
+        PartnerTelegramChat.touch(partner, chat_id)
     AppTelegramLog.objects.create(
         partner=partner, chat_id=str(chat_id)[:64], text=text or "",
         status="sent" if ok else "failed",
@@ -865,7 +880,40 @@ def telegram_send(request):
         return _err("text is required")
     result = _telegram_one(request.partner, chat_id, text, data.get("parse_mode"))
     if "error" in result:
-        return JsonResponse({"success": False, **result}, status=502)
+        status = 403 if result["error"] == TELEGRAM_NOT_ALLOWED else 502
+        return JsonResponse({"success": False, **result}, status=status)
+    return JsonResponse({"success": True, **result})
+
+
+@partner_api_required
+@require_http_methods(["GET", "POST"])
+def telegram_send_compat(request):
+    """`/api/telegram/send` — the old, unauthenticated endpoint, now behind the partner API key.
+
+    Same engine, allowlist and log as /partner/v1/telegram/send; it only accepts the older call
+    shape: GET query string or POST (form or JSON), and `message` as an alias for `text`.
+    `chat_id` is a real Telegram chat id — the historical "index into TELEGRAM_GROUPS" form is gone
+    along with the .env bot.
+    """
+    if not telegram.is_configured():
+        return _err("Telegram is not configured on the server", 503)
+    src = {}
+    if request.method == "POST":
+        src.update(_json(request) or {})
+        src.update(request.POST.dict())
+    src.update(request.GET.dict())
+
+    chat_id = str(src.get("chat_id") or "").strip()
+    text = (src.get("text") or src.get("message") or "").strip()
+    if not chat_id:
+        return _err("chat_id is required")
+    if not text:
+        return _err("message is required")
+
+    result = _telegram_one(request.partner, chat_id, text, src.get("parse_mode"))
+    if "error" in result:
+        status = 403 if result["error"] == TELEGRAM_NOT_ALLOWED else 502
+        return JsonResponse({"success": False, **result}, status=status)
     return JsonResponse({"success": True, **result})
 
 
@@ -886,7 +934,8 @@ def telegram_bulk(request):
         return _err(f"messages can hold at most {MAX_BULK} items")
 
     results = [None] * len(items)
-    ready = []  # (index, chat_id, text, parse_mode)
+    ready = []     # (index, chat_id, text, parse_mode)
+    refused = []   # logs for chats this partner may not use
     for i, it in enumerate(items):
         if not isinstance(it, dict):
             results[i] = {"error": "each message must be an object"}
@@ -897,12 +946,18 @@ def telegram_bulk(request):
             results[i] = {"error": "chat_id is required"}
         elif not text:
             results[i] = {"chat_id": chat_id, "error": "text is required"}
+        elif not PartnerTelegramChat.allows(request.partner, chat_id):
+            results[i] = {"chat_id": chat_id, "error": TELEGRAM_NOT_ALLOWED}
+            refused.append(AppTelegramLog(
+                partner=request.partner, chat_id=chat_id[:64], text=text,
+                status="failed", error=TELEGRAM_NOT_ALLOWED,
+            ))
         else:
             ready.append((i, chat_id, text, it.get("parse_mode")))
 
     # Threads do ONLY the Telegram HTTP send (no DB writes — concurrent SQLite writes deadlock).
     # Results come back to the main thread, which writes all the logs in one bulk_create.
-    sent, logs = 0, []
+    sent, logs = 0, list(refused)
     if ready:
         from concurrent.futures import ThreadPoolExecutor
         def _job(job):
@@ -913,6 +968,8 @@ def telegram_bulk(request):
             for i, chat_id, text, ok, info in pool.map(_job, ready):
                 results[i] = {"chat_id": chat_id, "message_id": info} if ok else {"chat_id": chat_id, "error": info}
                 sent += 1 if ok else 0
+                if ok:
+                    PartnerTelegramChat.touch(request.partner, chat_id)
                 logs.append(AppTelegramLog(
                     partner=request.partner, chat_id=chat_id[:64], text=text,
                     status="sent" if ok else "failed",

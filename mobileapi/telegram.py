@@ -114,8 +114,12 @@ def send(chat_id, text, parse_mode=None):
 
 
 def get_me(token=None):
-    """Verify a token (used by the Telegram page's 'Verify bot' button). Returns the bot dict or None."""
-    data = _call("getMe", None, http="get", token=token)
+    """Verify a token (used by the Telegram page's Verify button). Returns the bot dict or None.
+
+    Longer timeout than a send: it runs when an admin clicks, and on hosts that reach Telegram
+    through an outbound proxy the first call is slow — a timeout here would wrongly look like a
+    bad token."""
+    data = _call("getMe", None, http="get", token=token, timeout=10.0)
     if data and data.get("ok"):
         return data["result"]
     return None

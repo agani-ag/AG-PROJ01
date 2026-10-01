@@ -1,14 +1,28 @@
 from django.core.management.base import BaseCommand
-from ...utils import send_telegram_message
+from mobileapi import telegram as tg
+from mobileapi.models import AppConfig, AppTelegramLog
 from main import settings
 import requests
 
 BASEURL = settings.PROJ02_URL
 
 class Command(BaseCommand):
-    help = "Sends a test message via the Telegram bot"
+    help = "Pulls the PROJ02 reports and sends them to our Telegram chat (Telegram page → bot + chat id)."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--chat", dest="chat_id", default="",
+            help="Chat id to send to (default: the report chat id saved in App config).",
+        )
 
     def handle(self, *args, **kwargs):
+        chat_id = (kwargs.get("chat_id") or AppConfig.load().telegram_admin_chat_id or "").strip()
+        if not tg.is_configured():
+            self.stderr.write("Telegram bot is not configured — set the bot token on /mobile/telegram.")
+            return
+        if not chat_id:
+            self.stderr.write("No report chat id — set one on /mobile/telegram, or pass --chat <id>.")
+            return
         messages = []
         try:
             resp1 = requests.post(f'{BASEURL}/api/reports/overdue', json={
@@ -45,7 +59,13 @@ class Command(BaseCommand):
             if not msg:
                 self.stderr.write(f'[{label}] No markdown content, skipping.')
                 continue
-            try:
-                send_telegram_message(0, msg)
-            except Exception as e:
-                self.stderr.write(f'[{label}] Failed to send Telegram message: {e}')
+            ok, info = tg.send(chat_id, msg, parse_mode="MarkdownV2")
+            AppTelegramLog.objects.create(
+                partner=None, chat_id=chat_id[:64], text=msg,
+                status="sent" if ok else "failed",
+                message_id=info if ok else "", error="" if ok else info,
+            )
+            if ok:
+                self.stdout.write(f'[{label}] sent')
+            else:
+                self.stderr.write(f'[{label}] Failed to send Telegram message: {info}')

@@ -39,6 +39,10 @@ urlpatterns = [
     path("telegram/verify", v.telegram_verify, name="mobile_telegram_verify"),
     path("telegram/discover", v.telegram_discover, name="mobile_telegram_discover"),
     path("telegram/test", v.telegram_test, name="mobile_telegram_test"),
+    # Which Telegram chats each partner may send to
+    path("telegram/partner/<int:partner_id>/chats/add", v.telegram_partner_chat_add, name="mobile_telegram_chat_add"),
+    path("telegram/chats/<int:chat_pk>/delete", v.telegram_partner_chat_delete, name="mobile_telegram_chat_delete"),
+    path("telegram/partner/<int:partner_id>/allow-any", v.telegram_partner_allow_any, name="mobile_telegram_allow_any"),
 
     # Radio (live channel registry + AudioSync ingest key)
     path("radio", v.radio_page, name="mobile_radio"),

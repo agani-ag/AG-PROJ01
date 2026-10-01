@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Telegram{% endblock %}
 
 {% block head %}
@@ -56,6 +57,14 @@
                 Stored in the database (no env). Paste a different token any time to switch bots; we re-check it
                 and refresh the bot link below. Leave blank to disable the relay.
             </span>
+            <div class="field" style="margin-top:14px">
+                <label class="label" for="tg-admin-chat">Our report chat <span class="opt">optional</span></label>
+                <input type="text" id="tg-admin-chat" name="telegram_admin_chat_id" class="input mono"
+                       value="{{ cfg.telegram_admin_chat_id }}" autocomplete="off" spellcheck="false"
+                       placeholder="e.g. -1001234567890">
+                <span class="help">Where <code>manage.py telegram_push</code> sends our own reports. Add the bot to that
+                    group first, then use <b>Discover chats</b> below to find its id.</span>
+            </div>
         </form>
         {% if configured %}
         <div class="row">
@@ -84,7 +93,7 @@
             <div class="tg-steps">
                 <h3>To send to a group</h3>
                 <ol>
-                    <li>Add <b>@{{ cfg.telegram_bot_username }}</b> to the Telegram group.</li>
+                    <li>Add <b>{% if cfg.telegram_bot_username %}@{{ cfg.telegram_bot_username }}{% else %}our bot{% endif %}</b> to the Telegram group.</li>
                     <li>Click <b>Discover chats</b> below. The group appears with its chat id.</li>
                     <li>Send that <code>chat_id</code> to <code>POST /partner/v1/telegram/send</code>.</li>
                 </ol>
@@ -109,6 +118,58 @@
             </div>
         </div>
         <div id="discover-empty" class="small muted" role="status"></div>
+    </div>
+</div>
+
+<!-- Partner allow-lists -->
+<div class="card">
+    <div class="card-head">{% icon "shield-check" %}<h2>Who may send where</h2></div>
+    <div class="card-body stack">
+        <p class="help">A partner's API key can only deliver to the chats listed here, so one partner can't
+            message another's group. A partner with no chats listed can't send at all.</p>
+        {% for p in partners %}
+        <div class="card">
+            <div class="card-head" style="flex-wrap:wrap">
+                {% icon "handshake" %}<h2 style="flex:1 1 auto">{{ p.name }}</h2>
+                {% if p.telegram_allow_any %}<span class="badge badge-warning" title="Allow-list skipped">Any chat</span>
+                {% elif not p.telegram_chats.all %}<span class="badge badge-danger">No chats — blocked</span>
+                {% else %}<span class="badge badge-success">{{ p.telegram_chats.all|length }} chat{{ p.telegram_chats.all|length|pluralize }}</span>{% endif %}
+                <form method="post" action="{% url 'mobile_telegram_allow_any' p.id %}"
+                      data-confirm="{% if p.telegram_allow_any %}Restrict {{ p.name }} to its listed chats?{% else %}Let {{ p.name }} send to ANY chat?{% endif %}"
+                      data-confirm-text="{% if p.telegram_allow_any %}It will only reach the chats listed below.{% else %}It will be able to message every chat our bot can reach, including other partners' groups.{% endif %}"
+                      data-confirm-button="{% if p.telegram_allow_any %}Restrict{% else %}Allow any chat{% endif %}" {% if not p.telegram_allow_any %}data-danger{% endif %}>
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-ghost" type="submit">{% if p.telegram_allow_any %}{% icon "lock" %}Restrict{% else %}{% icon "globe" %}Allow any{% endif %}</button>
+                </form>
+            </div>
+            <ul class="list">
+                {% for c in p.telegram_chats.all %}
+                <li class="list-item">
+                    <span class="main-col">
+                        <span class="title" style="display:block">{{ c.label|default:"Unnamed chat" }}</span>
+                        <span class="sub mono">{{ c.chat_id }}</span>
+                    </span>
+                    {% if c.last_used_at %}<span class="small muted nowrap">used {{ c.last_used_at|ago }}</span>{% endif %}
+                    <form method="post" action="{% url 'mobile_telegram_chat_delete' c.id %}"
+                          data-confirm="Remove this chat from {{ p.name }}?"
+                          data-confirm-text="{{ p.name }} will no longer be able to send to {{ c.label|default:c.chat_id }}."
+                          data-confirm-button="Remove" data-danger>
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-ghost" type="submit" title="Remove" aria-label="Remove {{ c.label|default:c.chat_id }}">{% icon "trash" %}</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            <form method="post" action="{% url 'mobile_telegram_chat_add' p.id %}" class="card-foot row gap-sm">
+                {% csrf_token %}
+                <input type="text" name="chat_id" class="input input-sm mono" style="flex:1 1 180px" placeholder="Chat id, e.g. -1001234567890" required>
+                <input type="text" name="label" class="input input-sm" style="flex:1 1 180px" placeholder="What is it? e.g. Acme ops group">
+                <button class="btn btn-sm" type="submit">{% icon "plus" %}Allow chat</button>
+            </form>
+        </div>
+        {% empty %}
+        <div class="empty">{% icon "handshake" %}<b>No partners yet</b><a class="btn btn-sm" href="{% url 'mobile_partners' %}">Add a partner</a></div>
+        {% endfor %}
     </div>
 </div>
 
@@ -167,12 +228,18 @@
 {% endblock %}
 
 {% block script %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="{% static 'js/vendor/qrcode.min.js' %}"></script>
 <script>
 (function () {
-    var botLink = "{{ bot_link|escapejs }}";
-    if (botLink && window.QRCode && document.getElementById("qr")) {
-        new QRCode(document.getElementById("qr"), { text: botLink, width: 148, height: 148 });
+    var botLink = "{{ bot_link|escapejs }}", qrBox = document.getElementById("qr");
+    if (botLink && qrBox && typeof qrcode === "function") {
+        var qr = qrcode(0, "M");
+        qr.addData(botLink);
+        qr.make();
+        qrBox.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+        var svg = qrBox.querySelector("svg");
+        svg.setAttribute("width", "148"); svg.setAttribute("height", "148");
+        svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "QR code to open our Telegram bot");
     }
 
     function note(el, text, cls) {
@@ -190,8 +257,14 @@
             note(out, "Checking…", "muted");
             verifyBtn.setAttribute("aria-busy", "true");
             fetch("{% url 'mobile_telegram_verify' %}").then(function (r) { return r.json(); }).then(function (d) {
-                if (d.ok) note(out, "Connected as @" + d.username, "text-success");
-                else note(out, d.error || "Failed", "text-danger");
+                if (!d.ok) { note(out, d.error || "Failed", "text-danger"); return; }
+                note(out, "Connected as @" + d.username, "text-success");
+                // The badge, bot link and QR are rendered server-side from the saved username —
+                // reload once we've just learned (or corrected) it so they appear.
+                if (d.changed || !document.querySelector("#qr svg")) {
+                    note(out, "Connected as @" + d.username + " — refreshing…", "text-success");
+                    setTimeout(function () { window.location.reload(); }, 600);
+                }
             }).catch(function () { note(out, "Request failed", "text-danger"); })
               .then(function () { verifyBtn.removeAttribute("aria-busy"); });
         });
