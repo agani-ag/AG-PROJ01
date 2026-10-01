@@ -12,7 +12,7 @@ from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.validators import MinValueValidator
-from django.db import IntegrityError, models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 # How long an issued bearer token stays valid. After this the app gets a 401 and
@@ -257,6 +257,11 @@ class PartnerConnection(models.Model):
     locked_until = models.DateTimeField(null=True, blank=True)
     enabled_at = models.DateTimeField(null=True, blank=True)
     disabled_at = models.DateTimeField(null=True, blank=True)
+    # An email / phone the partner sent that the person's own account is missing. It fills that
+    # blank when the person turns this partner on (the partner password shows it's really them),
+    # then clears — so a number shared in a family never picks up someone else's email.
+    pending_email = models.EmailField(null=True, blank=True)
+    pending_phone = models.CharField(max_length=16, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -285,6 +290,32 @@ class PartnerConnection(models.Model):
     @property
     def is_locked(self):
         return bool(self.locked_until and self.locked_until > timezone.now())
+
+    @property
+    def pending_fields(self):
+        return [f for f in ("email", "phone") if getattr(self, f"pending_{f}")]
+
+    def fill_pending(self):
+        """Fill the account's blank email / phone with what this partner sent (see `pending_*`).
+        A value someone else has taken meanwhile, or a blank the person has filled themselves, is
+        skipped. Returns the fields filled. Saves the account; the caller saves the connection."""
+        a = self.account
+        filled = []
+        for field in ("email", "phone"):
+            value = getattr(self, f"pending_{field}")
+            setattr(self, f"pending_{field}", None)
+            if value and not getattr(a, field) and \
+                    not AppAccount.objects.filter(**{field: value}).exclude(id=a.id).exists():
+                setattr(a, field, value)
+                filled.append(field)
+        if filled:
+            try:
+                with transaction.atomic():
+                    a.save(update_fields=[*filled, "updated_at"])
+            except IntegrityError:  # taken in the same instant — leave the account as it was
+                a.refresh_from_db()
+                filled = []
+        return filled
 
     def __str__(self):
         return f"{self.partner.name} ↔ {self.account.login_label} ({self.status})"

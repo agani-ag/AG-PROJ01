@@ -205,6 +205,7 @@
                     <span class="main-col">
                         <span class="title" style="display:block">{{ c.partner.name }}</span>
                         <span class="sub truncate" style="display:block">{% if c.external_id %}Their id: <span class="mono">{{ c.external_id }}</span> · {% endif %}added {{ c.created_at|date:"d M Y" }}{% if c.enabled_at %} · enabled {{ c.enabled_at|date:"d M Y" }}{% endif %}</span>
+                        {% if c.pending_email or c.pending_phone %}<span class="sub truncate" style="display:block" title="Added to this account when the user turns this partner on">Adds {% if c.pending_email %}email {{ c.pending_email }}{% endif %}{% if c.pending_email and c.pending_phone %} and {% endif %}{% if c.pending_phone %}phone {{ c.pending_phone }}{% endif %} when enabled</span>{% endif %}
                     </span>
                     {% if not c.partner_active %}<span class="badge badge-danger" title="Suspended by the partner">Suspended</span>
                     {% elif c.status == "enabled" %}<span class="badge badge-success">Enabled</span>

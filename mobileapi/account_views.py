@@ -292,8 +292,15 @@ def partner_enable(request, connection_id):
     c.failed_attempts = 0
     c.locked_until = None
     c.enabled_at = timezone.now()
-    c.save(update_fields=["status", "failed_attempts", "locked_until", "enabled_at", "updated_at"])
-    return JsonResponse({"success": True, "partner": _connection_dict(c)})
+    # The partner password shows it's really them: a blank email / phone on their account now gets
+    # the one this partner has for them.
+    filled = c.fill_pending()
+    c.save(update_fields=["status", "failed_attempts", "locked_until", "enabled_at",
+                          "pending_email", "pending_phone", "updated_at"])
+    body = {"success": True, "partner": _connection_dict(c)}
+    if filled:
+        body["filled"] = filled
+    return JsonResponse(body)
 
 
 @csrf_exempt

@@ -15,9 +15,11 @@ with its own partner password:
 Built for a growing user base:
 
   * users can be addressed by our internal id OR the partner's own `external_id`,
-  * a user is created or matched by `email` and/or `phone` (India, stored +91XXXXXXXXXX); the
-    `username` is the person's own handle, set in the app — partners can read and search it, never
-    write it,
+  * a user is created or matched by `email` and/or `phone` (India, stored +91XXXXXXXXXX) —
+    see `_resolve_identity`: email always wins; a number alone maps to its account (or makes a
+    number-only one); a blank email / phone on the matched account is filled from the partner's
+    data. The `username` is the person's own handle, set in the app — partners can read and search
+    it, never write it,
   * `PUT /users/external/<id>` upserts (idempotent nightly sync, no 409 churn),
   * list endpoints are cursor-paginated and filterable,
   * a bulk-create endpoint provisions many users in one call.
@@ -71,7 +73,8 @@ def _user_json(c):
     """A partner's view of one user = its connection. `status`: enabled | not_enabled | disabled
     (disabled = the user turned this partner off). `is_active` is the partner's own on/off.
     `email` / `phone` are the sign-in identifiers (either can be empty, never both); `username` is
-    the person's own handle — read-only for partners."""
+    the person's own handle — read-only for partners. `pending` lists the email / phone you sent that
+    will be added to the account when the person turns you on."""
     a = c.account
     return {
         "id": str(a.id),
@@ -82,7 +85,16 @@ def _user_json(c):
         "username": a.username or "",
         "is_active": c.partner_active and a.is_active,
         "status": c.status,
+        "pending": c.pending_fields,
     }
+
+
+def _with_ignored(body, c):
+    """Add `ignored` to a write response: the email / phone this write left out (see `_apply_identity`)."""
+    ignored = getattr(c, "ignored", None)
+    if ignored:
+        body["ignored"] = ignored
+    return body
 
 
 def _link_json(link):
@@ -178,43 +190,50 @@ def _identity_fields(data):
     return email, phone, None
 
 
-def _identity_q(email, phone):
-    """Match an account by either identifier the partner gave — never by an empty one."""
-    q = Q()
-    if email:
-        q |= Q(email=email)
-    if phone:
-        q |= Q(phone=phone)
-    return q
-
-
 def _apply_identity(c, data):
-    """Change the user's email / phone — only for an account this partner still fully controls.
-    Either can be cleared with "" as long as the other is kept, so a partner can move a user from
-    email to phone. An absent key or an unchanged value is a no-op, so a nightly sync that resends
-    the same email never conflicts. Returns None or (message, status)."""
+    """Apply the email / phone a partner sent for one of its users. An absent key or an unchanged
+    value is a no-op, so a nightly sync can resend the same body every night.
+
+      * An account this partner still fully controls follows the partner: a new value replaces the
+        old one, and "" clears one as long as the other is kept.
+      * The person's own account only gets its BLANKS filled — at once if they've turned this
+        partner on, otherwise when they do (`pending_*`). Their existing email / phone never change.
+      * A value another SyncUp user already has is left out.
+
+    What's left out is listed in `c.ignored` (returned to the partner) — never an error, so one
+    family member's number can't stop a sync. Returns None or (message, status) for bad input."""
     a = c.account
-    changes = {}
+    owns = _owns_signin(c)
+    changes, ignored = {}, []
     for field, normalizer in (("email", normalize_email), ("phone", normalize_phone)):
         if field not in data:
             continue
         raw = (data.get(field) or "").strip()
+        current = getattr(a, field)
         if not raw:
-            if getattr(a, field):
-                changes[field] = None
+            if current:
+                if owns:
+                    changes[field] = None
+                else:
+                    ignored.append(field)  # the person's own — a partner can't remove it
             continue
         value, err = normalizer(raw)
         if err:
             return err, 400
-        if value != getattr(a, field):
-            if AppAccount.objects.filter(**{field: value}).exclude(id=a.id).exists():
-                return f"A user with this {field} already exists", 409
+        if value == current:
+            continue
+        if AppAccount.objects.filter(**{field: value}).exclude(id=a.id).exists():
+            ignored.append(field)
+        elif owns:
             changes[field] = value
-    if not changes:
-        return None
-    if not _owns_signin(c):
-        return "This user's email and phone are managed by the user, not the partner", 409
-    if not changes.get("email", a.email) and not changes.get("phone", a.phone):
+        elif current:
+            ignored.append(field)
+        elif c.status == "enabled":
+            changes[field] = value
+        else:
+            setattr(c, f"pending_{field}", value)
+    c.ignored = ignored
+    if owns and not changes.get("email", a.email) and not changes.get("phone", a.phone):
         return "Keep an email or a phone number for the user to sign in with", 400
     for field, value in changes.items():
         setattr(a, field, value)
@@ -270,15 +289,47 @@ def _new_connection_push(c):
         )
 
 
+def _resolve_identity(email, phone):
+    """Which SyncUp account the partner's `email` / `phone` point to. Returns
+    (account | None, fill, ignored): the existing account to connect (None = create one), the blanks
+    on it the partner's data fills ({field: value}), and the fields left out.
+
+      * Email always wins: its account is the person, even when the number is someone else's (a
+        family member's) — that number is left out.
+      * A number alone maps to its account, or a number-only account is created.
+      * Email + number where only the number is known: the number's account is the person when it
+        has no email yet (its blank email is filled); if it already has another email, it's
+        someone else — a new account is made for the email, without the number.
+      * Neither known: a new account with both."""
+    by_email = AppAccount.objects.filter(email=email).first() if email else None
+    by_phone = AppAccount.objects.filter(phone=phone).first() if phone else None
+    fill, ignored = {}, []
+    if by_email:
+        if phone and by_email.phone != phone:
+            if by_phone is None and not by_email.phone:
+                fill["phone"] = phone
+            else:
+                ignored.append("phone")
+        return by_email, fill, ignored
+    if by_phone:
+        if not email:
+            return by_phone, fill, ignored
+        if not by_phone.email:
+            fill["email"] = email
+            return by_phone, fill, ignored
+        ignored.append("phone")
+    return None, fill, ignored
+
+
 def _create_user(partner, data, existing_keys=None):
     """Add a user for the partner. Returns (JsonResponse, connection | None).
 
-    The person is identified by `email` and/or `phone` (at least one). An identifier we don't know
-    creates the SyncUp account (partner password = sign-in, enabled at once). One that already has
-    an account gets a "not enabled" connection the user turns on in the app — that account's own
-    email/phone are left as they are, because they belong to the person, not the partner. A user this
-    partner already has → 409. `existing_keys` (bulk) is the partner's external_ids, kept current so
-    an in-batch duplicate is caught."""
+    The person is identified by `email` and/or `phone` (at least one) — see `_resolve_identity`. A
+    new person gets a SyncUp account (partner password = sign-in, enabled at once). A person who
+    already has an account gets a "not enabled" connection they turn on in the app; blanks on their
+    account are filled from the partner's data when they do. A user this partner already has → 409.
+    `existing_keys` (bulk) is the partner's external_ids, kept current so an in-batch duplicate is
+    caught. What was left out is in `c.ignored`."""
     name = (data.get("name") or "").strip()
     email, phone, id_err = _identity_fields(data)
     password = data.get("password") or ""
@@ -297,22 +348,20 @@ def _create_user(partner, data, existing_keys=None):
         if key_taken:
             return _err("A user with this external_id already exists", 409), None
 
-    # Both identifiers are unique, so this matches at most two accounts — and two means the partner
-    # sent an email and a phone belonging to different people.
-    matches = list(AppAccount.objects.filter(_identity_q(email, phone))[:2])
-    if len(matches) > 1:
-        return _err("This email and phone belong to two different SyncUp users", 409), None
-    account = matches[0] if matches else None
+    account, fill, ignored = _resolve_identity(email, phone)
     if account and PartnerConnection.objects.filter(partner=partner, account=account).exists():
         return _err("A user with this email or phone already exists", 409), None
+    # A number this partner already has a user for is that user — never a second account for them.
+    if account is None and phone and PartnerConnection.objects.filter(partner=partner, account__phone=phone).exists():
+        return _err("A user with this phone already exists", 409), None
 
     try:
         if account is None:
             # Partner users are single-purpose (their partner's links only), so the shared "general
             # links" are OFF by default — the SyncUp admin can turn them on per user.
             account = AppAccount(
-                name=name, email=email, phone=phone, partner=partner, source="partner",
-                partner_signin=True, show_general_links=False,
+                name=name, email=email, phone=None if "phone" in ignored else phone, partner=partner,
+                source="partner", partner_signin=True, show_general_links=False,
             )
             account.set_password(password)
             account.save()
@@ -320,7 +369,8 @@ def _create_user(partner, data, existing_keys=None):
                                   password=account.password, status="enabled", enabled_at=timezone.now())
             c.save()
         else:
-            c = PartnerConnection(partner=partner, account=account, external_id=external_id)
+            c = PartnerConnection(partner=partner, account=account, external_id=external_id,
+                                  pending_email=fill.get("email"), pending_phone=fill.get("phone"))
             c.set_password(password)
             c.save()
             _new_connection_push(c)
@@ -328,12 +378,13 @@ def _create_user(partner, data, existing_keys=None):
         return _err("A user with this email, phone or external_id already exists", 409), None
     if existing_keys is not None and external_id:
         existing_keys.add(external_id)
+    c.ignored = ignored
     _apply_links(account, partner, data.get("links"))
     return None, c
 
 
 def _created_response(c):
-    body = {"success": True, "created": True, **_user_with_links(c)}
+    body = _with_ignored({"success": True, "created": True, **_user_with_links(c)}, c)
     if c.status == "not_enabled":
         body["message"] = (
             f"This person already has a SyncUp account. They need to open SyncUp → Partners and enter "
@@ -454,7 +505,7 @@ def users_bulk(request):
             body = json.loads(err.content)
             results.append({"index": i, "status": "error", "message": body.get("message")})
         else:
-            results.append({"index": i, "status": "created", "user": _user_json(c)})
+            results.append(_with_ignored({"index": i, "status": "created", "user": _user_json(c)}, c))
     created = sum(1 for r in results if r["status"] == "created")
     return JsonResponse({"success": True, "created": created, "results": results})
 
@@ -481,7 +532,7 @@ def _user_detail(request, c):
         _save(c)
     except IntegrityError:
         return _err("external_id already in use", 409)
-    return JsonResponse({"success": True, "user": _user_json(c)})
+    return JsonResponse(_with_ignored({"success": True, "user": _user_json(c)}, c))
 
 
 @partner_api_required
@@ -503,8 +554,8 @@ def user_by_external(request, external_id):
         if data is None:
             return _err("Invalid JSON")
         if c:
-            # email / phone changes are handled by _apply_user_fields (partner-controlled accounts
-            # only), so a nightly sync can PUT the same body every night without churn.
+            # email / phone go through _apply_identity (fills blanks, never fails on someone
+            # else's number), so a nightly sync can PUT the same body every night without churn.
             err = _apply_user_fields(c, {**data, "external_id": external_id})
             if err:
                 return _err(*err)
@@ -513,7 +564,7 @@ def user_by_external(request, external_id):
             except IntegrityError:
                 return _err("Conflict saving user", 409)
             _apply_links(c.account, request.partner, data.get("links"))  # replace-by-key link upsert
-            return JsonResponse({"success": True, "created": False, **_user_with_links(c)})
+            return JsonResponse(_with_ignored({"success": True, "created": False, **_user_with_links(c)}, c))
         err, c = _create_user(request.partner, {**data, "external_id": external_id})
         if err:
             return err
