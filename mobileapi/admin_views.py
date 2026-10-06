@@ -5,12 +5,14 @@ Function-based views + templates styled by static/css/app.css, matching the exis
 Mounted at /mobile/ (see admin_urls.py). Separate from the JSON API (/app/v1/).
 """
 import json
+from datetime import datetime, timezone as dt_timezone
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
+from django.db import connection
 from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -25,6 +27,8 @@ from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
 from . import telegram as tg
+from . import telegram_chats as tg_chats
+from . import telegram_hook
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from .models import (
@@ -38,6 +42,8 @@ from .models import (
     AppNotificationLog,
     AppPartner,
     PartnerTelegramChat,
+    TelegramChat,
+    TelegramMessage,
     AppReminder,
     AppTelegramLog,
     CronLock,
@@ -45,6 +51,10 @@ from .models import (
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
 )
+
+# Chats re-checked per request while the Telegram page loops through them all. Each one costs
+# up to three Telegram round-trips, so keep the batch small enough that a request stays quick.
+RECHECK_BATCH = 10
 
 superuser_required = user_passes_test(
     lambda u: u.is_authenticated and u.is_superuser, login_url=settings.LOGIN_URL
@@ -380,6 +390,11 @@ def telegram_page(request):
     cfg = AppConfig.load()
     bot_link = f"https://t.me/{cfg.telegram_bot_username}" if cfg.telegram_bot_username else ""
     logs = AppTelegramLog.objects.select_related("partner")[:50]
+    # Every chat the bot is known to be in, plus who may send to each (see telegram_chats.py).
+    chats = list(TelegramChat.objects.all())
+    allowed = tg_chats.partner_map()
+    for c in chats:
+        c.partner_names = allowed.get(c.chat_id, [])
     return render(request, "mobileapi/telegram.html", {
         "cfg": cfg,
         # Partners + the chats each may send to (empty list = that partner can't send anywhere).
@@ -387,6 +402,10 @@ def telegram_page(request):
         "configured": bool((cfg.telegram_bot_token or "").strip()),
         "bot_link": bot_link,
         "logs": logs,
+        "chats": chats,
+        "live": telegram_hook.is_live(),
+        "chats_live": sum(1 for c in chats if c.in_chat),
+        "chats_gone": sum(1 for c in chats if not c.in_chat and c.status != "unknown"),
     })
 
 
@@ -481,10 +500,107 @@ def telegram_verify(request):
 
 
 @superuser_required
+@require_POST
 def telegram_discover(request):
-    """AJAX: list chats the bot has recently seen (getUpdates) so a chat id can be copied after the
-    bot is added to a group / the person taps Start."""
-    return JsonResponse({"ok": True, "chats": tg.discover_chats()})
+    """AJAX: scan Telegram for chats and save what we find.
+
+    Replaces the old "show me the last 24h" listing: results go into the TelegramChat registry, so
+    a group stays listed long after its update expired. Also seeds from chat ids we already hold
+    and refreshes a batch, so one click gives a usable list on a fresh install."""
+    seeded = tg_chats.seed()
+    scanned = tg_chats.scan()
+    if scanned["error"]:
+        hook = tg.get_webhook_info() or {}
+        if hook.get("url"):
+            scanned["error"] += f" — a webhook is set ({hook['url']}), so scanning is disabled."
+        return JsonResponse({"ok": False, "error": scanned["error"], "seeded": seeded["added"]})
+    refreshed = tg_chats.refresh()
+    return JsonResponse({
+        "ok": True, "new": scanned["new"] + seeded["added"], "seen": scanned["seen"],
+        "checked": refreshed["checked"], "gone": refreshed["gone"],
+    })
+
+
+@superuser_required
+@require_POST
+def telegram_chats_refresh(request):
+    """Re-check known chats against Telegram (title, members, still a member?)."""
+    result = tg_chats.refresh(limit=tg_chats.REFRESH_BATCH)
+    if result["error"]:
+        messages.error(request, result["error"])
+    else:
+        gone = f", {result['gone']} no longer reachable" if result["gone"] else ""
+        messages.success(request, f"Checked {result['checked']} chat{'' if result['checked'] == 1 else 's'}{gone}.")
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_chats_recheck(request):
+    """AJAX: re-check one batch and report progress, so the page can loop until every chat is done.
+
+    `?started=<epoch milliseconds>` marks the pass: chats already checked since then are skipped,
+    so each call moves forward. (Epoch ms, not an ISO string — a "+05:30" offset decodes as a
+    space in a query string, which silently restarted the pass and made the loop run forever.)
+    Small batches keep every request quick and the progress honest.
+    """
+    try:
+        started = datetime.fromtimestamp(int(request.GET["started"]) / 1000, tz=dt_timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        started = timezone.now()
+    result = tg_chats.refresh(limit=RECHECK_BATCH, older_than=started)
+    if result["error"]:
+        return JsonResponse({"ok": False, "error": result["error"]})
+    return JsonResponse({
+        "ok": True, "checked": result["checked"], "gone": result["gone"],
+        "remaining": tg_chats.pending_recheck(started),
+    })
+
+
+@superuser_required
+@require_POST
+def telegram_chat_refresh_one(request, chat_pk):
+    """Re-check a single chat."""
+    chat = get_object_or_404(TelegramChat, id=chat_pk)
+    tg_chats.refresh(chat_ids=[chat.chat_id], limit=1)
+    chat.refresh_from_db()
+    if chat.last_error:
+        messages.warning(request, f"{chat.display_name}: {chat.last_error}")
+    else:
+        messages.success(request, f"{chat.display_name} is up to date ({chat.get_status_display().lower()}).")
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_chat_assign(request, chat_pk):
+    """Let a partner send to this chat (adds it to that partner's allow-list)."""
+    chat = get_object_or_404(TelegramChat, id=chat_pk)
+    partner_id = (request.POST.get("partner") or "").strip()
+    if not partner_id:
+        messages.error(request, "Pick a partner first.")
+        return redirect("mobile_telegram")
+    partner = get_object_or_404(AppPartner, id=partner_id)
+    _, created = PartnerTelegramChat.objects.get_or_create(
+        partner=partner, chat_id=chat.chat_id,
+        defaults={"label": chat.display_name[:120]},
+    )
+    if created:
+        messages.success(request, f"{partner.name} can now send to {chat.display_name}.")
+    else:
+        messages.info(request, f"{partner.name} could already send to {chat.display_name}.")
+    return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_chat_forget(request, chat_pk):
+    """Drop a chat from the registry (it comes back if the bot sees it again)."""
+    chat = get_object_or_404(TelegramChat, id=chat_pk)
+    name = chat.display_name
+    chat.delete()
+    messages.success(request, f"Removed {name} from the list.")
+    return redirect("mobile_telegram")
 
 
 @superuser_required
@@ -505,6 +621,122 @@ def telegram_test(request):
         messages.success(request, f"Sent to {chat_id} (message id {info}).")
     else:
         messages.error(request, f"Failed: {info}")
+    return redirect("mobile_telegram")
+
+
+# ------------------------------------------------------------------ Telegram inbox
+def _chat_row(chat, unread):
+    return {
+        "id": chat.id,
+        "chat_id": chat.chat_id,
+        "name": chat.display_name,
+        "type": chat.chat_type,
+        "status": chat.status,
+        "in_chat": chat.in_chat,
+        "members": chat.member_count,
+        "unread": unread,
+        "last_at": chat.last_message_at.isoformat() if chat.last_message_at else "",
+        "last_text": "",
+    }
+
+
+def _message_row(m):
+    return {
+        "id": m.id,
+        "message_id": m.message_id,
+        "dir": m.direction,
+        "from": m.from_name,
+        "text": m.text,
+        "media": m.media_label,
+        "reply_to": m.reply_to_text,
+        "at": m.sent_at.isoformat(),
+        "by": m.sent_by.get_username() if m.sent_by_id else "",
+    }
+
+
+@superuser_required
+def telegram_inbox(request):
+    """Conversations with every group and person the bot talks to."""
+    return render(request, "mobileapi/telegram_inbox.html", {
+        "live": telegram_hook.is_live(),
+        "keep_per_chat": AppConfig.load().telegram_keep_per_chat,
+    })
+
+
+@superuser_required
+def telegram_inbox_list(request):
+    """JSON: the conversation list, newest activity first."""
+    chats = list(TelegramChat.objects.all().order_by("-last_message_at", "-last_activity_at"))
+    last = {
+        m.chat_id: m for m in TelegramMessage.objects.filter(chat__in=chats).order_by("chat_id", "-sent_at", "-id")
+        .distinct("chat_id")
+    } if connection.features.can_distinct_on_fields else {}
+    rows = []
+    for chat in chats:
+        unread = chat.messages.filter(direction="in", sent_at__gt=chat.last_read_at).count() if chat.last_read_at \
+            else chat.messages.filter(direction="in").count()
+        row = _chat_row(chat, unread)
+        newest = last.get(chat.id) or chat.messages.order_by("-sent_at", "-id").first()
+        if newest:
+            row["last_text"] = ("You: " if newest.direction == "out" else "") + (newest.preview or "")
+        rows.append(row)
+    return JsonResponse({"ok": True, "chats": rows, "live": telegram_hook.is_live()})
+
+
+@superuser_required
+def telegram_inbox_thread(request, chat_pk):
+    """JSON: one conversation. `?since=<id>` returns only what is newer (used while polling)."""
+    chat = get_object_or_404(TelegramChat, id=chat_pk)
+    qs = chat.messages.select_related("sent_by").all()
+    since = request.GET.get("since")
+    if since and since.isdigit():
+        qs = qs.filter(id__gt=int(since))
+    messages_out = [_message_row(m) for m in qs]
+    # Opening (or polling) a thread marks it read.
+    TelegramChat.objects.filter(pk=chat.pk).update(last_read_at=timezone.now())
+    return JsonResponse({
+        "ok": True,
+        "chat": _chat_row(chat, 0),
+        "messages": messages_out,
+        "kept": AppConfig.load().telegram_keep_per_chat,
+    })
+
+
+@superuser_required
+@require_POST
+def telegram_inbox_send(request, chat_pk):
+    """Send a message to this chat and add it to the thread."""
+    chat = get_object_or_404(TelegramChat, id=chat_pk)
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (ValueError, TypeError):
+        payload = {}
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return JsonResponse({"ok": False, "error": "Type a message first."}, status=400)
+
+    ok, info = tg.send(chat.chat_id, text)
+    AppTelegramLog.objects.create(
+        partner=None, chat_id=chat.chat_id[:64], text=text,
+        status="sent" if ok else "failed", message_id=info if ok else "", error="" if ok else info,
+    )
+    if not ok:
+        return JsonResponse({"ok": False, "error": info}, status=502)
+    stored = tg_chats.store_outgoing(
+        chat, text, message_id=int(info) if str(info).isdigit() else None, sent_by=request.user,
+    )
+    return JsonResponse({"ok": True, "message": _message_row(stored)})
+
+
+@superuser_required
+@require_POST
+def telegram_live_toggle(request):
+    """Turn live delivery (webhook) on or off."""
+    if telegram_hook.is_live():
+        ok, message = telegram_hook.disable()
+    else:
+        ok, message = telegram_hook.enable(request)
+    messages.success(request, message) if ok else messages.error(request, message)
     return redirect("mobile_telegram")
 
 

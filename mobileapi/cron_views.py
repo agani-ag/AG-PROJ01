@@ -14,6 +14,7 @@ The push dispatcher sends AppReminder rows with delivery="cron". Those rows are 
 devices (see serializers.reminders_for), so the phone can't also fire them from a local alarm.
 """
 import hmac
+import logging
 import time
 from datetime import timedelta
 from functools import wraps
@@ -26,15 +27,25 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import fcm
+from . import telegram
+from . import telegram_chats
+from . import telegram_hook
 from .cleanup import run_cleanup
 from .models import AppDevice, AppReminder, CronLock
 from .serializers import reminder_tap_target
+
+logger = logging.getLogger(__name__)
 
 # Lock name for the push dispatcher (also read by the admin screen to show the last run).
 PUSH_JOB = "push_dispatch"
 
 # Lock name for the retention/cleanup job.
 CLEANUP_JOB = "cleanup"
+
+# The Telegram scan rides along on the push cron (see _telegram_tick). Small on purpose: the push
+# run owns the budget, and re-checking 3 chats a tick covers ~12 an hour at a 15-minute cadence.
+TELEGRAM_BUDGET_SECONDS = 8
+TELEGRAM_REFRESH_PER_RUN = 3
 
 # Rows claimed per run. The wall-clock budget below is the real limiter; this only keeps the
 # due-query bounded.
@@ -122,11 +133,50 @@ def dispatch_push(request):
         # would set off the cron service's alerting for nothing.
         return JsonResponse({"ok": True, "skipped": "locked"})
     try:
-        return JsonResponse(_dispatch(_batch_limit(request)))
+        result = _dispatch(_batch_limit(request))
+        # Housekeeping ride-along: keeps the Telegram chat list current without a second cron
+        # entry. Only when the push backlog is clear, and it can never fail the run. Pass
+        # ?telegram=0 to skip it.
+        if not result.get("remaining") and request.GET.get("telegram") != "0":
+            result["telegram"] = _telegram_tick()
+        return JsonResponse(result)
     except Exception as e:  # noqa: BLE001 — surface any failure to the cron service as 5xx
         return JsonResponse({"ok": False, "error": str(e)[:500]}, status=500)
     finally:
         CronLock.release(PUSH_JOB)
+
+
+def _telegram_tick():
+    """Read new Telegram activity and re-check a few chats, riding along on the push cron.
+
+    Telegram drops unread updates after about a day, so the queue has to be read regularly or a
+    group the bot was added to is never discovered. Push delivery is the job that matters here, so
+    this runs on a small budget, re-checks only a handful of chats per tick, and swallows every
+    failure — a Telegram outage must not turn the push cron red.
+    """
+    if not telegram.is_configured():
+        return {"skipped": "not configured"}
+    if telegram_hook.is_live():
+        # Live delivery owns the update queue; getUpdates would just return a 409 conflict.
+        # Chat details still need refreshing, so do only that.
+        refreshed = telegram_chats.refresh(limit=TELEGRAM_REFRESH_PER_RUN)
+        return {"mode": "webhook", "checked": refreshed["checked"], "gone": refreshed["gone"]}
+    started = time.monotonic()
+    try:
+        # Pure DB, no network: picks up chat ids we already hold (send log, partner allow-lists,
+        # our report chat) so the list is complete without anyone running a command after deploy.
+        seeded = telegram_chats.seed()["added"]
+        scanned = telegram_chats.scan()
+        if scanned["error"]:
+            return {"seeded": seeded, "error": scanned["error"][:200]}
+        out = {"new": scanned["new"], "seeded": seeded, "updates": scanned["updates"]}
+        if time.monotonic() - started < TELEGRAM_BUDGET_SECONDS:
+            refreshed = telegram_chats.refresh(limit=TELEGRAM_REFRESH_PER_RUN)
+            out["checked"], out["gone"] = refreshed["checked"], refreshed["gone"]
+        return out
+    except Exception as e:  # noqa: BLE001 — housekeeping must never break the push run
+        logger.warning("Telegram tick failed during push dispatch: %s", e)
+        return {"error": str(e)[:200]}
 
 
 # --------------------------------------------------------------------------- #

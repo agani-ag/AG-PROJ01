@@ -63,13 +63,34 @@
                        value="{{ cfg.telegram_admin_chat_id }}" autocomplete="off" spellcheck="false"
                        placeholder="e.g. -1001234567890">
                 <span class="help">Where <code>manage.py telegram_push</code> sends our own reports. Add the bot to that
-                    group first, then use <b>Discover chats</b> below to find its id.</span>
+                    group first, then use <b>Scan for chats</b> below to find its id.</span>
             </div>
         </form>
         {% if configured %}
         <div class="row">
             <button type="button" id="btn-verify" class="btn btn-sm">{% icon "circle-check" %}Verify connection</button>
             <span id="verify-out" class="small" role="status"></span>
+        </div>
+        <hr class="divider">
+        <div class="row-between">
+            <div>
+                <b>Incoming messages</b>
+                <p class="help">
+                    {% if live %}Live: Telegram sends each message here the moment it is posted.
+                    {% else %}Your push cron reads new messages every 15 minutes. Turn on live updates for instant delivery.{% endif %}
+                    Replies and group chatter show up in the inbox.
+                </p>
+            </div>
+            <span class="row gap-sm">
+                {% if live %}<span class="badge badge-success"><span class="dot"></span>Live</span>
+                {% else %}<span class="badge">Every 15 min</span>{% endif %}
+                <form method="post" action="{% url 'mobile_telegram_live' %}"
+                      {% if not live %}data-confirm="Turn on live updates?" data-confirm-text="Telegram will post every message to this server as it happens. The 15-minute cron scan stops while this is on." data-confirm-button="Turn on"{% endif %}>
+                    {% csrf_token %}
+                    <button class="btn btn-sm" type="submit">{% if live %}{% icon "zap" %}Turn off live{% else %}{% icon "zap" %}Turn on live{% endif %}</button>
+                </form>
+                <a class="btn btn-sm btn-primary" href="{% url 'mobile_telegram_inbox' %}">{% icon "messages-square" %}Open inbox</a>
+            </span>
         </div>
         {% endif %}
     </div>
@@ -94,30 +115,109 @@
                 <h3>To send to a group</h3>
                 <ol>
                     <li>Add <b>{% if cfg.telegram_bot_username %}@{{ cfg.telegram_bot_username }}{% else %}our bot{% endif %}</b> to the Telegram group.</li>
-                    <li>Click <b>Discover chats</b> below. The group appears with its chat id.</li>
+                    <li>Click <b>Scan for chats</b> below. The group appears in the list with its chat id.</li>
                     <li>Send that <code>chat_id</code> to <code>POST /partner/v1/telegram/send</code>.</li>
                 </ol>
                 <h3>To send to one person</h3>
                 <ol>
                     <li>The person opens the bot link or scans the QR code and taps <b>Start</b>.</li>
-                    <li>Click <b>Discover chats</b>. Their chat id appears.</li>
+                    <li>Click <b>Scan for chats</b>. They appear in the list below.</li>
                 </ol>
             </div>
         </div>
         <hr class="divider">
         <div class="row">
-            <button type="button" id="btn-discover" class="btn btn-sm">{% icon "search" %}Discover chats</button>
-            <span class="help">Shows chats the bot saw in the last ~24h (no webhook needed).</span>
+            <button type="button" id="btn-scan" class="btn btn-sm">{% icon "refresh-cw" %}Scan for chats</button>
+            <span class="help" id="scan-note">Checks Telegram for new groups and people, and updates the list below.</span>
         </div>
-        <div class="card" id="chats-card" hidden>
-            <div class="table-wrap">
-                <table class="table table-compact table-stack" id="chats-table">
-                    <thead><tr><th>Chat ID</th><th>Name / title</th><th>Type</th></tr></thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-        <div id="discover-empty" class="small muted" role="status"></div>
+    </div>
+</div>
+
+<!-- Chats this bot is in -->
+<div class="card">
+    <div class="card-head" style="flex-wrap:wrap">
+        {% icon "messages-square" %}<h2 style="flex:1 1 auto">Chats using this bot</h2>
+        {% if chats_live %}<span class="badge badge-success">{{ chats_live }} active</span>{% endif %}
+        {% if chats_gone %}<span class="badge badge-danger">{{ chats_gone }} unreachable</span>{% endif %}
+        <span class="small muted" id="recheck-progress" role="status"></span>
+        <form method="post" action="{% url 'mobile_telegram_chats_refresh' %}" id="recheckForm"
+              data-loop-url="{% url 'mobile_telegram_chats_recheck' %}">
+            {% csrf_token %}
+            <button class="btn btn-sm" type="submit" title="Re-check every chat: titles, people and membership">{% icon "rotate-cw" %}Re-check all</button>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table class="table table-stack">
+            <thead>
+                <tr>
+                    <th data-sort="text">Chat</th>
+                    <th>Chat ID</th>
+                    <th>Status</th>
+                    <th data-sort="num" class="t-right">People</th>
+                    <th>May send here</th>
+                    <th data-sort="text">Last activity</th>
+                    <th class="t-right"><span class="sr-only">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in chats %}
+                <tr>
+                    <td class="t-primary">
+                        <div class="t-cell-main">{{ c.display_name }}</div>
+                        <div class="t-cell-sub">{{ c.chat_type|default:"unknown type" }}{% if c.username %} &middot; @{{ c.username }}{% endif %}{% if c.added_by %} &middot; added by {{ c.added_by }}{% endif %}</div>
+                    </td>
+                    <td data-label="Chat ID" class="nowrap">
+                        <code>{{ c.chat_id }}</code>
+                        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-copy="{{ c.chat_id }}" title="Copy chat id" aria-label="Copy chat id">{% icon "copy" %}</button>
+                    </td>
+                    <td data-label="Status">
+                        {% if c.in_chat %}<span class="badge badge-success"><span class="dot"></span>{{ c.get_status_display }}</span>
+                        {% elif c.status == "unknown" %}<span class="badge" title="Not checked yet">Unknown</span>
+                        {% else %}<span class="badge badge-danger" title="{{ c.last_error }}"><span class="dot"></span>{{ c.get_status_display }}</span>{% endif %}
+                    </td>
+                    <td data-label="People" class="t-right" data-value="{{ c.member_count|default:0 }}">{{ c.member_count|default:"&mdash;" }}</td>
+                    <td data-label="May send here">
+                        {% for name in c.partner_names %}<span class="badge badge-accent">{{ name }}</span> {% empty %}<span class="small muted">Nobody</span>{% endfor %}
+                        {% if partners %}
+                        <form method="post" action="{% url 'mobile_telegram_chat_assign' c.id %}" class="row gap-sm" style="margin-top:6px;flex-wrap:nowrap">
+                            {% csrf_token %}
+                            <select name="partner" class="input input-sm" style="width:auto;max-width:150px" aria-label="Allow a partner to send here">
+                                <option value="">Allow partner&hellip;</option>
+                                {% for p in partners %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+                            </select>
+                            <button class="btn btn-sm btn-ghost" type="submit" title="Allow">{% icon "plus" %}</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                    <td data-label="Last activity" data-value="{{ c.last_activity_at|date:'c' }}" class="nowrap small">
+                        {% if c.last_activity_at %}{{ c.last_activity_at|ago }}{% else %}<span class="muted">&mdash;</span>{% endif %}
+                        {% if c.last_checked_at %}<div class="muted">checked {{ c.last_checked_at|ago }}</div>{% endif %}
+                    </td>
+                    <td class="t-right nowrap">
+                        <form method="post" action="{% url 'mobile_telegram_chat_refresh' c.id %}" style="display:inline">
+                            {% csrf_token %}
+                            <button class="btn btn-ghost btn-icon btn-sm" type="submit" title="Re-check this chat" aria-label="Re-check {{ c.display_name }}">{% icon "rotate-cw" %}</button>
+                        </form>
+                        <form method="post" action="{% url 'mobile_telegram_chat_forget' c.id %}" style="display:inline"
+                              data-confirm="Remove {{ c.display_name }} from the list?"
+                              data-confirm-text="It comes back if the bot sees this chat again. Partner permissions are not changed."
+                              data-confirm-button="Remove" data-danger>
+                            {% csrf_token %}
+                            <button class="btn btn-ghost btn-icon btn-sm" type="submit" title="Forget this chat" aria-label="Forget {{ c.display_name }}">{% icon "x" %}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr data-empty><td colspan="7"><div class="empty">{% icon "messages-square" %}<b>No chats found yet</b><span>Add the bot to a group (or send it a message), then press <b>Scan for chats</b> above.</span></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="table-foot" style="display:block">
+        Telegram has no &ldquo;list my chats&rdquo; call, so this list is built from what the bot sees: new activity
+        found by scanning, chats we have sent to before, and re-checks. Your existing push cron
+        (<code>/cron/push/dispatch</code>, every 15 minutes) scans automatically &mdash; Telegram forgets unread
+        activity after about a day, so that keeps the list complete without a second schedule.
     </div>
 </div>
 
@@ -270,54 +370,67 @@
         });
     }
 
-    var discBtn = document.getElementById("btn-discover");
-    if (discBtn) {
-        discBtn.addEventListener("click", function () {
-            var card = document.getElementById("chats-card");
-            var tbody = document.querySelector("#chats-table tbody");
-            var empty = document.getElementById("discover-empty");
-            empty.textContent = "Looking…"; tbody.innerHTML = ""; card.hidden = true;
-            discBtn.setAttribute("aria-busy", "true");
-            fetch("{% url 'mobile_telegram_discover' %}").then(function (r) { return r.json(); }).then(function (d) {
-                var chats = (d.chats || []);
-                if (!chats.length) {
-                    empty.textContent = "No recent chats. Add the bot to a group (or tap Start), send a message there, then try again.";
-                    return;
-                }
-                empty.textContent = "";
-                chats.forEach(function (c) {
-                    var tr = document.createElement("tr");
-                    var idCell = document.createElement("td");
-                    idCell.className = "nowrap t-primary";
-                    var code = document.createElement("code");
-                    code.textContent = c.chat_id;
-                    var copyBtn = document.createElement("button");
-                    copyBtn.type = "button";
-                    copyBtn.className = "btn btn-ghost btn-icon btn-sm";
-                    copyBtn.title = "Copy chat id";
-                    copyBtn.setAttribute("aria-label", "Copy chat id");
-                    copyBtn.dataset.copy = String(c.chat_id);
-                    copyBtn.innerHTML = App.icon("copy");
-                    idCell.appendChild(code);
-                    idCell.appendChild(document.createTextNode(" "));
-                    idCell.appendChild(copyBtn);
-                    var titleCell = document.createElement("td");
-                    titleCell.dataset.label = "Name / title";
-                    titleCell.textContent = c.title || "";
-                    var typeCell = document.createElement("td");
-                    typeCell.dataset.label = "Type";
-                    var badge = document.createElement("span");
-                    badge.className = "badge";
-                    badge.textContent = c.type;
-                    typeCell.appendChild(badge);
-                    tr.appendChild(idCell); tr.appendChild(titleCell); tr.appendChild(typeCell);
-                    tbody.appendChild(tr);
+
+    // "Re-check all": walk the whole list a batch at a time, reporting progress. Without JS the
+    // form just posts once and does a single batch.
+    var recheckForm = document.getElementById("recheckForm");
+    if (recheckForm && window.App && App.fetchJSON) {
+        recheckForm.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var btn = recheckForm.querySelector("button");
+            var out = document.getElementById("recheck-progress");
+            var url = recheckForm.dataset.loopUrl + "?started=" + Date.now();
+            var done = 0, gone = 0, rounds = 0;
+            btn.setAttribute("aria-busy", "true");
+
+            function finish(message, type) {
+                btn.removeAttribute("aria-busy");
+                if (message) { App.toast(message, type || "info"); }
+                out.textContent = "Done — reloading…";
+                setTimeout(function () { window.location.reload(); }, 700);
+            }
+
+            (function step() {
+                if (++rounds > 100) { finish("Stopped after 1000 chats.", "warning"); return; }
+                App.fetchJSON(url, { method: "POST" }).then(function (d) {
+                    if (!d.ok) { btn.removeAttribute("aria-busy"); out.textContent = ""; App.toast(d.error, "error"); return; }
+                    done += d.checked;
+                    gone += d.gone;
+                    out.textContent = d.remaining
+                        ? "Checked " + done + ", " + d.remaining + " to go…"
+                        : "Checked " + done + "…";
+                    // d.checked === 0 with work left would spin forever; stop instead.
+                    if (d.remaining > 0 && d.checked > 0) { step(); return; }
+                    if (d.remaining > 0) { finish("Stopped with " + d.remaining + " chat(s) unchecked.", "warning"); return; }
+                    finish("Re-checked " + done + " chat" + (done === 1 ? "" : "s")
+                           + (gone ? ", " + gone + " unreachable" : "") + ".", gone ? "warning" : "success");
+                }).catch(function (err) {
+                    btn.removeAttribute("aria-busy");
+                    out.textContent = "";
+                    App.toast(err.message || "Re-check failed.", "error");
                 });
-                card.hidden = false;
-            }).catch(function () { empty.textContent = "Request failed."; })
-              .then(function () { discBtn.removeAttribute("aria-busy"); });
+            })();
         });
     }
+
+    var scanBtn = document.getElementById("btn-scan");
+    if (scanBtn) {
+        scanBtn.addEventListener("click", function () {
+            var note = document.getElementById("scan-note");
+            note.textContent = "Checking Telegram\u2026";
+            scanBtn.setAttribute("aria-busy", "true");
+            App.fetchJSON("{% url 'mobile_telegram_discover' %}", { method: "POST" }).then(function (d) {
+                if (!d.ok) { note.textContent = d.error; return; }
+                note.textContent = d.new
+                    ? d.new + " new chat" + (d.new === 1 ? "" : "s") + " found \u2014 refreshing\u2026"
+                    : "No new chats \u2014 refreshing\u2026";
+                setTimeout(function () { window.location.reload(); }, 800);
+            }).catch(function (err) {
+                note.textContent = err.message || "Scan failed.";
+            }).then(function () { scanBtn.removeAttribute("aria-busy"); });
+        });
+    }
+
 })();
 </script>
 {% endblock %}

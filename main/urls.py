@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from mobileapi import views as mobile_views
+from mobileapi import telegram_hook as mobile_views_hook
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -31,5 +32,7 @@ urlpatterns = [
     path('chat/', include('mobileapi.chat_urls')),       # user↔admin web chat (opened in the app WebView)
     # Public privacy policy page — use this URL in Play Console → App content.
     path('privacy/', mobile_views.privacy_policy, name='privacy_policy'),
+    # Telegram live delivery (secret in the path + a secret header; see telegram_hook.py).
+    path('telegram/hook/<str:secret>/', mobile_views_hook.webhook, name='telegram_webhook'),
     path('', include('syncup.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

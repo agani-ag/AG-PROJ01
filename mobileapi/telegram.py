@@ -125,6 +125,97 @@ def get_me(token=None):
     return None
 
 
+def bot_id():
+    """Our bot's numeric user id — it's the part of the token before the colon, no API call."""
+    return _token().split(":")[0]
+
+
+def get_chat(chat_id, token=None):
+    """Current details for one chat (title, type, @username). Returns (chat_dict, error_string).
+
+    Works for any chat id the bot is in, even one we never saw an update from — this is how a chat
+    we only know from the send log gets a name."""
+    data = _call("getChat", {"chat_id": str(chat_id)}, token=token, timeout=10.0)
+    if data is None:
+        return None, "Telegram unreachable"
+    if not data.get("ok"):
+        return None, (data.get("description") or "Telegram error")[:200]
+    return data["result"], ""
+
+
+def get_chat_member_count(chat_id, token=None):
+    """How many people are in the chat, or None (private chats and errors)."""
+    data = _call("getChatMemberCount", {"chat_id": str(chat_id)}, token=token, timeout=10.0)
+    if data and data.get("ok"):
+        return data.get("result")
+    return None
+
+
+def get_bot_status(chat_id, token=None):
+    """Our bot's membership in the chat: member / administrator / creator / left / kicked.
+
+    A private chat has no membership, so a successful getChat there means "we can write to it".
+    """
+    data = _call("getChatMember", {"chat_id": str(chat_id), "user_id": bot_id()},
+                 token=token, timeout=10.0)
+    if data and data.get("ok"):
+        return (data.get("result") or {}).get("status") or "unknown"
+    return "unknown"
+
+
+def set_webhook(url, secret_token, allowed_updates=None, token=None):
+    """Point Telegram at our hook. Returns (ok, error_string)."""
+    payload = {"url": url, "secret_token": secret_token, "drop_pending_updates": False}
+    if allowed_updates:
+        payload["allowed_updates"] = allowed_updates
+    data = _call("setWebhook", payload, token=token, timeout=10.0)
+    if data is None:
+        return False, "Telegram unreachable"
+    if not data.get("ok"):
+        return False, (data.get("description") or "Telegram error")[:200]
+    return True, ""
+
+
+def delete_webhook(token=None):
+    """Stop live delivery, so getUpdates works again. Returns (ok, error_string)."""
+    data = _call("deleteWebhook", {"drop_pending_updates": False}, token=token, timeout=10.0)
+    if data is None:
+        return False, "Telegram unreachable"
+    if not data.get("ok"):
+        return False, (data.get("description") or "Telegram error")[:200]
+    return True, ""
+
+
+def get_webhook_info(token=None):
+    """Webhook state. A webhook and getUpdates are mutually exclusive — if one is set, scanning
+    for chats returns a 409 from Telegram, so the page needs to say so."""
+    data = _call("getWebhookInfo", None, http="get", token=token, timeout=10.0)
+    if data and data.get("ok"):
+        return data["result"]
+    return None
+
+
+def get_updates(offset=0, token=None, limit=100):
+    """Raw getUpdates. Returns (updates_list, error_string).
+
+    `offset` confirms everything before it, so each scan only sees what is new. my_chat_member
+    tells us when the bot is added to or removed from a group; chat_member has to be asked for
+    explicitly (and only arrives where the bot is an admin)."""
+    payload = {
+        "limit": limit,
+        "timeout": 0,
+        "allowed_updates": ["message", "channel_post", "my_chat_member", "chat_member"],
+    }
+    if offset:
+        payload["offset"] = offset
+    data = _call("getUpdates", payload, token=token, timeout=12.0)
+    if data is None:
+        return [], "Telegram unreachable"
+    if not data.get("ok"):
+        return [], (data.get("description") or "Telegram error")[:200]
+    return data.get("result", []), ""
+
+
 def discover_chats(token=None):
     """Return the distinct chats our bot has recently seen (getUpdates), so the admin/partner can
     copy a chat id after adding the bot to a group or starting it. Only reflects the last ~24h and

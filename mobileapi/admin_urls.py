@@ -43,6 +43,18 @@ urlpatterns = [
     path("telegram/partner/<int:partner_id>/chats/add", v.telegram_partner_chat_add, name="mobile_telegram_chat_add"),
     path("telegram/chats/<int:chat_pk>/delete", v.telegram_partner_chat_delete, name="mobile_telegram_chat_delete"),
     path("telegram/partner/<int:partner_id>/allow-any", v.telegram_partner_allow_any, name="mobile_telegram_allow_any"),
+    # The registry of chats our bot is in
+    path("telegram/chats/refresh", v.telegram_chats_refresh, name="mobile_telegram_chats_refresh"),
+    path("telegram/chats/recheck", v.telegram_chats_recheck, name="mobile_telegram_chats_recheck"),
+    path("telegram/chats/<int:chat_pk>/refresh", v.telegram_chat_refresh_one, name="mobile_telegram_chat_refresh"),
+    path("telegram/chats/<int:chat_pk>/assign", v.telegram_chat_assign, name="mobile_telegram_chat_assign"),
+    path("telegram/chats/<int:chat_pk>/forget", v.telegram_chat_forget, name="mobile_telegram_chat_forget"),
+    # Telegram inbox: conversations with groups and people
+    path("telegram/inbox", v.telegram_inbox, name="mobile_telegram_inbox"),
+    path("telegram/inbox/list.json", v.telegram_inbox_list, name="mobile_telegram_inbox_list"),
+    path("telegram/inbox/<int:chat_pk>/messages.json", v.telegram_inbox_thread, name="mobile_telegram_inbox_thread"),
+    path("telegram/inbox/<int:chat_pk>/send", v.telegram_inbox_send, name="mobile_telegram_inbox_send"),
+    path("telegram/live", v.telegram_live_toggle, name="mobile_telegram_live"),
 
     # Radio (live channel registry + AudioSync ingest key)
     path("radio", v.radio_page, name="mobile_radio"),

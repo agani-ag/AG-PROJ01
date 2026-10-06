@@ -24,6 +24,7 @@ from .models import (
     AppDevice,
     AppNotificationLog,
     AppReminder,
+    TelegramMessage,
 )
 
 
@@ -51,6 +52,12 @@ def run_cleanup(vacuum=False):
         stats["chat_messages"] = (
             AppChatMessage.objects.filter(created_at__lt=cutoff).exclude(unread).delete()[0]
         )
+
+    if cfg.cleanup_chat_days:
+        # Telegram conversations follow the same window as in-app chat. The per-chat rolling
+        # window (telegram_keep_per_chat) is applied on every new message, in telegram_chats.trim.
+        cutoff = now - timedelta(days=cfg.cleanup_chat_days)
+        stats["telegram_messages"] = TelegramMessage.objects.filter(sent_at__lt=cutoff).delete()[0]
 
     if cfg.cleanup_inactive_device_days:
         cutoff = now - timedelta(days=cfg.cleanup_inactive_device_days)

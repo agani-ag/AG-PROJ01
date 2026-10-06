@@ -284,6 +284,129 @@ class PartnerTelegramChat(models.Model):
         return f"{self.partner.name} → {self.label or self.chat_id}"
 
 
+# =============== Every chat our Telegram bot is in (the registry) ===============
+class TelegramChat(models.Model):
+    """A group, channel or person our bot has been seen in — "who is using this bot".
+
+    Telegram has no "list my chats" call. A bot only learns a chat exists when an update arrives
+    (it was added to a group, someone messaged or mentioned it) or when we ask getChat about an id
+    we already hold. So this table is built from three sources and kept here permanently:
+
+      * scan  — getUpdates, run from the Telegram page and the push cron;
+      * seed  — chat ids we already know from the send log and the partner allow-lists;
+      * refresh — getChat / getChatMember on a known id, which also tells us whether the bot is
+                  still a member or was removed.
+    """
+
+    STATUS = [
+        ("member", "Member"),
+        ("administrator", "Administrator"),
+        ("creator", "Owner"),
+        ("restricted", "Restricted"),
+        ("left", "Left"),
+        ("kicked", "Removed"),
+        ("unknown", "Unknown"),
+    ]
+    IN_CHAT = ("member", "administrator", "creator", "restricted")
+
+    chat_id = models.CharField(max_length=64, unique=True)
+    title = models.CharField(max_length=200, blank=True, default="")
+    chat_type = models.CharField(max_length=20, blank=True, default="")  # private/group/supergroup/channel
+    username = models.CharField(max_length=64, blank=True, default="")   # public @name, if any
+    member_count = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS, default="unknown")
+    # Who added our bot (from the my_chat_member update), for groups we saw being set up.
+    added_by = models.CharField(max_length=120, blank=True, default="")
+    note = models.CharField(max_length=200, blank=True, default="")
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)   # last update seen from this chat
+    last_checked_at = models.DateTimeField(null=True, blank=True)    # last getChat refresh
+    last_error = models.CharField(max_length=200, blank=True, default="")
+    # Conversation state for the inbox.
+    last_message_at = models.DateTimeField(null=True, blank=True)
+    last_read_at = models.DateTimeField(null=True, blank=True)        # when an admin last opened it
+
+    class Meta:
+        ordering = ["-last_activity_at", "title", "chat_id"]
+        indexes = [models.Index(fields=["-last_activity_at"]), models.Index(fields=["status"])]
+
+    @property
+    def display_name(self):
+        return self.title or (f"@{self.username}" if self.username else self.chat_id)
+
+    @property
+    def in_chat(self):
+        """True while the bot can still post here."""
+        return self.status in self.IN_CHAT
+
+    @property
+    def is_private(self):
+        return self.chat_type == "private"
+
+    def __str__(self):
+        return f"{self.display_name} ({self.chat_id})"
+
+
+# =============== One Telegram message, in or out ===============
+class TelegramMessage(models.Model):
+    """A message our bot received or sent, kept so the console can show a conversation.
+
+    A bot cannot fetch history — the Bot API has no such call — so a message exists here only if
+    it was captured as it arrived (webhook, or the cron's getUpdates). Two trim rules keep this
+    from growing: at most `telegram_keep_per_chat` messages per chat, and nothing older than the
+    chat retention window (see cleanup.py). `reply_to_text` holds a snippet of what was replied
+    to, so a reply still reads correctly after its parent has been trimmed away.
+    """
+
+    DIRECTION = [("in", "Received"), ("out", "Sent")]
+    # Labels for the kinds of attachment we recognise (detection order lives in telegram_chats.py).
+    MEDIA_LABELS = {
+        "photo": "Photo", "video": "Video", "document": "Document", "voice": "Voice message",
+        "audio": "Audio", "sticker": "Sticker", "animation": "GIF", "video_note": "Video note",
+        "location": "Location", "contact": "Contact", "poll": "Poll",
+    }
+
+    chat = models.ForeignKey(TelegramChat, on_delete=models.CASCADE, related_name="messages")
+    message_id = models.BigIntegerField(null=True, blank=True)  # Telegram's id within the chat
+    direction = models.CharField(max_length=3, choices=DIRECTION)
+    from_name = models.CharField(max_length=120, blank=True, default="")   # who wrote it (incoming)
+    from_user_id = models.CharField(max_length=32, blank=True, default="")
+    text = models.TextField(blank=True, default="")
+    media_type = models.CharField(max_length=20, blank=True, default="")   # photo, document, voice…
+    reply_to_message_id = models.BigIntegerField(null=True, blank=True)
+    reply_to_text = models.CharField(max_length=200, blank=True, default="")
+    sent_at = models.DateTimeField()                                        # Telegram's timestamp
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Which admin sent it from the console (outgoing only).
+    sent_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+
+    class Meta:
+        ordering = ["sent_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chat", "message_id"],
+                condition=models.Q(message_id__isnull=False),
+                name="uniq_telegram_chat_message",
+            ),
+        ]
+        indexes = [models.Index(fields=["chat", "-sent_at"])]
+
+    @property
+    def media_label(self):
+        if not self.media_type:
+            return ""
+        return self.MEDIA_LABELS.get(self.media_type, self.media_type.replace("_", " ").capitalize())
+
+    @property
+    def preview(self):
+        return self.text or self.media_label
+
+    def __str__(self):
+        return f"{self.direction} {self.chat_id}: {self.text[:40]}"
+
+
 # =============== Partner connection (a partner's access key on an account) ===============
 PARTNER_CONNECTION_STATUS = [
     ("not_enabled", "Not enabled"),
@@ -627,6 +750,18 @@ class AppConfig(models.Model):
     telegram_admin_chat_id = models.CharField(
         max_length=64, blank=True, default="",
         help_text="Chat id for our own reports and alerts, e.g. -1001234567890.",
+    )
+    # getUpdates is a queue: each call confirms everything before this id, so the next scan only
+    # returns what's new. Telegram drops unconfirmed updates after ~24h, hence the cron scan.
+    telegram_updates_offset = models.BigIntegerField(default=0)
+    # Live mode: Telegram posts each message to /telegram/hook/<secret> instead of us polling.
+    # Blank secret = polling (the push cron reads getUpdates).
+    telegram_webhook_secret = models.CharField(max_length=64, blank=True, default="")
+    # Rolling window: how many messages to keep per chat (0 = no cap — the age window still applies).
+    telegram_keep_per_chat = models.PositiveIntegerField(
+        default=50,
+        help_text="Messages kept per Telegram chat. Older ones are trimmed. 0 = keep all "
+                  "(the retention window below still applies).",
     )
 
     # ---- Live radio (AudioSync broadcasters register their public stream URL here) ----

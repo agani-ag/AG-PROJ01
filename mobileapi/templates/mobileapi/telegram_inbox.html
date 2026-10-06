@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% block title %}Telegram inbox{% endblock %}
+{% block page_class %}page-tginbox{% endblock %}
+
+{% block head %}
+<style>
+    /* Full-height inbox under the top bar; list and thread scroll on their own. */
+    .page.page-tginbox { max-width: none; padding: 0; gap: 0;
+        height: calc(100vh - var(--top-h)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px));
+        min-height: 460px; }
+    .page-tginbox .flash { padding: 12px 16px 0; }
+    .tg-inbox { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr);
+        overflow: hidden; border: 0; border-radius: 0; box-shadow: none; }
+
+    .tg-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+    .tg-list-head { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+    .tg-list-head .input { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
+    .tg-convs { flex: 1; min-height: 0; overflow-y: auto; }
+    .tg-conv { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px 10px 9px;
+        border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--border);
+        background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+    .tg-conv:hover { background: var(--surface-2); }
+    .tg-conv.active { background: var(--accent-soft); border-left-color: var(--accent); }
+    .tg-avatar { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto; display: grid; place-items: center;
+        background: var(--surface-2); color: var(--muted); }
+    .tg-avatar .icon { width: 17px; height: 17px; }
+    .tg-conv-main { flex: 1; min-width: 0; }
+    .tg-conv-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .tg-conv-name { font-weight: 600; }
+    .tg-conv-prev { font-size: 12.5px; color: var(--muted); }
+    .tg-conv.unread .tg-conv-name, .tg-conv.unread .tg-conv-prev { font-weight: 700; color: var(--text); }
+    .tg-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger);
+        color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; }
+
+    .tg-thread { display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+    .tg-thread-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+        border-bottom: 1px solid var(--border); background: var(--surface); }
+    .tg-back { display: none; }
+    .tg-thread-head .who { flex: 1; min-width: 0; }
+    .tg-thread-head .who b { display: block; }
+    .tg-msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .tg-row { display: flex; }
+    .tg-row.out { justify-content: flex-end; }
+    .tg-bubble { max-width: min(560px, 78%); padding: 8px 12px; border-radius: 14px; background: var(--surface);
+        border: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; }
+    .tg-row.out .tg-bubble { background: var(--accent); border-color: var(--accent); color: var(--on-accent);
+        border-bottom-right-radius: 5px; }
+    .tg-row.in .tg-bubble { border-bottom-left-radius: 5px; }
+    .tg-who { font-size: 12px; font-weight: 600; color: var(--accent-ink); margin-bottom: 2px; }
+    .tg-reply { border-left: 3px solid currentColor; opacity: .75; padding: 2px 0 2px 8px; margin-bottom: 4px;
+        font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+    .tg-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .tg-row.out .tg-meta { text-align: right; color: inherit; opacity: .8; }
+    .tg-media { display: inline-flex; align-items: center; gap: 6px; font-style: italic; opacity: .85; }
+
+    .tg-composer { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border);
+        background: var(--surface); padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .tg-composer textarea { flex: 1; resize: none; max-height: 120px; min-height: 40px; }
+    .tg-empty { flex: 1; display: grid; place-items: center; padding: 24px; }
+
+    @media (max-width: 760px) {
+        .tg-inbox { grid-template-columns: minmax(0, 1fr); }
+        .tg-inbox .tg-thread { display: none; }
+        .tg-inbox.thread-open .tg-list { display: none; }
+        .tg-inbox.thread-open .tg-thread { display: flex; }
+        .tg-back { display: inline-flex; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card tg-inbox" id="tgInbox">
+    <!-- Conversations -->
+    <section class="tg-list" aria-label="Telegram conversations">
+        <div class="tg-list-head">
+            <div class="row-between">
+                <b>Telegram inbox</b>
+                <span class="row gap-sm">
+                    {% if live %}<span class="badge badge-success" title="Messages arrive instantly"><span class="dot"></span>Live</span>
+                    {% else %}<span class="badge" title="The push cron reads messages every 15 minutes">Every 15 min</span>{% endif %}
+                    <a class="btn btn-ghost btn-icon btn-sm" href="{% url 'mobile_telegram' %}" title="Telegram settings" aria-label="Telegram settings">{% icon "settings" %}</a>
+                </span>
+            </div>
+            <label class="input-icon">
+                <span class="sr-only">Search chats</span>
+                {% icon "search" %}
+                <input class="input" type="search" id="tgSearch" placeholder="Search a group or person" autocomplete="off">
+            </label>
+        </div>
+        <div class="tg-convs" id="tgConvs">
+            <div class="empty"><span class="spinner"></span></div>
+        </div>
+    </section>
+
+    <!-- Thread -->
+    <section class="tg-thread" aria-label="Conversation">
+        <div class="tg-thread-head" id="tgHead" hidden>
+            <button class="btn btn-ghost btn-icon tg-back" type="button" id="tgBack" aria-label="Back to conversations">{% icon "arrow-left" %}</button>
+            <span class="tg-avatar" id="tgAvatar">{% icon "messages-square" %}</span>
+            <div class="who truncate"><b id="tgName"></b><span class="small muted" id="tgSub"></span></div>
+        </div>
+        <div class="tg-msgs" id="tgMsgs">
+            <div class="tg-empty">
+                <div class="empty">
+                    {% icon "messages-square" %}
+                    <b>Pick a conversation</b>
+                    <span>Groups and people your bot talks to appear on the left.</span>
+                </div>
+            </div>
+        </div>
+        <form class="tg-composer" id="tgComposer" hidden>
+            <textarea class="input" id="tgText" rows="1" placeholder="Write a message…" autocomplete="off"></textarea>
+            <button class="btn btn-primary btn-icon" type="submit" aria-label="Send" title="Send (Enter)">{% icon "send" %}</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    var LIST_URL = "{% url 'mobile_telegram_inbox_list' %}";
+    var THREAD_URL = "{% url 'mobile_telegram_inbox_thread' 0 %}";
+    var SEND_URL = "{% url 'mobile_telegram_inbox_send' 0 %}";
+    var KEPT = {{ keep_per_chat|default:0 }};
+    var threadUrl = function (id) { return THREAD_URL.replace("/0/", "/" + id + "/"); };
+    var sendUrl = function (id) { return SEND_URL.replace("/0/", "/" + id + "/"); };
+
+    var inbox = document.getElementById("tgInbox"), convs = document.getElementById("tgConvs");
+    var msgs = document.getElementById("tgMsgs"), composer = document.getElementById("tgComposer");
+    var head = document.getElementById("tgHead"), nameEl = document.getElementById("tgName");
+    var subEl = document.getElementById("tgSub"), textEl = document.getElementById("tgText");
+    var search = document.getElementById("tgSearch");
+    var chats = [], current = null, lastId = 0, listTimer = null, threadTimer = null;
+
+    function icon(name) { return App.icon(name); }
+    function when(iso) {
+        if (!iso) return "";
+        var d = new Date(iso), now = new Date();
+        var sameDay = d.toDateString() === now.toDateString();
+        return sameDay ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                       : d.toLocaleDateString([], { day: "2-digit", month: "short" });
+    }
+    function chatIcon(type) {
+        return type === "private" ? "user-round" : (type === "channel" ? "radio-tower" : "users");
+    }
+
+    /* ---- conversation list ---- */
+    function drawList() {
+        var q = (search.value || "").trim().toLowerCase();
+        var shown = chats.filter(function (c) { return !q || (c.name + " " + c.chat_id).toLowerCase().indexOf(q) !== -1; });
+        convs.innerHTML = "";
+        if (!shown.length) {
+            convs.innerHTML = '<div class="empty small">' + (q ? "No chat matches." : "No conversations yet.") + "</div>";
+            return;
+        }
+        shown.forEach(function (c) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "tg-conv" + (c.unread ? " unread" : "") + (current && current.id === c.id ? " active" : "");
+            btn.innerHTML =
+                '<span class="tg-avatar">' + icon(chatIcon(c.type)) + "</span>" +
+                '<span class="tg-conv-main">' +
+                  '<span class="tg-conv-top"><span class="tg-conv-name truncate"></span><span class="small faint nowrap"></span></span>' +
+                  '<span class="tg-conv-top"><span class="tg-conv-prev truncate"></span></span>' +
+                "</span>";
+            btn.querySelector(".tg-conv-name").textContent = c.name;
+            btn.querySelectorAll(".small")[0].textContent = when(c.last_at);
+            btn.querySelector(".tg-conv-prev").textContent = c.last_text || (c.in_chat ? "No messages yet" : "Bot removed");
+            if (c.unread) {
+                var b = document.createElement("span");
+                b.className = "tg-badge"; b.textContent = c.unread;
+                btn.querySelector(".tg-conv-main").lastElementChild.appendChild(b);
+            }
+            btn.addEventListener("click", function () { open(c); });
+            convs.appendChild(btn);
+        });
+    }
+
+    function loadList() {
+        return App.fetchJSON(LIST_URL).then(function (d) {
+            chats = d.chats || [];
+            drawList();
+        }).catch(function () { /* a dropped poll is not worth a toast */ });
+    }
+
+    /* ---- thread ---- */
+    function bubble(m) {
+        var row = document.createElement("div");
+        row.className = "tg-row " + (m.dir === "out" ? "out" : "in");
+        var b = document.createElement("div");
+        b.className = "tg-bubble";
+        if (m.dir === "in" && m.from && current && current.type !== "private") {
+            var who = document.createElement("div"); who.className = "tg-who"; who.textContent = m.from; b.appendChild(who);
+        }
+        if (m.reply_to) {
+            var r = document.createElement("div"); r.className = "tg-reply"; r.textContent = m.reply_to; b.appendChild(r);
+        }
+        if (m.media) {
+            var med = document.createElement("div"); med.className = "tg-media";
+            med.innerHTML = icon("image"); med.appendChild(document.createTextNode(" " + m.media));
+            b.appendChild(med);
+        }
+        if (m.text) {
+            var t = document.createElement("div"); t.textContent = m.text; b.appendChild(t);
+        }
+        var meta = document.createElement("div");
+        meta.className = "tg-meta";
+        meta.textContent = when(m.at) + (m.by ? " · " + m.by : "");
+        b.appendChild(meta);
+        row.appendChild(b);
+        return row;
+    }
+
+    function atBottom() { return msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80; }
+
+    function loadThread(reset) {
+        if (!current) return Promise.resolve();
+        var url = threadUrl(current.id) + (reset ? "" : "?since=" + lastId);
+        return App.fetchJSON(url).then(function (d) {
+            if (reset) { msgs.innerHTML = ""; lastId = 0; }
+            var stick = reset || atBottom();
+            (d.messages || []).forEach(function (m) {
+                msgs.appendChild(bubble(m));
+                lastId = Math.max(lastId, m.id);
+            });
+            if (reset && !msgs.children.length) {
+                msgs.innerHTML = '<div class="tg-empty"><div class="empty">' + icon("messages-square") +
+                    "<b>No messages yet</b><span>Messages appear here as they arrive" +
+                    (KEPT ? " (the last " + KEPT + " are kept)" : "") + ". Say something below.</span></div></div>";
+            }
+            if (stick) msgs.scrollTop = msgs.scrollHeight;
+            var c = d.chat || {};
+            subEl.textContent = [c.type, c.members ? c.members + " people" : "", c.in_chat ? "" : "bot removed"]
+                .filter(Boolean).join(" · ");
+            composer.hidden = !c.in_chat;
+        }).catch(function () { /* ignore a dropped poll */ });
+    }
+
+    function open(c) {
+        current = c;
+        lastId = 0;
+        inbox.classList.add("thread-open");
+        head.hidden = false;
+        nameEl.textContent = c.name;
+        document.getElementById("tgAvatar").innerHTML = icon(chatIcon(c.type));
+        c.unread = 0;
+        drawList();
+        loadThread(true);
+        clearInterval(threadTimer);
+        threadTimer = setInterval(function () { loadThread(false); }, 4000);
+    }
+
+    document.getElementById("tgBack").addEventListener("click", function () {
+        inbox.classList.remove("thread-open");
+        current = null;
+        clearInterval(threadTimer);
+    });
+    search.addEventListener("input", drawList);
+
+    /* ---- sending ---- */
+    composer.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var text = textEl.value.trim();
+        if (!text || !current) return;
+        var btn = composer.querySelector("button");
+        btn.setAttribute("aria-busy", "true");
+        App.fetchJSON(sendUrl(current.id), { method: "POST", body: { text: text } }).then(function (d) {
+            textEl.value = "";
+            textEl.style.height = "";
+            if (d.message) {
+                if (msgs.querySelector(".tg-empty")) msgs.innerHTML = "";
+                msgs.appendChild(bubble(d.message));
+                lastId = Math.max(lastId, d.message.id);
+                msgs.scrollTop = msgs.scrollHeight;
+            }
+            loadList();
+        }).catch(function (err) {
+            App.toast(err.message || "Couldn't send that.", "error");
+        }).then(function () { btn.removeAttribute("aria-busy"); });
+    });
+
+    textEl.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); composer.requestSubmit(); }
+    });
+    textEl.addEventListener("input", function () {
+        textEl.style.height = "auto";
+        textEl.style.height = Math.min(textEl.scrollHeight, 120) + "px";
+    });
+
+    loadList();
+    listTimer = setInterval(loadList, 10000);
+    window.addEventListener("beforeunload", function () { clearInterval(listTimer); clearInterval(threadTimer); });
+})();
+</script>
+{% endblock %}
