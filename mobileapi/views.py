@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 import requests
+from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
 from django.db.models import Q
@@ -201,11 +202,22 @@ def account_link_delete(request, link_id):
 
 
 # --------------------------------------------------------------------------- #
-# 3b. Partner push — a website (opened in the app) pushes to THIS exact user.
-#     Called by the partner's backend with the window.SyncUp.token we injected.
+# 3b. Site push — a website pushes to THIS exact user. Its backend sends the user's
+#     window.SyncUp.token (the app puts it on every page) plus the SyncUp notify key.
 # --------------------------------------------------------------------------- #
 PARTNER_NOTIFY_RATE = 20         # max notifications per account per minute
 PARTNER_NOTIFY_MAX_BATCH = 200   # messages per request in the batch form
+
+
+def _notify_key_error(key):
+    """None when `key` is the SyncUp notify key (settings.SYNCUP_NOTIFY_KEY), else (code, text).
+    Every page gets the token, so the key is what limits pushing to the sites it was given to."""
+    expected = getattr(settings, "SYNCUP_NOTIFY_KEY", "") or ""
+    if not expected:
+        return 503, "Notifications by token aren't set up on this server"
+    if not isinstance(key, str) or not hmac.compare_digest(key.encode(), expected.encode()):
+        return 403, "A valid key is required"
+    return None
 
 
 def _partner_notify_check(item):
@@ -229,25 +241,25 @@ def _partner_notify_check(item):
         payload = signing.loads(token, salt=PARTNER_NOTIFY_SALT)
     except signing.BadSignature:
         return None, (403, "Invalid token")
-    # The link must still exist, be active, and still have notifications enabled (uncheck = revoke).
-    link = (
-        AppLink.objects.filter(
-            id=payload.get("link_id"), account_id=payload.get("account_id"),
-            is_active=True, notify_token_enabled=True,
-        )
-        .select_related("account").first()
-    )
-    if not link or not link.account or not link.account.is_active:
-        return None, (403, "Token revoked or link unavailable")
+    account_id = payload.get("account_id") if isinstance(payload, dict) else None
+    account = AppAccount.objects.filter(id=account_id, is_active=True).first() if account_id else None
+    if not account:
+        return None, (403, "Token revoked or account unavailable")
+    # An older per-link token (app v6): its link must still be there and active.
+    link = None
+    if payload.get("link_id"):
+        link = AppLink.objects.filter(id=payload["link_id"], account=account, is_active=True).first()
+        if not link:
+            return None, (403, "Token revoked or link unavailable")
     # Simple per-account rate limit, counted per message.
-    rk = f"pnotify:{link.account_id}"
+    rk = f"pnotify:{account.id}"
     count = cache.get(rk, 0)
     if count >= PARTNER_NOTIFY_RATE:
         return None, (429, "Rate limit exceeded, try again shortly")
     cache.set(rk, count + 1, 60)
-    # Tapping opens the provided https url, or the link itself.
-    open_url = url if url.lower().startswith("https://") else link.url
-    return {"link": link, "title": title, "body": body, "open_url": open_url}, None
+    # Tapping opens the provided https url, else the link (older tokens), else just the app.
+    open_url = url if url.lower().startswith("https://") else (link.url if link else "")
+    return {"account": account, "link": link, "title": title, "body": body, "open_url": open_url}, None
 
 
 def _account_device_tokens(account_ids):
@@ -264,32 +276,35 @@ def _account_device_tokens(account_ids):
 
 def _partner_push(message, tokens, save_log=True):
     link = message["link"]
+    data = {"link_url": message["open_url"], "link_title": link.title if link else ""} if message["open_url"] else None
     return fcm.push(
         tokens, message["title"][:100], message["body"][:200], source="partner_token",
-        account=link.account, link=link,
-        data={"link_url": message["open_url"], "link_title": link.title}, save_log=save_log,
+        account=message["account"], link=link, data=data, save_log=save_log,
     )
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def partner_notify(request):
-    """Push to SyncUp users from a partner website, authorised by the window.SyncUp.token the app
-    injects into that site. No API key: the signed token IS the credential, and unticking the
-    link's notification box revokes it.
+    """Push to a SyncUp user from a website: its backend sends the user's window.SyncUp.token (the
+    app puts it on every page) together with the SyncUp notify key, which SyncUp gives only to the
+    sites it knows.
 
-      single  {"token", "title", "body"?, "url"?}      -> {"success": true, "delivered": N}
-      batch   {"messages": [ {...same fields...} ]}    -> one result per message, in order
+      single  {"key", "token", "title", "body"?, "url"?}       -> {"success": true, "delivered": N}
+      batch   {"key", "messages": [ {token, title, ...} ]}     -> one result per message, in order
     """
     data = json_body(request)
     if not isinstance(data, dict):
         return _bad("Invalid JSON")
+    key_err = _notify_key_error(data.get("key"))
+    if key_err:
+        return _bad(key_err[1], status=key_err[0])
     if "messages" in data:
         return _partner_notify_batch(data["messages"])
     message, err = _partner_notify_check(data)
     if err:
         return _bad(err[1], status=err[0])
-    account_id = message["link"].account_id
+    account_id = message["account"].id
     tokens = _account_device_tokens([account_id]).get(account_id, [])
     return JsonResponse({"success": True, "delivered": _partner_push(message, tokens).delivered})
 
@@ -308,13 +323,13 @@ def _partner_notify_batch(items):
             results[i] = {"index": i, "code": err[0], "success": False, "message": err[1]}
         else:
             ready.append((i, message))
-    tokens = _account_device_tokens({m["link"].account_id for _, m in ready})
+    tokens = _account_device_tokens({m["account"].id for _, m in ready})
 
     # Send concurrently and wait for all of them before responding. Log rows come back unsaved
     # and are written together afterwards, keeping the log writes on the request thread.
     def _send(job):
         i, message = job
-        return i, _partner_push(message, tokens.get(message["link"].account_id, []), save_log=False)
+        return i, _partner_push(message, tokens.get(message["account"].id, []), save_log=False)
 
     if ready:
         logs = []

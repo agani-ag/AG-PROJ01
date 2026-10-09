@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}Home shortcuts{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Home shortcuts</h1>
+        <p class="page-sub">The shortcuts on every user's home page, signed in or not, in categories. Drag {% icon "grip-vertical" "icon-sm" %} to set the order. Changes reach the apps the next time they open. {{ shown }} shortcut{{ shown|pluralize }} shown now.</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn" data-open-dialog="#bulk-add">{% icon "list-checks" %}Bulk add</button>
+        <button type="button" class="btn" data-open-dialog="#new-category">{% icon "folder" %}Category</button>
+        {% if categories %}<a href="{% url 'mobile_home_shortcut_add' %}" class="btn btn-primary">{% icon "plus" %}Add shortcut</a>{% endif %}
+    </div>
+</div>
+
+<div class="stack" id="categories" data-sort="categories">
+    {% for cat in categories %}
+    <div class="card cat" data-id="{{ cat.id }}">
+        <div class="card-head">
+            <span class="grip" draggable="true" title="Drag to reorder">{% icon "grip-vertical" %}</span>
+            <h2>{{ cat.name }} <span class="muted count">{{ cat.total }} shortcut{{ cat.total|pluralize }}{% if cat.live != cat.total %} · {{ cat.live }} on{% endif %}</span></h2>
+            {% if cat.is_active %}<span class="badge badge-success"><span class="dot"></span>Shown</span>{% else %}<span class="badge">Hidden</span>{% endif %}
+            <div class="row gap-sm actions">
+                <a class="btn btn-sm" href="{% url 'mobile_home_shortcut_add' %}?category={{ cat.id }}">{% icon "plus" %}Add</a>
+                <button type="button" class="btn btn-sm" data-rename="{{ cat.id }}" data-name="{{ cat.name }}">{% icon "pencil" %}Rename</button>
+                <form method="POST" action="{% url 'mobile_shortcut_category_toggle' cat.id %}">{% csrf_token %}
+                    <button class="btn btn-sm" type="submit">{% if cat.is_active %}{% icon "eye-off" %}Hide{% else %}{% icon "eye" %}Show{% endif %}</button>
+                </form>
+                <form method="POST" action="{% url 'mobile_shortcut_category_delete' cat.id %}"
+                      data-confirm="Delete the category “{{ cat.name }}”?" data-confirm-text="Its {{ cat.total }} shortcut{{ cat.total|pluralize }} disappear from every home page."
+                      data-confirm-button="Delete category" data-danger>{% csrf_token %}
+                    <button class="btn btn-sm btn-icon text-danger" type="submit" title="Delete category" aria-label="Delete {{ cat.name }}">{% icon "trash" %}</button>
+                </form>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table class="table sc-table">
+                <colgroup><col class="c-grip"><col class="c-title"><col><col class="c-state"><col class="c-actions"></colgroup>
+                <tbody data-sort="shortcuts" data-category="{{ cat.id }}">
+                    {% for s in cat.shortcuts.all %}
+                    <tr data-id="{{ s.id }}"{% if not s.is_active %} class="off"{% endif %}>
+                        <td class="grip-cell"><span class="grip" draggable="true" title="Drag to reorder">{% icon "grip-vertical" "icon-sm" %}</span></td>
+                        <td class="t-primary"><span class="letter">{{ s.title|first|upper }}</span><a href="{% url 'mobile_home_shortcut_edit' s.id %}">{{ s.title }}</a></td>
+                        <td><span class="truncate muted url-cell" title="{{ s.url }}">{{ s.url }}</span></td>
+                        <td>
+                            <form method="POST" action="{% url 'mobile_home_shortcut_toggle' s.id %}">{% csrf_token %}
+                                <button class="badge-btn" type="submit" title="Turn {% if s.is_active %}off{% else %}on{% endif %}">
+                                    {% if s.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>{% else %}<span class="badge">Off</span>{% endif %}
+                                </button>
+                            </form>
+                        </td>
+                        <td class="t-right">
+                            <div class="row gap-sm actions">
+                                <a href="{% url 'mobile_home_shortcut_edit' s.id %}" class="btn btn-sm">{% icon "pencil" %}Edit</a>
+                                <form method="POST" action="{% url 'mobile_home_shortcut_delete' s.id %}"
+                                      data-confirm="Delete “{{ s.title }}”?" data-confirm-text="It disappears from every home page." data-confirm-button="Delete" data-danger>{% csrf_token %}
+                                    <button class="btn btn-sm btn-icon text-danger" type="submit" title="Delete" aria-label="Delete {{ s.title }}">{% icon "trash" %}</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr class="empty-row"><td colspan="5" class="muted">No shortcuts yet — drag one here, or use Add.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% empty %}
+    <div class="card"><div class="empty">{% icon "globe" %}<b>No home shortcuts yet</b><span class="muted">Start with a category, or paste many at once with Bulk add.</span>
+        <button type="button" class="btn btn-primary btn-sm" data-open-dialog="#bulk-add">{% icon "list-checks" %}Bulk add</button></div></div>
+    {% endfor %}
+</div>
+
+<dialog class="modal" id="new-category" aria-labelledby="new-category-title">
+    <form method="POST" action="{% url 'mobile_shortcut_category_add' %}">{% csrf_token %}
+        <div class="modal-head">{% icon "folder" %}<h2 id="new-category-title">New category</h2>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button></div>
+        <div class="modal-content">
+            <div class="field"><label class="label" for="cat-name">Name</label>
+                <input type="text" name="name" id="cat-name" class="input" maxlength="60" placeholder="News, Shopping, Government…" required></div>
+        </div>
+        <div class="modal-foot bordered"><button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="submit" class="btn btn-primary">{% icon "plus" %}Add category</button></div>
+    </form>
+</dialog>
+
+<dialog class="modal" id="rename-category" aria-labelledby="rename-title">
+    <form method="POST" id="rename-form" action="">{% csrf_token %}
+        <div class="modal-head">{% icon "pencil" %}<h2 id="rename-title">Rename category</h2>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button></div>
+        <div class="modal-content">
+            <div class="field"><label class="label" for="rename-name">Name</label>
+                <input type="text" name="name" id="rename-name" class="input" maxlength="60" required></div>
+        </div>
+        <div class="modal-foot bordered"><button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="submit" class="btn btn-primary">{% icon "check" %}Save</button></div>
+    </form>
+</dialog>
+
+<dialog class="modal modal-wide" id="bulk-add" aria-labelledby="bulk-title">
+    <form method="POST" action="{% url 'mobile_home_shortcuts_bulk' %}">{% csrf_token %}
+        <div class="modal-head">{% icon "list-checks" %}<h2 id="bulk-title">Bulk add shortcuts</h2>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button></div>
+        <div class="modal-content">
+            <p class="muted" style="margin:0">One per line: <b>Category, Title, Address</b> (or paste three columns from a spreadsheet). New categories are created; an address a category already has gets the new title.</p>
+            <textarea name="lines" id="bulk-lines" class="input mono" rows="10" spellcheck="false"
+                      placeholder="Banking, SBI, https://onlinesbi.sbi&#10;Travel, IRCTC, https://www.irctc.co.in&#10;News, The Hindu, thehindu.com"></textarea>
+            <div class="row gap-sm" id="bulk-preview"></div>
+        </div>
+        <div class="modal-foot bordered"><button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="submit" class="btn btn-primary" id="bulk-submit" disabled>{% icon "plus" %}Add shortcuts</button></div>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block head %}
+<style>
+    .cat .card-head h2 .count { font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+    .cat .card-head .actions { flex-wrap: nowrap; }
+    .cat .card-head .actions form { display: inline; }
+    .grip { cursor: grab; color: var(--muted); display: inline-flex; padding: 2px; border-radius: 6px; }
+    .grip:hover { background: var(--surface-2); color: var(--text); }
+    .grip-cell { width: 34px; }
+    .letter { display: inline-flex; width: 22px; height: 22px; border-radius: 6px; align-items: center; justify-content: center;
+              background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 700; margin-right: 10px; vertical-align: middle; }
+    tr.off td { opacity: .55; }
+    tr.dragging, .cat.dragging { opacity: .4; }
+    tbody[data-sort].drop-target { outline: 2px dashed var(--accent); outline-offset: -2px; }
+    .badge-btn { border: 0; background: none; padding: 0; cursor: pointer; }
+    /* Same column widths in every category, so the lists line up. */
+    .sc-table { table-layout: fixed; }
+    .sc-table .c-grip { width: 50px; } .sc-table .c-title { width: 30%; } .sc-table .c-state { width: 110px; } .sc-table .c-actions { width: 150px; }
+    .sc-table td.t-primary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .url-cell { display: block; max-width: 100%; }
+    .actions { justify-content: flex-end; flex-wrap: nowrap; }
+    .modal-wide { width: min(640px, 94vw); }
+    textarea.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.5; margin-top: 10px; min-height: 180px; }
+    #bulk-preview { margin-top: 10px; flex-wrap: wrap; }
+    @media (max-width: 640px) { .sc-table { table-layout: auto; } .url-cell { max-width: 160px; } .cat .card-head { flex-wrap: wrap; } }
+</style>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    "use strict";
+    var reorderUrl = "{% url 'mobile_home_shortcuts_reorder' %}";
+    function save(body) {
+        return App.fetchJSON(reorderUrl, { method: "POST", body: body }).then(function (r) {
+            if (r && r.ok === false) throw new Error(r.error || "Couldn't save the order");
+            App.toast("Order saved");
+        }).catch(function (e) { App.toast(e.message || "Couldn't save the order", "danger"); setTimeout(function () { location.reload(); }, 900); });
+    }
+
+    // ---- drag categories (by their grip)
+    var cats = document.getElementById("categories");
+    var draggingCat = null, draggingRow = null;
+    cats.addEventListener("dragstart", function (e) {
+        var grip = e.target.closest && e.target.closest(".grip");
+        if (!grip) return;
+        var row = grip.closest("tr[data-id]");
+        if (row) { draggingRow = row; row.classList.add("dragging"); }
+        else { draggingCat = grip.closest(".cat"); draggingCat.classList.add("dragging"); }
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", "");
+    });
+    cats.addEventListener("dragover", function (e) {
+        if (draggingCat) {
+            var over = e.target.closest && e.target.closest(".cat");
+            if (!over || over === draggingCat) return;
+            e.preventDefault();
+            var r = over.getBoundingClientRect();
+            cats.insertBefore(draggingCat, (e.clientY - r.top) > r.height / 2 ? over.nextSibling : over);
+        } else if (draggingRow) {
+            var body = e.target.closest && e.target.closest("tbody[data-sort]");
+            if (!body) return;
+            e.preventDefault();
+            var tr = e.target.closest("tr[data-id]");
+            var empty = body.querySelector(".empty-row");
+            if (empty) empty.remove();
+            if (!tr) { body.appendChild(draggingRow); return; }
+            if (tr === draggingRow) return;
+            var rr = tr.getBoundingClientRect();
+            body.insertBefore(draggingRow, (e.clientY - rr.top) > rr.height / 2 ? tr.nextSibling : tr);
+        }
+    });
+    cats.addEventListener("dragend", function () {
+        if (draggingCat) {
+            draggingCat.classList.remove("dragging");
+            draggingCat = null;
+            save({ kind: "categories", ids: [].map.call(cats.querySelectorAll(".cat"), function (c) { return c.dataset.id; }) });
+        } else if (draggingRow) {
+            draggingRow.classList.remove("dragging");
+            var body = draggingRow.closest("tbody[data-sort]");
+            draggingRow = null;
+            save({ kind: "shortcuts", category: body.dataset.category,
+                   ids: [].map.call(body.querySelectorAll("tr[data-id]"), function (t) { return t.dataset.id; }) });
+        }
+    });
+
+    // ---- rename a category (one dialog, filled per category)
+    document.addEventListener("click", function (e) {
+        var b = e.target.closest && e.target.closest("[data-rename]");
+        if (!b) return;
+        var form = document.getElementById("rename-form");
+        form.action = "{% url 'mobile_shortcut_category_rename' 0 %}".replace("/0/", "/" + b.dataset.rename + "/");
+        document.getElementById("rename-name").value = b.dataset.name;
+        document.getElementById("rename-category").showModal();
+    });
+
+    // ---- bulk add: live count of what the lines will do
+    var ta = document.getElementById("bulk-lines"), prev = document.getElementById("bulk-preview"), submit = document.getElementById("bulk-submit");
+    var known = {{ category_names_json|safe }};
+    function looksLikeUrl(s) { return /^(https?:\/\/)?[^\s\/,]+\.[^\s,]{2,}/i.test(s); }
+    ta.addEventListener("input", function () {
+        var ok = 0, bad = 0, cats = {};
+        ta.value.split(/\r?\n/).forEach(function (line) {
+            line = line.trim();
+            if (!line || line[0] === "#") return;
+            var parts = (line.indexOf("\t") >= 0 ? line.split("\t") : line.split(",")).map(function (p) { return p.trim(); }).filter(Boolean);
+            if (parts.length < 2 || !looksLikeUrl(parts[parts.length - 1])) { bad++; return; }
+            ok++;
+            var c = parts[0];
+            if (known.map(function (k) { return k.toLowerCase(); }).indexOf(c.toLowerCase()) < 0) cats[c.toLowerCase()] = c;
+        });
+        var newCats = Object.keys(cats).map(function (k) { return cats[k]; });
+        prev.innerHTML = (ok ? '<span class="badge badge-success"><span class="dot"></span>' + ok + ' shortcut' + (ok === 1 ? '' : 's') + '</span>' : '') +
+            (newCats.length ? '<span class="badge">' + newCats.length + ' new categor' + (newCats.length === 1 ? 'y' : 'ies') + ': ' + newCats.map(function (n) { return n.replace(/[<>&]/g, ''); }).join(', ') + '</span>' : '') +
+            (bad ? '<span class="badge badge-warning">' + bad + ' line' + (bad === 1 ? '' : 's') + ' skipped: no address</span>' : '');
+        submit.disabled = ok === 0;
+        submit.lastChild.textContent = ok ? "Add " + ok + " shortcut" + (ok === 1 ? "" : "s") : "Add shortcuts";
+    });
+})();
+</script>
+{% endblock %}

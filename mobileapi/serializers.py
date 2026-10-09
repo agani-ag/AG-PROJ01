@@ -4,11 +4,18 @@ from django.db.models import Q
 
 from .models import AppLink, AppReminder, PartnerConnection
 
-# Salt for the per-link "partner notify" token injected as window.SyncUp.token.
+# Salt for the notification token the app puts on pages as window.SyncUp.token.
 PARTNER_NOTIFY_SALT = "syncup-partner-notify"
 
 
+def make_account_token(account):
+    """The user's notification token. App v7 puts it on every page in every tab; a site pushes to
+    this user by sending it with the SyncUp notify key (POST /app/v1/partner/notify)."""
+    return signing.dumps({"account_id": account.id}, salt=PARTNER_NOTIFY_SALT)
+
+
 def make_notify_token(link):
+    """The older per-link token: app v6 puts it on that link's own tab only. Still accepted."""
     return signing.dumps({"account_id": link.account_id, "link_id": link.id}, salt=PARTNER_NOTIFY_SALT)
 
 
@@ -21,6 +28,7 @@ def account_dict(account):
         "phone": account.phone or "",
         "username": account.username or "",
         "source": account.source,
+        "notify_token": make_account_token(account),
     }
 
 
@@ -35,9 +43,9 @@ def link_dict(link):
         # SyncUp (the admin). Older app versions ignore these.
         "source": "partner" if link.partner_id else "admin",
         "source_name": link.partner.name if link.partner_id else "",
-        # Non-empty only when the link opts in AND belongs to a user — the partner token is
-        # per-user, so general (account-less) links never carry one.
-        "notify_token": make_notify_token(link) if (link.notify_token_enabled and link.account_id) else "",
+        # For app v6, which puts it on this link's tab (v7 uses the account's token on every page).
+        # Per-user, so general (account-less) links never carry one.
+        "notify_token": make_notify_token(link) if link.account_id else "",
     }
 
 

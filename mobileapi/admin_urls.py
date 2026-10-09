@@ -2,6 +2,7 @@
 from django.urls import path
 
 from . import admin_insights as insights
+from . import admin_shortcuts as sc
 from . import admin_views as v
 
 urlpatterns = [
@@ -26,6 +27,19 @@ urlpatterns = [
     path("general-links/<int:link_id>/edit", v.general_link_edit, name="mobile_general_link_edit"),
 
     # Verification test tool (send OTP / code / number prompts to a user)
+    # Home shortcuts: the app's home page catalogue (for everyone)
+    path("home-shortcuts", sc.home_shortcuts, name="mobile_home_shortcuts"),
+    path("home-shortcuts/add", sc.shortcut_add, name="mobile_home_shortcut_add"),
+    path("home-shortcuts/<int:shortcut_id>/edit", sc.shortcut_edit, name="mobile_home_shortcut_edit"),
+    path("home-shortcuts/<int:shortcut_id>/toggle", sc.shortcut_toggle, name="mobile_home_shortcut_toggle"),
+    path("home-shortcuts/<int:shortcut_id>/delete", sc.shortcut_delete, name="mobile_home_shortcut_delete"),
+    path("home-shortcuts/categories/add", sc.category_add, name="mobile_shortcut_category_add"),
+    path("home-shortcuts/categories/<int:category_id>/rename", sc.category_rename, name="mobile_shortcut_category_rename"),
+    path("home-shortcuts/categories/<int:category_id>/toggle", sc.category_toggle, name="mobile_shortcut_category_toggle"),
+    path("home-shortcuts/categories/<int:category_id>/delete", sc.category_delete, name="mobile_shortcut_category_delete"),
+    path("home-shortcuts/reorder", sc.reorder, name="mobile_home_shortcuts_reorder"),
+    path("home-shortcuts/bulk", sc.bulk_add, name="mobile_home_shortcuts_bulk"),
+
     path("verify-test", v.action_test, name="mobile_action_test"),
 
     # Partners (B2B provisioning API)

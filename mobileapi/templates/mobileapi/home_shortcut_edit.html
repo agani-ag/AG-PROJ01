@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}Edit shortcut{% else %}Add shortcut{% endif %}{% endblock %}
+{% block page_class %}page-narrow{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <a class="back" href="{% url 'mobile_home_shortcuts' %}">{% icon "arrow-left" "icon-sm" %}Home shortcuts</a>
+        <h1>{% if is_edit %}Edit shortcut{% else %}Add shortcut{% endif %}</h1>
+        <p class="page-sub">Shown on every user's home page. Each phone fetches the site's icon itself.</p>
+    </div>
+</div>
+
+<form method="POST" class="stack">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-head">{% icon "globe" %}<h2>Shortcut</h2></div>
+        <div class="card-body form">
+            <div class="field{% if form.title.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.title.id_for_label }}">Title</label>
+                {{ form.title }}
+                <span class="help">Short — it sits under the icon (about 12 letters show).</span>
+                {% for e in form.title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.url.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.url.id_for_label }}">Address</label>
+                {{ form.url }}
+                {% for e in form.url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            <div class="field{% if form.category.errors %} invalid{% endif %}">
+                <label class="label" for="{{ form.category.id_for_label }}">Category</label>
+                {{ form.category }}
+                {% for e in form.category.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
+            {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body" style="padding-block:4px">
+            <div class="switch-row">
+                <div class="text"><b>Active</b><span class="help">Off: hidden on every home page, kept here.</span></div>
+                <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
+            </div>
+        </div>
+    </div>
+
+    <div class="row gap-sm" style="justify-content:flex-end">
+        <a class="btn" href="{% url 'mobile_home_shortcuts' %}">Cancel</a>
+        <button type="submit" class="btn btn-primary">{% icon "check" %}{% if is_edit %}Save{% else %}Add shortcut{% endif %}</button>
+    </div>
+</form>
+{% endblock %}

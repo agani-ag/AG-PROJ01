@@ -7,7 +7,7 @@ from django import forms
 from django.utils import timezone
 
 from .identity import normalize_email, normalize_phone, normalize_username
-from .models import AppAccount, AppConfig, AppLink, AppReminder
+from .models import AppAccount, AppConfig, AppLink, AppReminder, HomeShortcut, ShortcutCategory
 
 
 def _style(fields):
@@ -87,8 +87,7 @@ class AppAccountForm(forms.ModelForm):
 class AppLinkForm(forms.ModelForm):
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "is_active",
-                  "notify_token_enabled"]
+        fields = ["title", "url", "description", "icon", "is_active"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -457,4 +456,26 @@ class ReminderForm(forms.ModelForm):
         url = (self.cleaned_data.get("custom_url") or "").strip()
         if url and not url.lower().startswith("https://"):
             raise forms.ValidationError("Custom URL must be HTTPS (the in-app browser blocks non-secure URLs).")
+        return url
+
+
+class HomeShortcutForm(forms.ModelForm):
+    """One home-page shortcut: title, address, category, on/off. Order is set by dragging on the list."""
+
+    class Meta:
+        model = HomeShortcut
+        fields = ["title", "url", "category", "is_active"]
+        labels = {"url": "Address"}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style(self.fields)
+        self.fields["category"].queryset = ShortcutCategory.objects.all()
+        self.fields["category"].empty_label = None
+
+    def clean_url(self):
+        from .home_shortcuts import normalize_url
+        url = normalize_url(self.cleaned_data.get("url"))
+        if not url:
+            raise forms.ValidationError("Enter a web address, like https://www.example.com")
         return url

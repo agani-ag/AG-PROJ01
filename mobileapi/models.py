@@ -582,12 +582,6 @@ class AppLink(models.Model):
     description = models.CharField(max_length=200, null=True, blank=True)
     icon = models.CharField(max_length=50, null=True, blank=True, choices=APP_ICON_CHOICES)
     is_active = models.BooleanField(default=True)
-    # When on, the app injects window.SyncUp={token} into this page so the site can push
-    # notifications to this exact user (via POST /app/v1/partner/notify). Uncheck to revoke.
-    notify_token_enabled = models.BooleanField(
-        default=False,
-        help_text="Inject a SyncUp notification token (window.SyncUp.token) so this site can push to this user.",
-    )
     # A partner's own key for this link (their system's id). Unique per account, so a partner can
     # replace-by-key: upserting a user's link with the same key updates it instead of duplicating.
     external_id = models.CharField(max_length=128, null=True, blank=True)
@@ -1199,3 +1193,49 @@ class SyncItem(models.Model):
 
     def __str__(self):
         return f"{self.account_id} · {self.kind} · {self.key[:12]}"
+
+
+# =============== Home shortcuts (the app's home page, for everyone) ===============
+class ShortcutCategory(models.Model):
+    """A group of home-page shortcuts ("News", "Shopping"), in `position` order. Hidden ones aren't sent."""
+    name = models.CharField(max_length=60, unique=True)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "name"]
+
+    def save(self, *args, **kwargs):
+        self.name = (self.name or "").strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class HomeShortcut(models.Model):
+    """One shortcut on every user's home page, signed in or not. The app fetches the site's icon itself."""
+    category = models.ForeignKey(ShortcutCategory, on_delete=models.CASCADE, related_name="shortcuts")
+    title = models.CharField(max_length=80)
+    url = models.URLField(max_length=500)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "title"]
+        constraints = [
+            # One address once per category: bulk add updates the title of an address it already has.
+            models.UniqueConstraint(fields=["category", "url"], name="uniq_home_shortcut_category_url"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.title = (self.title or "").strip()
+        self.url = (self.url or "").strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} ({self.category})"

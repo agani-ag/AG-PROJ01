@@ -156,6 +156,10 @@ WEBRTC_TURN_CRED = os.getenv("WEBRTC_TURN_CRED", "")
 # Shared secret for the /cron/ endpoints called by the external cron service. Sent as an
 # X-Cron-Key header (or ?key= for services that can't set headers). Unset = endpoints closed.
 CRON_KEY = os.getenv("CRON_KEY")
+
+# The SyncUp notify key: a site must send it with a user's window.SyncUp.token to push
+# (POST /app/v1/partner/notify). Give it only to sites you know; change it to cut them all off.
+SYNCUP_NOTIFY_KEY = os.getenv("SYNCUP_NOTIFY_KEY", "")
 # How often that service calls /cron/push/dispatch. Bounds how late a server-sent push can be,
 # and is the floor for a "Repeat N times" push. Change the service's schedule and this together.
 CRON_DISPATCH_INTERVAL_MINUTES = int(os.getenv("CRON_DISPATCH_INTERVAL_MINUTES", "15"))

@@ -65,13 +65,6 @@
                 <div class="text"><b>Active</b><span class="help">Inactive links are hidden in the app.</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
-            <div class="switch-row">
-                <div class="text">
-                    <b>Inject SyncUp notification token</b>
-                    <span class="help">Lets this site push notifications to this user. The page reads <code>window.SyncUp.token</code> and its backend POSTs to <code>/app/v1/partner/notify</code>. Turn off to revoke.</span>
-                </div>
-                <label class="switch">{{ form.notify_token_enabled }}<span class="track"></span><span class="sr-only">Inject SyncUp notification token</span></label>
-            </div>
         </div>
     </div>
 
