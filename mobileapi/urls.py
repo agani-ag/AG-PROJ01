@@ -6,6 +6,7 @@ from . import radio
 from . import account_views
 from . import browser_sync
 from . import home_shortcuts
+from . import tv_station
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -36,6 +37,7 @@ urlpatterns = [
     path("chat/unread", views.chat_unread, name="app_chat_unread"),
     path("config", views.config, name="app_config"),
     path("shortcuts", home_shortcuts.catalog, name="app_shortcuts"),  # home page catalogue, no sign-in
+    path("tv-station", tv_station.catalog, name="app_tv_station"),  # live TV catalogue, no sign-in
     # Partner action / verification prompts shown on the phone
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),

@@ -1239,3 +1239,52 @@ class HomeShortcut(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.category})"
+
+
+# =============== TV station (live TV channels, sourced from iptv-org) ===============
+class TvCategory(models.Model):
+    """A group of channels ("News", "India"), in `position` order. Hidden ones aren't sent."""
+    name = models.CharField(max_length=60, unique=True)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "name"]
+        verbose_name_plural = "TV categories"
+
+    def save(self, *args, **kwargs):
+        self.name = (self.name or "").strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class TvChannel(models.Model):
+    """One live-TV channel, seeded from iptv-org (management command seed_tv_channels)."""
+    category = models.ForeignKey(TvCategory, on_delete=models.CASCADE, related_name="channels")
+    source_id = models.CharField(max_length=100, blank=True, default="")  # iptv-org channel id, for idempotent reseeding
+    title = models.CharField(max_length=120)
+    logo_url = models.URLField(max_length=500, blank=True, default="")
+    stream_url = models.URLField(max_length=700)
+    country = models.CharField(max_length=4, blank=True, default="")
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "title"]
+        constraints = [
+            # Same channel once per category: reseeding updates the existing row instead of duplicating it.
+            models.UniqueConstraint(fields=["category", "source_id"], name="uniq_tv_channel_category_source"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.title = (self.title or "").strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.title} ({self.category})"

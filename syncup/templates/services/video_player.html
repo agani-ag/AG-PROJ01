@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}Video player{% endblock %}
+{% block title %}TV station{% endblock %}
 {% block page_class %}page-wide{% endblock %}
 
 {% block head %}
@@ -33,15 +33,25 @@
   .queue-main { flex: 1; min-width: 0; }
   .queue-title { font-size: 13px; font-weight: 600; }
   .queue-item.active .queue-title { color: var(--accent-ink); }
+  .queue-item.hidden-ch { opacity: .5; }
   .src-tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+  #queueCard .card-head { gap: 8px; }
+  #queueCard .tabs { border-bottom: 0; flex: 1 1 auto; }
+  #tvPane { display: none; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+  #tvCatHead { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
+  #tvCatHead .muted { font-size: 12.5px; }
+  .chip-btn { cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
+  .chip-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+  .chip-btn.cat-off { opacity: .5; }
+  #tvChips { padding: 2px 6px 10px; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div class="titles">
-    <h1>Video player</h1>
-    <p class="page-sub">Paste a link: YouTube · Vimeo · MP4/WebM · HLS</p>
+    <h1>TV station</h1>
+    <p class="page-sub">Paste a link (YouTube · Vimeo · MP4/WebM · HLS), or browse the live-TV catalogue seeded from iptv-org.</p>
   </div>
 </div>
 
@@ -69,14 +79,24 @@
     </div>
   </div>
 
-  <!-- Queue -->
+  <!-- Queue / TV station -->
   <div class="card" id="queueCard">
     <div class="card-head">
-      {% icon "list-video" %}<h2>Queue <span class="badge" id="queueCount">0</span></h2>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tabQueueBtn" aria-selected="true" data-tab="queue">{% icon "list-video" "icon" %}Queue <span class="badge" id="queueCount">0</span></button>
+        <button type="button" role="tab" id="tabTvBtn" aria-selected="false" data-tab="tv">{% icon "tv" "icon" %}TV station</button>
+      </div>
       <button id="clearQueueBtn" class="btn btn-ghost btn-icon btn-sm" type="button" title="Clear queue" aria-label="Clear queue">{% icon "trash" %}</button>
     </div>
-    <div id="queueList">
-      <div class="empty small">Queue is empty. Paste a link to add a video.</div>
+    <div id="queuePane">
+      <div id="queueList">
+        <div class="empty small">Queue is empty. Paste a link to add a video.</div>
+      </div>
+    </div>
+    <div id="tvPane">
+      <div class="chips" id="tvChips"></div>
+      <div id="tvCatHead"></div>
+      <div id="tvChannelList"></div>
     </div>
   </div>
 </div>
@@ -227,6 +247,7 @@
   function playIndex(i) {
     if (i < 0 || i >= queue.length) return;
     currentIndex = i; play(queue[i]); renderQueue(); saveState();
+    if (tvPlayingId !== null) { tvPlayingId = null; renderTvChannels(); }
   }
   function playNext() { if (currentIndex + 1 < queue.length) playIndex(currentIndex + 1); }
 
@@ -275,6 +296,100 @@
   byId("clearQueueBtn").addEventListener("click", function () {
     queue = []; currentIndex = -1; renderQueue(); saveState();
   });
+
+  // ---- TV station: the curated channel catalogue (seeded from iptv-org), browse + play + curate ----
+  const TV_CATALOG = {{ tv_catalog_json|safe }};
+  const TOGGLE_CHANNEL_URL = "{% url 'tv_channel_toggle' 999999 %}";
+  const TOGGLE_CATEGORY_URL = "{% url 'tv_category_toggle' 999999 %}";
+  let tvCategoryId = null;
+  let tvPlayingId = null;
+
+  const tvChannelUrl = (id) => TOGGLE_CHANNEL_URL.replace("999999", id);
+  const tvCategoryUrl = (id) => TOGGLE_CATEGORY_URL.replace("999999", id);
+  const tvCategory = () => TV_CATALOG.categories.find((c) => c.id === tvCategoryId);
+
+  function renderChips() {
+    byId("tvChips").innerHTML = TV_CATALOG.categories.filter((c) => c.channels.length).map((c) =>
+      '<button type="button" class="chip chip-btn' + (c.active ? "" : " cat-off") + '" aria-pressed="' + (c.id === tvCategoryId) + '" data-cat="' + c.id + '">' +
+        esc(c.name) + ' <span class="muted">' + c.channels.length + '</span></button>'
+    ).join("");
+  }
+
+  function renderTvHead() {
+    const cat = tvCategory();
+    const head = byId("tvCatHead");
+    if (!cat) { head.innerHTML = ""; return; }
+    head.innerHTML =
+      '<strong>' + esc(cat.name) + '</strong>' +
+      (cat.active ? '<span class="badge badge-success"><span class="dot"></span>Shown</span>' : '<span class="badge">Hidden</span>') +
+      '<button type="button" class="btn btn-sm" id="tvCatToggleBtn">' + (cat.active ? icon("eye-off") + "Hide category" : icon("eye") + "Show category") + '</button>';
+    byId("tvCatToggleBtn").addEventListener("click", function () {
+      App.fetchJSON(tvCategoryUrl(cat.id), { method: "POST" })
+        .then((r) => { cat.active = r.active; renderChips(); renderTvHead(); })
+        .catch((e) => App.toast(e.message, "error"));
+    });
+  }
+
+  function renderTvChannels() {
+    renderTvHead();
+    const cat = tvCategory();
+    const box = byId("tvChannelList");
+    if (!cat || !cat.channels.length) { box.innerHTML = '<div class="empty small">No channels in this category.</div>'; return; }
+    box.innerHTML = cat.channels.map((ch) =>
+      '<div class="queue-item' + (ch.id === tvPlayingId ? " active" : "") + (ch.active ? "" : " hidden-ch") + '" data-ch="' + ch.id + '">' +
+        (ch.logo ? '<img class="queue-thumb" src="' + esc(ch.logo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="queue-thumb">' + icon("tv") + '</div>') +
+        '<div class="queue-main"><div class="queue-title truncate">' + esc(ch.title) + '</div><div class="src-tag">' + (ch.active ? "live tv" : "hidden") + '</div></div>' +
+        '<button class="btn btn-ghost btn-icon btn-sm ch-toggle" type="button" data-ch="' + ch.id + '" title="' + (ch.active ? "Hide" : "Show") + '">' + icon(ch.active ? "eye-off" : "eye") + '</button>' +
+      '</div>'
+    ).join("");
+  }
+
+  byId("tvChips").addEventListener("click", function (e) {
+    const b = e.target.closest(".chip-btn");
+    if (!b) return;
+    tvCategoryId = parseInt(b.dataset.cat, 10);
+    renderChips(); renderTvChannels();
+  });
+
+  byId("tvChannelList").addEventListener("click", function (e) {
+    const cat = tvCategory();
+    if (!cat) return;
+    const tg = e.target.closest(".ch-toggle");
+    if (tg) {
+      e.stopPropagation();
+      const id = parseInt(tg.dataset.ch, 10);
+      App.fetchJSON(tvChannelUrl(id), { method: "POST" })
+        .then((r) => { const ch = cat.channels.find((x) => x.id === id); if (ch) ch.active = r.active; renderTvChannels(); renderChips(); })
+        .catch((e2) => App.toast(e2.message, "error"));
+      return;
+    }
+    const row = e.target.closest(".queue-item");
+    if (!row) return;
+    const ch = cat.channels.find((x) => x.id === parseInt(row.dataset.ch, 10));
+    if (!ch) return;
+    tvPlayingId = ch.id;
+    currentIndex = -1;  // live TV is separate from the manual queue — Next/Prev don't apply to it
+    play({ type: "hls", url: ch.url, title: ch.title });
+    renderQueue();
+    renderTvChannels();
+  });
+
+  byId("tabQueueBtn").addEventListener("click", function () { switchTab("queue"); });
+  byId("tabTvBtn").addEventListener("click", function () { switchTab("tv"); });
+  function switchTab(name) {
+    const isQueue = name === "queue";
+    byId("tabQueueBtn").setAttribute("aria-selected", String(isQueue));
+    byId("tabTvBtn").setAttribute("aria-selected", String(!isQueue));
+    byId("queuePane").style.display = isQueue ? "" : "none";
+    byId("tvPane").style.display = isQueue ? "none" : "flex";
+  }
+
+  (function initTv() {
+    const first = TV_CATALOG.categories.find((c) => c.channels.length);
+    tvCategoryId = first ? first.id : null;
+    renderChips();
+    renderTvChannels();
+  })();
 
   restoreState();
   fitRow();
