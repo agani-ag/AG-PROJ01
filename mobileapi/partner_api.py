@@ -357,11 +357,9 @@ def _create_user(partner, data, existing_keys=None):
 
     try:
         if account is None:
-            # Partner users are single-purpose (their partner's links only), so the shared "general
-            # links" are OFF by default — the SyncUp admin can turn them on per user.
             account = AppAccount(
                 name=name, email=email, phone=None if "phone" in ignored else phone, partner=partner,
-                source="partner", partner_signin=True, show_general_links=False,
+                source="partner", partner_signin=True,
             )
             account.set_password(password)
             account.save()

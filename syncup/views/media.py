@@ -3,15 +3,15 @@
 Endpoints:
   GET  /services/cloudinary      - Client-side Cloudinary gallery page
   GET  /services/clicksend       - Client-side ClickSend SMS page
-  GET  /services/tv-station      - Client-side video player + TV station catalogue (paste a link, or
-                                    browse/curate the channels seeded from iptv-org — see mobileapi.tv_station)
-  POST /services/tv-station/<id>/toggle               - show/hide one channel
-  POST /services/tv-station/categories/<id>/toggle    - show/hide a whole category
+  GET  /services/tv-station      - Client-side video player + a live preview of iptv-org's catalogue
+                                    (admin-only testing tool — nothing here reaches the mobile app;
+                                    see tv-station-plan.md for why)
   POST /services/cloud-sign      - Server-side signature for the gallery's delete / ZIP calls
 
 The Cloudinary gallery, ClickSend and TV station pages are fully client-side: the server only
-injects config/data; the browser does the rest (TV station's catalogue toggles are the one exception,
-small JSON POSTs back to this app, since they write to the database).
+injects config/data; the browser does the rest. TV station has no database behind it — every page
+load fetches iptv-org's current channels/streams/logos/blocklist live, so it's never stale, but it
+also means there's no admin curation (on/off) to persist: this is a browse-and-test-play tool only.
 """
 from __future__ import annotations
 
@@ -21,9 +21,11 @@ import hashlib
 import logging
 import time
 
+import requests
+
 from django.conf import settings
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -32,6 +34,27 @@ from django.core.serializers.json import DjangoJSONEncoder
 from .auth import superuser_required
 
 logger = logging.getLogger(__name__)
+
+# ---- TV station: live from iptv-org, no database (see module docstring) ----
+IPTV_API_BASE = "https://iptv-org.github.io/api/"
+
+# (display name, iptv-org category slug, iptv-org country code) — exactly one of slug/country is set.
+TV_CATEGORIES = [
+    ("India", None, "IN"),
+    ("News", "news", None),
+    ("Movies", "movies", None),
+    ("Entertainment", "entertainment", None),
+    ("Music", "music", None),
+    ("Kids", "kids", None),
+    ("Documentary", "documentary", None),
+    ("Science", "science", None),
+    ("Comedy", "comedy", None),
+    # "Sports" deliberately left out — iptv-org's sports channels are the category most likely to
+    # carry live-rights content a broadcaster hasn't licensed; this stays an admin preview tool, but
+    # no sense building the habit of browsing the highest-risk category here either.
+]
+TV_LIMIT_DEFAULT = 60
+TV_LIMIT_COUNTRY = 120
 
 
 # ====================================================================
@@ -92,36 +115,70 @@ def clicksend(request):
     return render(request, "services/clicksend.html", {"app_config": encoded})
 
 
+def _fetch_iptv_json(path):
+    resp = requests.get(IPTV_API_BASE + path, timeout=20, headers={"User-Agent": "SyncUp-admin/1"})
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _iptv_catalog_dict():
+    """Live snapshot of iptv-org's catalogue, filtered the same way seed_tv_channels used to: no
+    blocklisted/closed/NSFW channels, no channel with no known stream. Fetched fresh every call —
+    no caching, no database, so it's never stale (at the cost of a couple of seconds per page load)."""
+    channels = _fetch_iptv_json("channels.json")
+    streams = _fetch_iptv_json("streams.json")
+    logos = _fetch_iptv_json("logos.json")
+    blocklist = _fetch_iptv_json("blocklist.json")
+
+    blocked = {b["channel"] for b in blocklist if b.get("channel")}
+    stream_by_channel = {}
+    for s in streams:
+        cid = s.get("channel")
+        if cid and s.get("url") and cid not in stream_by_channel:
+            stream_by_channel[cid] = s["url"]
+    logo_by_channel = {}
+    for logo in logos:
+        cid = logo.get("channel")
+        if cid and logo.get("url") and (cid not in logo_by_channel or logo.get("in_use")):
+            logo_by_channel[cid] = logo["url"]
+
+    def eligible(ch):
+        return ch["id"] not in blocked and not ch.get("closed") and not ch.get("is_nsfw") and ch["id"] in stream_by_channel
+
+    candidates = [c for c in channels if eligible(c)]
+
+    out = []
+    for display_name, slug, country in TV_CATEGORIES:
+        if slug:
+            picked = [c for c in candidates if slug in (c.get("categories") or [])]
+        else:
+            picked = [c for c in candidates if c.get("country") == country]
+        picked.sort(key=lambda c: c["id"])
+        picked = picked[: (TV_LIMIT_COUNTRY if country else TV_LIMIT_DEFAULT)]
+        if not picked:
+            continue
+        out.append({
+            "id": display_name,
+            "name": display_name,
+            "channels": [
+                {"id": c["id"], "title": c.get("name") or c["id"], "logo": logo_by_channel.get(c["id"], ""), "url": stream_by_channel[c["id"]]}
+                for c in picked
+            ],
+        })
+    return {"categories": out}
+
+
 @superuser_required
 @require_GET
 def tv_station(request):
     # The player itself is pure client-side (YouTube, Vimeo, direct media files, HLS .m3u8 via
-    # hls.js) — paste any link and it plays. The TV station panel adds a second source: the
-    # curated channel catalogue from mobileapi.tv_station (seeded from iptv-org), injected here
-    # as JSON so the page can browse/play/toggle it without a round trip for every click.
-    from mobileapi.tv_station import admin_catalog_dict
-
-    catalog_json = json.dumps(admin_catalog_dict(), ensure_ascii=False).replace("<", "\\u003c")
+    # hls.js) — paste any link and it plays. The TV station panel adds a second source: a live
+    # preview of iptv-org's catalogue, fetched fresh on every visit (no database — see module
+    # docstring for why this stays admin-only and isn't piped to the mobile app).
+    try:
+        catalog = _iptv_catalog_dict()
+    except Exception:
+        logger.exception("Couldn't fetch iptv-org's catalogue")
+        catalog = {"categories": []}
+    catalog_json = json.dumps(catalog, ensure_ascii=False).replace("<", "\\u003c")
     return render(request, "services/video_player.html", {"tv_catalog_json": catalog_json})
-
-
-@superuser_required
-@require_POST
-def tv_channel_toggle(request, channel_id):
-    from mobileapi.models import TvChannel
-
-    ch = get_object_or_404(TvChannel, id=channel_id)
-    ch.is_active = not ch.is_active
-    ch.save(update_fields=["is_active", "updated_at"])
-    return JsonResponse({"ok": True, "active": ch.is_active})
-
-
-@superuser_required
-@require_POST
-def tv_category_toggle(request, category_id):
-    from mobileapi.models import TvCategory
-
-    cat = get_object_or_404(TvCategory, id=category_id)
-    cat.is_active = not cat.is_active
-    cat.save(update_fields=["is_active", "updated_at"])
-    return JsonResponse({"ok": True, "active": cat.is_active})

@@ -295,7 +295,7 @@ def link_delete(request, link_id):
 
 
 # ------------------------------------------------------------------ General links
-# Links with no account — shown to every user whose account has show_general_links on.
+# Links with no account — shown to every user.
 @superuser_required
 def general_links(request):
     links = AppLink.objects.filter(account__isnull=True).order_by("title")

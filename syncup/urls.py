@@ -24,8 +24,6 @@ urlpatterns = [
     # Services (Media menu) — Click Send / Cloudinary / TV station, superuser-only
     path('services/clicksend', media.clicksend, name='clicksend'),
     path('services/tv-station', media.tv_station, name='tv_station'),
-    path('services/tv-station/<int:channel_id>/toggle', media.tv_channel_toggle, name='tv_channel_toggle'),
-    path('services/tv-station/categories/<int:category_id>/toggle', media.tv_category_toggle, name='tv_category_toggle'),
     path('services/cloudinary', media.cloudinary, name='cloudinary'),
     path('services/cloud-sign', media.cloud_sign, name='cloud_sign'),
 ]

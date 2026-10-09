@@ -587,11 +587,9 @@ def _config_dict(request):
         "support_email": cfg.support_email or "",
         "support_phone": cfg.support_phone or "",
         "privacy_policy_url": _public_url(request, "privacy_policy"),
-        # Chat and Radio show only when the master switch AND this user's own switch are on.
-        "chat_enabled": bool(
-            cfg.chat_enabled
-            and getattr(getattr(request, "account", None), "chat_enabled", True)
-        ),
+        # Chat shows for every signed-in user when the master switch is on (no per-account override
+        # any more); Radio likewise has just the one master switch below.
+        "chat_enabled": bool(cfg.chat_enabled),
         "signup_enabled": cfg.signup_enabled,
         # One switch for everyone (the admin Radio page).
         "radio_enabled": bool(cfg.radio_enabled),

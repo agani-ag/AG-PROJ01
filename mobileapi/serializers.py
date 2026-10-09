@@ -62,8 +62,8 @@ def links_for(account):
     """The app's URL list: this user's own active links, then the shared general links.
 
     A partner's links appear only while that partner's connection is enabled (and not suspended);
-    admin links (no partner) always appear. General links (account is null) are appended only when
-    the account opts in (show_general_links).
+    admin links (no partner) always appear. General links (account is null) are appended for every
+    account — no per-account opt-out any more (2026-10-09).
     """
     own = (
         AppLink.objects.filter(is_active=True, account=account)
@@ -71,9 +71,8 @@ def links_for(account):
         .select_related("partner").order_by("title")
     )
     result = [link_dict(link) for link in own]
-    if account.show_general_links:
-        general = AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title")
-        result += [link_dict(link) for link in general]
+    general = AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title")
+    result += [link_dict(link) for link in general]
     return result
 
 

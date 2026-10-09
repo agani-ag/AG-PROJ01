@@ -51,10 +51,12 @@ class AppAccount(models.Model):
         default=False,
         help_text="Support agent — their app Chat opens the admin inbox instead of a personal chat.",
     )
+    # No longer used: every account gets the shared general links directly now, no per-account
+    # opt-out (2026-10-09, the admin per-account toggle was dropped). Kept unchanged so no migration
+    # is needed; safe to drop later.
     show_general_links = models.BooleanField(
         default=True,
-        help_text="Include the shared 'general' links in this user's list. Turn off for single-link "
-                  "(kiosk) users so their one link still auto-opens.",
+        help_text="Unused — kept for a future migration. General links show for every account now.",
     )
     # No longer used: Radio is on/off for everyone from the Radio page (AppConfig.radio_enabled).
     # Kept unchanged so no migration is needed; safe to drop later.
@@ -62,9 +64,12 @@ class AppAccount(models.Model):
         default=True,
         help_text="Show the in-app Radio feature for this user (only when the master radio switch is on too).",
     )
+    # No longer used: Chat is on/off for every signed-in user from the master switch only
+    # (AppConfig.chat_enabled) — the per-account toggle was dropped 2026-10-09. Kept unchanged so no
+    # migration is needed; safe to drop later.
     chat_enabled = models.BooleanField(
         default=True,
-        help_text="Show Chat with admin for this user (only when the master chat switch is on too).",
+        help_text="Unused — kept for a future migration. Chat shows for every signed-in user now.",
     )
     # Partner-first accounts sign in with the partner password until the user sets their own; while
     # this is on, a password reset by that partner also resets the SyncUp sign-in.
@@ -572,8 +577,7 @@ APP_ICON_CHOICES = [
 
 # =============== Per-account links (the URL list shown in the app) ===============
 class AppLink(models.Model):
-    # Null = a GENERAL link, shown to every account whose show_general_links is on. A set account
-    # = a personal link for just that user.
+    # Null = a GENERAL link, shown to every account. A set account = a personal link for just that user.
     account = models.ForeignKey(
         AppAccount, on_delete=models.CASCADE, related_name="links", null=True, blank=True,
     )
@@ -1235,55 +1239,6 @@ class HomeShortcut(models.Model):
     def save(self, *args, **kwargs):
         self.title = (self.title or "").strip()
         self.url = (self.url or "").strip()
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.title} ({self.category})"
-
-
-# =============== TV station (live TV channels, sourced from iptv-org) ===============
-class TvCategory(models.Model):
-    """A group of channels ("News", "India"), in `position` order. Hidden ones aren't sent."""
-    name = models.CharField(max_length=60, unique=True)
-    position = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["position", "name"]
-        verbose_name_plural = "TV categories"
-
-    def save(self, *args, **kwargs):
-        self.name = (self.name or "").strip()
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
-
-
-class TvChannel(models.Model):
-    """One live-TV channel, seeded from iptv-org (management command seed_tv_channels)."""
-    category = models.ForeignKey(TvCategory, on_delete=models.CASCADE, related_name="channels")
-    source_id = models.CharField(max_length=100, blank=True, default="")  # iptv-org channel id, for idempotent reseeding
-    title = models.CharField(max_length=120)
-    logo_url = models.URLField(max_length=500, blank=True, default="")
-    stream_url = models.URLField(max_length=700)
-    country = models.CharField(max_length=4, blank=True, default="")
-    position = models.PositiveIntegerField(default=0)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["position", "title"]
-        constraints = [
-            # Same channel once per category: reseeding updates the existing row instead of duplicating it.
-            models.UniqueConstraint(fields=["category", "source_id"], name="uniq_tv_channel_category_source"),
-        ]
-
-    def save(self, *args, **kwargs):
-        self.title = (self.title or "").strip()
         super().save(*args, **kwargs)
 
     def __str__(self):

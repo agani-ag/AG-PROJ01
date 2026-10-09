@@ -12,20 +12,26 @@
   .vp-card > #player, .vp-card > #embedFrame, .vp-card > #fileVideo, .vp-card #player iframe {
     position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000;
   }
-  .link-bar .input-icon { flex: 1; min-width: 0; }
+  .link-bar { flex-wrap: wrap; }
+  .link-bar .input-icon { flex: 1 1 220px; min-width: 0; }
+  .link-bar .btn { flex: 0 0 auto; }
   #playerRow { align-items: stretch; }
   #playerCol { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .now-row { flex-wrap: nowrap; align-items: flex-start; }
-  .yt-now { min-width: 0; font-weight: 600; overflow-wrap: anywhere; padding-top: 4px; }
-  #queueList { max-height: 460px; overflow-y: auto; padding: 6px; }
-  /* Desktop: fill the exact available height (row height set by JS) so the page never scrolls. */
+  .now-row { flex-wrap: wrap; align-items: flex-start; gap: 8px 12px; }
+  .yt-now { min-width: 0; font-weight: 600; overflow-wrap: anywhere; padding-top: 4px; flex: 1 1 200px; }
+  #queueList { padding: 6px; }
+  /* Desktop: fill the exact available height (row height set by JS) so the page never scrolls;
+     the queue/TV list scrolls in its own box instead of the whole page. Below this, everything
+     flows in one natural page scroll — a short inner scroll box feels wrong with a thumb. */
   @media (min-width: 961px) {
     .vp-card { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; }
-    .now-row { flex: 0 0 auto; }
+    .now-row { flex-wrap: nowrap; flex: 0 0 auto; }
     #queueCard { height: 100%; display: flex; flex-direction: column; }
-    #queueList { flex: 1 1 auto; min-height: 0; max-height: none; }
+    #queueList { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    #tvChannelList { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    #tvPane { min-height: 0; }
   }
-  .queue-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius); cursor: pointer; transition: background-color .12s; }
+  .queue-item { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: var(--radius); cursor: pointer; transition: background-color .12s; }
   .queue-item + .queue-item { margin-top: 2px; }
   .queue-item:hover { background: var(--surface-2); }
   .queue-item.active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
@@ -33,17 +39,22 @@
   .queue-main { flex: 1; min-width: 0; }
   .queue-title { font-size: 13px; font-weight: 600; }
   .queue-item.active .queue-title { color: var(--accent-ink); }
-  .queue-item.hidden-ch { opacity: .5; }
   .src-tag { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
-  #queueCard .card-head { gap: 8px; }
-  #queueCard .tabs { border-bottom: 0; flex: 1 1 auto; }
+  #queueCard .card-head { gap: 8px; flex-wrap: wrap; row-gap: 6px; }
+  #queueCard .tabs { border-bottom: 0; flex: 1 1 auto; min-width: 0; }
   #tvPane { display: none; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-  #tvCatHead { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
+  #tvCatHead { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; flex-wrap: wrap; }
   #tvCatHead .muted { font-size: 12.5px; }
   .chip-btn { cursor: pointer; border: 1px solid var(--border); background: var(--surface); }
   .chip-btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
-  .chip-btn.cat-off { opacity: .5; }
   #tvChips { padding: 2px 6px 10px; }
+  /* Phones: smaller thumbnails so the title has room, and a bit more breathing room for touch taps. */
+  @media (max-width: 480px) {
+    .queue-thumb { width: 64px; height: 40px; }
+    .queue-item { padding: 11px 6px; gap: 8px; }
+    .vp-card { border-radius: var(--radius); }
+    .page-head .page-sub { font-size: 13px; }
+  }
 </style>
 {% endblock %}
 
@@ -297,49 +308,30 @@
     queue = []; currentIndex = -1; renderQueue(); saveState();
   });
 
-  // ---- TV station: the curated channel catalogue (seeded from iptv-org), browse + play + curate ----
+  // ---- TV station: a live preview of iptv-org's catalogue, fetched fresh by the server on this
+  // page's load (no database here — this is a browse-and-test-play tool, see the view's docstring).
   const TV_CATALOG = {{ tv_catalog_json|safe }};
-  const TOGGLE_CHANNEL_URL = "{% url 'tv_channel_toggle' 999999 %}";
-  const TOGGLE_CATEGORY_URL = "{% url 'tv_category_toggle' 999999 %}";
   let tvCategoryId = null;
   let tvPlayingId = null;
 
-  const tvChannelUrl = (id) => TOGGLE_CHANNEL_URL.replace("999999", id);
-  const tvCategoryUrl = (id) => TOGGLE_CATEGORY_URL.replace("999999", id);
   const tvCategory = () => TV_CATALOG.categories.find((c) => c.id === tvCategoryId);
 
   function renderChips() {
     byId("tvChips").innerHTML = TV_CATALOG.categories.filter((c) => c.channels.length).map((c) =>
-      '<button type="button" class="chip chip-btn' + (c.active ? "" : " cat-off") + '" aria-pressed="' + (c.id === tvCategoryId) + '" data-cat="' + c.id + '">' +
+      '<button type="button" class="chip chip-btn" aria-pressed="' + (c.id === tvCategoryId) + '" data-cat="' + esc(c.id) + '">' +
         esc(c.name) + ' <span class="muted">' + c.channels.length + '</span></button>'
     ).join("");
   }
 
-  function renderTvHead() {
-    const cat = tvCategory();
-    const head = byId("tvCatHead");
-    if (!cat) { head.innerHTML = ""; return; }
-    head.innerHTML =
-      '<strong>' + esc(cat.name) + '</strong>' +
-      (cat.active ? '<span class="badge badge-success"><span class="dot"></span>Shown</span>' : '<span class="badge">Hidden</span>') +
-      '<button type="button" class="btn btn-sm" id="tvCatToggleBtn">' + (cat.active ? icon("eye-off") + "Hide category" : icon("eye") + "Show category") + '</button>';
-    byId("tvCatToggleBtn").addEventListener("click", function () {
-      App.fetchJSON(tvCategoryUrl(cat.id), { method: "POST" })
-        .then((r) => { cat.active = r.active; renderChips(); renderTvHead(); })
-        .catch((e) => App.toast(e.message, "error"));
-    });
-  }
-
   function renderTvChannels() {
-    renderTvHead();
     const cat = tvCategory();
+    byId("tvCatHead").innerHTML = cat ? '<strong>' + esc(cat.name) + '</strong><span class="muted">' + cat.channels.length + ' channels</span>' : "";
     const box = byId("tvChannelList");
     if (!cat || !cat.channels.length) { box.innerHTML = '<div class="empty small">No channels in this category.</div>'; return; }
     box.innerHTML = cat.channels.map((ch) =>
-      '<div class="queue-item' + (ch.id === tvPlayingId ? " active" : "") + (ch.active ? "" : " hidden-ch") + '" data-ch="' + ch.id + '">' +
+      '<div class="queue-item' + (ch.id === tvPlayingId ? " active" : "") + '" data-ch="' + esc(ch.id) + '">' +
         (ch.logo ? '<img class="queue-thumb" src="' + esc(ch.logo) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="queue-thumb">' + icon("tv") + '</div>') +
-        '<div class="queue-main"><div class="queue-title truncate">' + esc(ch.title) + '</div><div class="src-tag">' + (ch.active ? "live tv" : "hidden") + '</div></div>' +
-        '<button class="btn btn-ghost btn-icon btn-sm ch-toggle" type="button" data-ch="' + ch.id + '" title="' + (ch.active ? "Hide" : "Show") + '">' + icon(ch.active ? "eye-off" : "eye") + '</button>' +
+        '<div class="queue-main"><div class="queue-title truncate">' + esc(ch.title) + '</div><div class="src-tag">live tv</div></div>' +
       '</div>'
     ).join("");
   }
@@ -347,25 +339,16 @@
   byId("tvChips").addEventListener("click", function (e) {
     const b = e.target.closest(".chip-btn");
     if (!b) return;
-    tvCategoryId = parseInt(b.dataset.cat, 10);
+    tvCategoryId = b.dataset.cat;
     renderChips(); renderTvChannels();
   });
 
   byId("tvChannelList").addEventListener("click", function (e) {
     const cat = tvCategory();
     if (!cat) return;
-    const tg = e.target.closest(".ch-toggle");
-    if (tg) {
-      e.stopPropagation();
-      const id = parseInt(tg.dataset.ch, 10);
-      App.fetchJSON(tvChannelUrl(id), { method: "POST" })
-        .then((r) => { const ch = cat.channels.find((x) => x.id === id); if (ch) ch.active = r.active; renderTvChannels(); renderChips(); })
-        .catch((e2) => App.toast(e2.message, "error"));
-      return;
-    }
     const row = e.target.closest(".queue-item");
     if (!row) return;
-    const ch = cat.channels.find((x) => x.id === parseInt(row.dataset.ch, 10));
+    const ch = cat.channels.find((x) => String(x.id) === row.dataset.ch);
     if (!ch) return;
     tvPlayingId = ch.id;
     currentIndex = -1;  // live TV is separate from the manual queue — Next/Prev don't apply to it

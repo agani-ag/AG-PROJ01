@@ -77,10 +77,7 @@ def signup(request):
         if AppAccount.objects.filter(phone=phone).exists():
             return _bad(TAKEN["phone"], status=409)
 
-    account = AppAccount(
-        name=name[:100], email=email, phone=phone, source="self",
-        show_general_links=False, chat_enabled=False,
-    )
+    account = AppAccount(name=name[:100], email=email, phone=phone, source="self")
     account.set_password(password)
     try:
         account.save()
