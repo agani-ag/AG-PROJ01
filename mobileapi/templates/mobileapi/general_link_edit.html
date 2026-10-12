@@ -58,6 +58,7 @@
                 <div class="text"><b>Active</b><span class="help">Inactive links are hidden for everyone.</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
+            {% include "mobileapi/_token_switch.html" with who="each signed-in user's own" %}
         </div>
     </div>
 
@@ -74,5 +75,6 @@
 <form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" hidden
       data-confirm="Delete this general link?" data-confirm-text="It will disappear for all users."
       data-confirm-button="Delete link" data-danger>{% csrf_token %}</form>
+{% include "mobileapi/_token_reset_form.html" %}
 {% endif %}
 {% endblock %}

@@ -42,6 +42,7 @@
                 <div class="text"><b>Active</b><span class="help">Off: hidden on every home page, kept here.</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
+            {% include "mobileapi/_token_switch.html" with who="each user's (or, signed out, each phone's) own" %}
         </div>
     </div>
 
@@ -50,4 +51,5 @@
         <button type="submit" class="btn btn-primary">{% icon "check" %}{% if is_edit %}Save{% else %}Add shortcut{% endif %}</button>
     </div>
 </form>
+{% include "mobileapi/_token_reset_form.html" %}
 {% endblock %}

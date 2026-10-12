@@ -17,6 +17,7 @@ from django.db.models import Count, Max, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
@@ -31,6 +32,7 @@ from . import telegram_chats as tg_chats
 from . import telegram_hook
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
+from . import site_tokens
 from .models import (
     AppAuthToken,
     AppAccount,
@@ -41,6 +43,7 @@ from .models import (
     AppLink,
     AppNotificationLog,
     AppPartner,
+    AppSiteToken,
     PartnerTelegramChat,
     TelegramChat,
     TelegramMessage,
@@ -278,7 +281,7 @@ def link_edit(request, link_id):
         form = AppLinkForm(instance=link)
     return render(request, "mobileapi/link_edit.html", {
         "form": form, "account": account, "link": link, "is_edit": True,
-        "all_urls": _distinct_link_urls(),
+        "all_urls": _distinct_link_urls(), "token_site": token_site_info(link.url),
     })
 
 
@@ -334,7 +337,31 @@ def general_link_edit(request, link_id):
         form = GeneralLinkForm(instance=link)
     return render(request, "mobileapi/general_link_edit.html", {
         "form": form, "link": link, "is_edit": True, "all_urls": _distinct_link_urls(),
+        "token_site": token_site_info(link.url),
     })
+
+
+# ------------------------------------------------------------------ Page tokens (window.SyncUp.token)
+def token_site_info(url):
+    """{host, count} for the edit pages: the website a link/shortcut points at and how many page
+    tokens it has been given (the "Reset tokens" button shows when there are any)."""
+    host = site_tokens.site_host(url)
+    return {"host": host, "count": AppSiteToken.objects.filter(host=host).count() if host else 0}
+
+
+@superuser_required
+@require_POST
+def site_tokens_reset(request):
+    """Forget every page token of one website: apps fetch new ones on their next sync, and any
+    token the website saved stops working."""
+    host = site_tokens.site_host("https://" + (request.POST.get("host") or "").strip())
+    count = site_tokens.reset_host(host) if host else 0
+    messages.success(request, f"Reset {count} token{'s' if count != 1 else ''} for {host or 'that website'}. "
+                              "Apps get new ones on their next sync.")
+    nxt = request.POST.get("next") or ""
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}):
+        nxt = reverse("mobile_dashboard")
+    return redirect(nxt)
 
 
 # ------------------------------------------------------------------ Partners (B2B API)
@@ -1057,7 +1084,8 @@ def push_log(request):
     if period not in dict(PUSH_LOG_PERIODS):
         period = "7"
 
-    rows = AppNotificationLog.objects.select_related("account", "partner", "link")
+    rows = AppNotificationLog.objects.select_related("account", "partner", "link").annotate(
+        read_by=Count("reads")).order_by("-sent_at")  # Read = people / phones that opened it in the app
     if period != "all":
         rows = rows.filter(sent_at__gte=timezone.now() - timedelta(days=int(period)))
     if source == "all":

@@ -86,7 +86,7 @@ class AppAccountForm(forms.ModelForm):
 class AppLinkForm(forms.ModelForm):
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "is_active"]
+        fields = ["title", "url", "description", "icon", "is_active", "give_token"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -95,12 +95,12 @@ class AppLinkForm(forms.ModelForm):
 
 
 class GeneralLinkForm(forms.ModelForm):
-    """A shared link with no account — shown to every user (who has general links enabled).
-    No partner notify-token here: that's per-user and meaningless for a general link."""
+    """A shared link with no account — shown to every user. With "Give SyncUp token" on, its
+    website gets each signed-in user's own page token (see site_tokens.py)."""
 
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "is_active"]
+        fields = ["title", "url", "description", "icon", "is_active", "give_token"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -463,7 +463,7 @@ class HomeShortcutForm(forms.ModelForm):
 
     class Meta:
         model = HomeShortcut
-        fields = ["title", "url", "category", "is_active"]
+        fields = ["title", "url", "category", "is_active", "give_token"]
         labels = {"url": "Address"}
 
     def __init__(self, *args, **kwargs):

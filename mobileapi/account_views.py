@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import notifications_api, site_tokens
 from .auth import _extract_bearer, app_token_required, json_body
 from .identity import normalize_email, normalize_phone, normalize_username
 from .models import (
@@ -235,7 +236,15 @@ def device_hello(request):
         device.last_seen = now
         device.is_active = True
         device.save()
-    return JsonResponse({"success": True, "device_secret": device.device_secret})
+    # The websites switched on for this install and the page token each gets (window.SyncUp.token):
+    # the user's when signed in, this phone's own when not. Plus the Notifications badge.
+    who = {"account": account} if account is not None else {"device": device}
+    return JsonResponse({
+        "success": True,
+        "device_secret": device.device_secret,
+        "token_sites": site_tokens.tokens_for(**who),
+        "notifications_new": notifications_api.new_count(**who),
+    })
 
 
 # --------------------------------------------------------------------------- partners page

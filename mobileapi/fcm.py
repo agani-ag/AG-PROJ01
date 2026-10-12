@@ -275,8 +275,8 @@ class PushResult(NamedTuple):
     log: object         # the AppNotificationLog row (unsaved when save_log=False)
 
 
-def push(tokens, title, body, *, source, account=None, partner=None, link=None, data=None,
-         image=None, android=None, timeout=15, log=None, save_log=True, log_body=None):
+def push(tokens, title, body, *, source, account=None, partner=None, link=None, device=None, site="",
+         data=None, image=None, android=None, timeout=15, log=None, save_log=True, log_body=None):
     """Send a push and record it in AppNotificationLog (Mobile App → Push Log).
 
     Every sender in the project calls this instead of send(), so no push goes unlogged and a
@@ -287,35 +287,50 @@ def push(tokens, title, body, *, source, account=None, partner=None, link=None, 
       save_log  False returns the row unsaved, for callers that send from worker threads and
                 bulk-create the rows afterwards, keeping the log writes on the request thread
       log_body  text to store in place of `body`, e.g. to keep one-time codes out of the log
+      device    a signed-out phone the push is for (a website push by that phone's page token)
+      site      the website that sent it with a page token
+
+    A saved log row is written before sending, so the push carries its id as data "log_id": the
+    app marks that notification read on its Notifications page when the push is tapped.
     """
     from .models import AppNotificationLog
 
     tokens = [t for t in (tokens or []) if t]
     delivered = failed = 0
     error = ""
+    row = log if log is not None else AppNotificationLog()
+    row.source = source
+    row.account = account
+    row.partner = partner
+    row.link = link
+    row.device = device
+    row.site = (site or "")[:255]
+    row.title = (title or "")[:200]
+    row.body = body if log_body is None else log_body
+    row.data = data or None
+    row.image_url = image or None
+    row.devices = len(tokens)
+    send_data = data
+    if save_log:
+        try:
+            row.save()
+            send_data = dict(data or {}, log_id=row.pk)
+        except Exception:  # noqa: BLE001 — still send; it just won't carry the id
+            logger.exception("Could not record push in AppNotificationLog")
+
     if not is_configured():
         status = "not_configured"
     elif not tokens:
         status = "no_devices"
     else:
         try:
-            delivered, failed = send(tokens, title, body, data=data, image=image,
+            delivered, failed = send(tokens, title, body, data=send_data, image=image,
                                      timeout=timeout, android=android)
             status = "sent" if not failed else ("partial" if delivered else "failed")
         except Exception as e:  # noqa: BLE001 — reported on the log row and to the caller
             status, error = "error", str(e)[:500]
 
-    row = log if log is not None else AppNotificationLog()
-    row.source = source
     row.status = status
-    row.account = account
-    row.partner = partner
-    row.link = link
-    row.title = (title or "")[:200]
-    row.body = body if log_body is None else log_body
-    row.data = data or None
-    row.image_url = image or None
-    row.devices = len(tokens)
     row.success_count = delivered
     row.fail_count = failed
     row.error = error or None
@@ -373,6 +388,16 @@ def push_audience(audience, title, body, *, source, data=None, image=None, andro
     delivered = failed = 0
     error = ""
     status = "sent"
+    # Written first so the push carries its id ("log_id") for the app's Notifications page.
+    row = AppNotificationLog(
+        source=source, audience=audience, title=(title or "")[:200], body=body,
+        data=data or None, image_url=image or None, devices=len(direct_tokens),
+    )
+    try:
+        row.save()
+        data = dict(data or {}, log_id=row.pk)
+    except Exception:  # noqa: BLE001
+        logger.exception("Could not record push in AppNotificationLog")
     # v6+ installs: tag the message as a broadcast and show it on the app's "SyncUp updates"
     # channel unless the Push form picked a channel. (v5 installs, sent to directly, keep the
     # form's options as they are — they don't have that channel.)
@@ -390,11 +415,10 @@ def push_audience(audience, title, body, *, source, data=None, image=None, andro
                                          timeout=timeout, android=android)
         except Exception as e:  # noqa: BLE001 — reported on the log row
             status, error = "error", str(e)[:500]
-    row = AppNotificationLog(
-        source=source, status=status, audience=audience, title=(title or "")[:200], body=body,
-        data=data or None, image_url=image or None, devices=len(direct_tokens),
-        success_count=delivered, fail_count=failed, error=error or None,
-    )
+    row.status = status
+    row.success_count = delivered
+    row.fail_count = failed
+    row.error = error or None
     try:
         row.save()
     except Exception:  # noqa: BLE001

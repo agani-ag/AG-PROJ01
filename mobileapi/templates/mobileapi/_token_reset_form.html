@@ -1,0 +1,9 @@
+{# Hidden form behind the "Reset tokens" button in _token_switch.html (kept outside the edit form). #}
+{% if token_site.count %}
+<form method="post" action="{% url 'mobile_site_tokens_reset' %}" id="resetTokensForm" hidden
+      data-confirm="Reset the tokens for {{ token_site.host }}?" data-confirm-text="Apps get new ones on their next sync. Tokens this website already saved stop working at once."
+      data-confirm-button="Reset tokens" data-danger>{% csrf_token %}
+    <input type="hidden" name="host" value="{{ token_site.host }}">
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+</form>
+{% endif %}

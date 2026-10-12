@@ -126,7 +126,10 @@ def shortcut_edit(request, shortcut_id):
                 return redirect("mobile_home_shortcuts")
     else:
         form = HomeShortcutForm(instance=shortcut)
-    return render(request, "mobileapi/home_shortcut_edit.html", {"form": form, "is_edit": True, "shortcut": shortcut})
+    from .admin_views import token_site_info
+    return render(request, "mobileapi/home_shortcut_edit.html", {
+        "form": form, "is_edit": True, "shortcut": shortcut, "token_site": token_site_info(shortcut.url),
+    })
 
 
 @superuser_required

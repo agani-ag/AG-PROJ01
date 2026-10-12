@@ -102,6 +102,7 @@ def _link_json(link):
     so a partner can confirm/match a link by key rather than by URL."""
     data = link_dict(link)
     data["external_id"] = link.external_id or ""
+    data["token"] = link.give_token
     return data
 
 
@@ -393,8 +394,9 @@ def _created_response(c):
 
 def _apply_links(account, partner, links):
     """Replace-by-key upsert of a user's links, so provisioning a login (user + link) is one call.
-    Each item: {external_id (key), title, url [https], description?, icon?}. A matching key updates
-    the existing link; no key creates a new one. Invalid entries are skipped."""
+    Each item: {external_id (key), title, url [https], description?, icon?, token?}. A matching key
+    updates the existing link; no key creates a new one. Invalid entries are skipped. `token` true
+    gives the link's website this user's SyncUp page token (window.SyncUp.token); off by default."""
     if not isinstance(links, list):
         return
     for item in links:
@@ -409,6 +411,8 @@ def _apply_links(account, partner, links):
             "description": (item.get("description") or "").strip() or None,
             "icon": (item.get("icon") or "").strip() or None,
         }
+        if "token" in item:
+            fields["give_token"] = bool(item.get("token"))
         key = (item.get("external_id") or "").strip() or None
         try:
             if key:
@@ -590,6 +594,9 @@ def _links_collection(request, c):
             "description": (data.get("description") or "").strip() or None,
             "icon": (data.get("icon") or "").strip() or None,
         }
+        # "token": true gives the link's website this user's SyncUp page token (off by default).
+        if "token" in data:
+            fields["give_token"] = bool(data.get("token"))
         # If a key is given, upsert by it (replace-by-key) so a repeat add doesn't duplicate.
         # Links for a user who hasn't enabled this partner yet are kept, hidden until they do.
         try:
@@ -653,6 +660,8 @@ def link_detail(request, link_id):
         link.icon = (data.get("icon") or "").strip() or None
     if "is_active" in data:
         link.is_active = bool(data.get("is_active"))
+    if "token" in data:
+        link.give_token = bool(data.get("token"))
     if "external_id" in data:
         link.external_id = (data.get("external_id") or "").strip() or None
     try:

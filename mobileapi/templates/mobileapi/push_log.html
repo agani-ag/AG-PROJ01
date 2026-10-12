@@ -96,7 +96,7 @@
     <div class="table-wrap">
         <table class="table table-stack log-table">
             <thead>
-                <tr><th>When</th><th>Source</th><th>To</th><th>Notification</th><th class="t-right">Devices</th><th>Result</th></tr>
+                <tr><th>When</th><th>Source</th><th>To</th><th>Notification</th><th class="t-right">Devices</th><th class="t-right" title="People (or signed-out phones) who opened it in the app">Read</th><th>Result</th></tr>
             </thead>
             <tbody>
                 {% for n in page %}
@@ -130,6 +130,7 @@
                         </details>
                     </td>
                     <td data-label="Devices" class="t-right num">{{ n.devices }}</td>
+                    <td data-label="Read" class="t-right num">{{ n.read_by }}</td>
                     <td data-label="Result" class="nowrap">
                         <div>
                             {% if n.status == "sent" %}<span class="badge badge-success"><span class="dot"></span>Sent</span>
@@ -144,7 +145,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr data-empty><td colspan="6"><div class="empty">{% icon "search" %}<b>No pushes match these filters</b><a class="btn btn-sm" href="{% url 'mobile_push_log' %}">Reset filters</a></div></td></tr>
+                <tr data-empty><td colspan="7"><div class="empty">{% icon "search" %}<b>No pushes match these filters</b><a class="btn btn-sm" href="{% url 'mobile_push_log' %}">Reset filters</a></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>

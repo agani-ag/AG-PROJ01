@@ -41,7 +41,7 @@
                     {% for s in cat.shortcuts.all %}
                     <tr data-id="{{ s.id }}"{% if not s.is_active %} class="off"{% endif %}>
                         <td class="grip-cell"><span class="grip" draggable="true" title="Drag to reorder">{% icon "grip-vertical" "icon-sm" %}</span></td>
-                        <td class="t-primary"><span class="letter">{{ s.title|first|upper }}</span><a href="{% url 'mobile_home_shortcut_edit' s.id %}">{{ s.title }}</a></td>
+                        <td class="t-primary"><span class="letter">{{ s.title|first|upper }}</span><a href="{% url 'mobile_home_shortcut_edit' s.id %}">{{ s.title }}</a>{% if s.give_token %} <span class="badge" title="Gets a SyncUp token (window.SyncUp.token)">{% icon "key" "icon-sm" %}Token</span>{% endif %}</td>
                         <td><span class="truncate muted url-cell" title="{{ s.url }}">{{ s.url }}</span></td>
                         <td>
                             <form method="POST" action="{% url 'mobile_home_shortcut_toggle' s.id %}">{% csrf_token %}

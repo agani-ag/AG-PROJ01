@@ -594,6 +594,11 @@ class AppLink(models.Model):
     partner = models.ForeignKey(
         AppPartner, on_delete=models.CASCADE, null=True, blank=True, related_name="links",
     )
+    # On: the app puts the user's SyncUp page token (window.SyncUp.token) on this link's website,
+    # so that site can push to them (see site_tokens.py). Off by default.
+    give_token = models.BooleanField(
+        default=False, help_text="Give this link's website the user's SyncUp token (window.SyncUp.token).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -728,6 +733,13 @@ class AppConfig(models.Model):
     cleanup_log_days = models.PositiveIntegerField(
         default=30, help_text="Delete push/notification logs older than this many days (0 = keep all).",
     )
+    # Page tokens from before per-site tokens (one signed token per account, or per link for app v6)
+    # still push until this day. Set automatically to 60 days after the first request on the new
+    # code, i.e. the release; see site_tokens.legacy_tokens_allowed().
+    legacy_page_tokens_until = models.DateField(
+        null=True, blank=True,
+        help_text="Old-style page tokens (before per-site tokens) still work until this day.",
+    )
     cleanup_chat_days = models.PositiveIntegerField(
         default=30, help_text="Delete chat messages older than this (unread messages are always kept; 0 = keep all).",
     )
@@ -836,6 +848,12 @@ class AppNotificationLog(models.Model):
     link = models.ForeignKey(
         AppLink, on_delete=models.SET_NULL, null=True, blank=True, related_name="push_logs",
     )
+    # A website push to a signed-out phone (by that phone's page token): this one install only.
+    device = models.ForeignKey(
+        "AppDevice", on_delete=models.SET_NULL, null=True, blank=True, related_name="push_logs",
+    )
+    # The website that sent it with a page token ("portal.example.com"), for the log and the app.
+    site = models.CharField(max_length=255, blank=True, default="")
     source = models.CharField(max_length=20, choices=PUSH_SOURCE_CHOICES, default="other", db_index=True)
     # Set for Push-page broadcasts to an audience (everyone / signed_out / signed_in) sent via topics.
     audience = models.CharField(max_length=12, blank=True, default="")
@@ -863,6 +881,8 @@ class AppNotificationLog(models.Model):
             return f"{label} (topic)"
         if self.account_id:
             return self.account.login_label
+        if self.device_id:
+            return "One phone (signed out)"
         if self.source == "chat":
             return "Support agents"
         if self.partner_id:
@@ -1226,6 +1246,11 @@ class HomeShortcut(models.Model):
     url = models.URLField(max_length=500)
     position = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # On: the app puts a SyncUp page token on this website — the user's (signed in) or the phone's
+    # (signed out) — so the site can push to them. Off by default (see site_tokens.py).
+    give_token = models.BooleanField(
+        default=False, help_text="Give this website a SyncUp token (window.SyncUp.token).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1243,3 +1268,61 @@ class HomeShortcut(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.category})"
+
+
+# =============== Page tokens (window.SyncUp.token) — one per website ===============
+class AppSiteToken(models.Model):
+    """The page token one website gets for one user (signed in) or one phone (signed out). A
+    different random value per website, so two sites can't tell they have the same user; deleting a
+    site's rows resets them (the app fetches fresh ones on its next sync). Only websites switched on
+    in admin (a SyncUp link or a home shortcut with give_token) ever get one — see site_tokens.py."""
+    token = models.CharField(max_length=64, unique=True)
+    host = models.CharField(max_length=255, db_index=True)
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.CASCADE, null=True, blank=True, related_name="site_tokens",
+    )
+    device = models.ForeignKey(
+        AppDevice, on_delete=models.CASCADE, null=True, blank=True, related_name="site_tokens",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["host"]
+        constraints = [
+            models.UniqueConstraint(fields=["host", "account"], condition=models.Q(account__isnull=False),
+                                    name="uniq_site_token_host_account"),
+            models.UniqueConstraint(fields=["host", "device"], condition=models.Q(device__isnull=False),
+                                    name="uniq_site_token_host_device"),
+        ]
+
+    def __str__(self):
+        who = self.account.login_label if self.account_id else "phone"
+        return f"{self.host} · {who}"
+
+
+# =============== Notifications page: who has read which push ===============
+class AppNotificationRead(models.Model):
+    """One push (Push Log row) read by one person — or, signed out, one phone. The app's
+    Notifications page shows a push under New until a row exists here. Rows go with their push when
+    the cleanup job deletes old logs."""
+    log = models.ForeignKey(AppNotificationLog, on_delete=models.CASCADE, related_name="reads")
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.CASCADE, null=True, blank=True, related_name="notification_reads",
+    )
+    device = models.ForeignKey(
+        AppDevice, on_delete=models.CASCADE, null=True, blank=True, related_name="notification_reads",
+    )
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["log", "account"], condition=models.Q(account__isnull=False),
+                                    name="uniq_notification_read_account"),
+            models.UniqueConstraint(fields=["log", "device"], condition=models.Q(device__isnull=False),
+                                    name="uniq_notification_read_device"),
+        ]
+        indexes = [models.Index(fields=["account", "log"]), models.Index(fields=["device", "log"])]
+
+    def __str__(self):
+        return f"#{self.log_id} read"

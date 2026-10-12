@@ -1,22 +1,11 @@
 """Plain dict builders for JSON responses (no DRF)."""
-from django.core import signing
 from django.db.models import Q
 
 from .models import AppLink, AppReminder, PartnerConnection
 
-# Salt for the notification token the app puts on pages as window.SyncUp.token.
+# Salt of the old-style page tokens (one per account, or per link for app v6). New tokens are per
+# website and random (site_tokens.py); old ones are still accepted for a while after the release.
 PARTNER_NOTIFY_SALT = "syncup-partner-notify"
-
-
-def make_account_token(account):
-    """The user's notification token. App v7 puts it on every page in every tab; a site pushes to
-    this user by sending it with the SyncUp notify key (POST /app/v1/partner/notify)."""
-    return signing.dumps({"account_id": account.id}, salt=PARTNER_NOTIFY_SALT)
-
-
-def make_notify_token(link):
-    """The older per-link token: app v6 puts it on that link's own tab only. Still accepted."""
-    return signing.dumps({"account_id": link.account_id, "link_id": link.id}, salt=PARTNER_NOTIFY_SALT)
 
 
 def account_dict(account):
@@ -28,11 +17,10 @@ def account_dict(account):
         "phone": account.phone or "",
         "username": account.username or "",
         "source": account.source,
-        "notify_token": make_account_token(account),
     }
 
 
-def link_dict(link):
+def link_dict(link, notify_token=""):
     return {
         "id": str(link.id),
         "title": link.title,
@@ -43,9 +31,10 @@ def link_dict(link):
         # SyncUp (the admin). Older app versions ignore these.
         "source": "partner" if link.partner_id else "admin",
         "source_name": link.partner.name if link.partner_id else "",
-        # For app v6, which puts it on this link's tab (v7 uses the account's token on every page).
-        # Per-user, so general (account-less) links never carry one.
-        "notify_token": make_notify_token(link) if link.account_id else "",
+        # App v6 puts this on the link's own tab: the website's page token, only when the link has
+        # "Give SyncUp token" on (newer apps get the list in /sync as token_sites instead).
+        "notify_token": notify_token,
+        "give_token": link.give_token,
     }
 
 
@@ -65,15 +54,22 @@ def links_for(account):
     admin links (no partner) always appear. General links (account is null) are appended for every
     account — no per-account opt-out any more (2026-10-09).
     """
-    own = (
+    from .site_tokens import site_host, tokens_for
+
+    own = list(
         AppLink.objects.filter(is_active=True, account=account)
         .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))
         .select_related("partner").order_by("title")
     )
-    result = [link_dict(link) for link in own]
-    general = AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title")
-    result += [link_dict(link) for link in general]
-    return result
+    general = list(AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title"))
+    tokens = {}
+    if any(link.give_token for link in own + general):
+        tokens = {t["host"]: t["token"] for t in tokens_for(account=account)}
+
+    def _dict(link):
+        return link_dict(link, tokens.get(site_host(link.url), "") if link.give_token else "")
+
+    return [_dict(link) for link in own] + [_dict(link) for link in general]
 
 
 def reminder_tap_target(reminder):

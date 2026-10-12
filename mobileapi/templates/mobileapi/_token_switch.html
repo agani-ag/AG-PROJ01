@@ -1,0 +1,11 @@
+{# "Give SyncUp token" switch for a SyncUp link or home shortcut. Context: form, who ("this user's" / "the user's or phone's"), token_site ({host, count} when editing) #}
+            <div class="switch-row">
+                <div class="text"><b>Give SyncUp token</b><span class="help">This website gets {{ who }} SyncUp token as <code>window.SyncUp.token</code>, so it can send push notifications (with the SyncUp notify key). Websites with this off get nothing.{% if token_site.count %} {{ token_site.count }} token{{ token_site.count|pluralize }} issued for {{ token_site.host }}.{% endif %}</span></div>
+                <label class="switch">{{ form.give_token }}<span class="track"></span><span class="sr-only">Give SyncUp token</span></label>
+            </div>
+            {% if token_site.count %}
+            <div class="switch-row">
+                <div class="text"><b>Reset tokens</b><span class="help">New tokens for {{ token_site.host }} on everyone's next sync. Tokens the website already saved stop working at once.</span></div>
+                <button type="submit" form="resetTokensForm" class="btn btn-sm">{% icon "rotate-ccw" %}Reset</button>
+            </div>
+            {% endif %}

@@ -65,6 +65,7 @@
                 <div class="text"><b>Active</b><span class="help">Inactive links are hidden in the app.</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
+            {% include "mobileapi/_token_switch.html" with who="this user's" %}
         </div>
     </div>
 
@@ -81,5 +82,6 @@
 <form method="post" action="{% url 'mobile_link_delete' link.id %}" id="deleteForm" hidden
       data-confirm="Delete this link?" data-confirm-text="“{{ link.title }}” is removed from {{ account.name }}'s app. This can't be undone."
       data-confirm-button="Delete link" data-danger>{% csrf_token %}</form>
+{% include "mobileapi/_token_reset_form.html" %}
 {% endif %}
 {% endblock %}

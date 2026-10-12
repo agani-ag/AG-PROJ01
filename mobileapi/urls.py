@@ -6,6 +6,7 @@ from . import radio
 from . import account_views
 from . import browser_sync
 from . import home_shortcuts
+from . import notifications_api
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -23,6 +24,10 @@ urlpatterns = [
     path("account/urls", views.account_urls, name="app_account_urls"),
     path("account/me", views.account_me, name="app_account_me"),
     path("sync", views.sync, name="app_sync"),
+    # Notifications page (New / Read) — signed in, or signed out by device id + secret.
+    path("notifications", notifications_api.notifications, name="app_notifications"),
+    path("notifications/read", notifications_api.notifications_read, name="app_notifications_read"),
+    path("notifications/count", notifications_api.notifications_count, name="app_notifications_count"),
     path("account/links", views.account_link_add, name="app_account_link_add"),
     path("account/links/<int:link_id>/delete", views.account_link_delete, name="app_account_link_delete"),
     path("partner/notify", views.partner_notify, name="app_partner_notify"),
