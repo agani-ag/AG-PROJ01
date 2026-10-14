@@ -264,9 +264,59 @@ def send(tokens, title, body, data=None, image=None, timeout=15, max_workers=MAX
     return success, fail
 
 
+def send_silent(tokens, data, timeout=8):
+    """A data-only message (nothing shown on the phone) — e.g. {"type": "sync"} so a user's other
+    phones fetch their changed to-dos. Not logged in the Push Log: the user never sees it.
+    Returns (success_count, fail_count)."""
+    tokens = [t for t in (tokens or []) if t]
+    if not tokens:
+        return 0, 0
+    project_id = getattr(settings, "FIREBASE_PROJECT_ID", None)
+    if not project_id:
+        raise FCMError("FIREBASE_PROJECT_ID is not set")
+    url = _SEND_URL.format(project_id=project_id)
+    headers = {"Authorization": f"Bearer {_access_token()}", "Content-Type": "application/json"}
+    str_data = {str(k): str(v) for k, v in data.items()}
+    success = fail = 0
+    dead = []
+    with requests.Session() as session:
+        for token in tokens:
+            message = {"message": {"token": token, "data": str_data, "android": {"priority": "normal", "ttl": "3600s"}}}
+            try:
+                resp = session.post(url, headers=headers, data=json.dumps(message), timeout=timeout)
+            except requests.RequestException:
+                fail += 1
+                continue
+            if resp.status_code == 200:
+                success += 1
+            else:
+                fail += 1
+                if resp.status_code == 404 or "UNREGISTERED" in resp.text or "NOT_FOUND" in resp.text:
+                    dead.append(token)
+    _deactivate_dead_tokens(dead)
+    return success, fail
+
+
 # --------------------------------------------------------------------------- #
 # Send + log — the one entry point every sender uses
 # --------------------------------------------------------------------------- #
+# Pushes the app lists on its Notifications page get a tray tag from their log id, so the app can
+# take them off the phone's notification panel once they're read there (the launcher's badge
+# number is the app's notifications in the panel). Chat and verification codes aren't listed.
+UNLISTED_SOURCES = ("chat", "verification", "test")
+
+
+def tray_tag(log_id):
+    return f"syncup-log-{log_id}"
+
+
+def with_tray_tag(android, log_id):
+    """`android` (an FCM AndroidConfig dict, or None) with the notification shown under the log's tag."""
+    tagged = copy.deepcopy(android) if android else {}
+    tagged.setdefault("notification", {}).setdefault("tag", tray_tag(log_id))
+    return tagged
+
+
 class PushResult(NamedTuple):
     delivered: int      # devices that accepted the push
     failed: int         # devices FCM rejected
@@ -315,6 +365,8 @@ def push(tokens, title, body, *, source, account=None, partner=None, link=None, 
         try:
             row.save()
             send_data = dict(data or {}, log_id=row.pk)
+            if source not in UNLISTED_SOURCES:
+                android = with_tray_tag(android, row.pk)
         except Exception:  # noqa: BLE001 — still send; it just won't carry the id
             logger.exception("Could not record push in AppNotificationLog")
 
@@ -396,6 +448,7 @@ def push_audience(audience, title, body, *, source, data=None, image=None, andro
     try:
         row.save()
         data = dict(data or {}, log_id=row.pk)
+        android = with_tray_tag(android, row.pk)
     except Exception:  # noqa: BLE001
         logger.exception("Could not record push in AppNotificationLog")
     # v6+ installs: tag the message as a broadcast and show it on the app's "SyncUp updates"

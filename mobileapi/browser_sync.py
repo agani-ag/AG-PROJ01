@@ -7,8 +7,10 @@ One request does both directions (a single short request, fine on PythonAnywhere
   {
     "device_id": "...",
     "since": "<cursor from the last response, or empty for a full download>",
-    "changes": [ {"kind": "bookmark|history|shortcut|setting", "key": "<stable id>",
-                  "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
+    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|tree|calmlog",
+                  "key": "<stable id>", "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
+    "kinds": ["task", "tasklist"],   # optional: only these kinds come back (each app feature keeps
+                                     # its own cursor — Calendar and Forest sync on their own)
     "tabs": {"device_name": "Pixel 8", "tabs": [{"title": "...", "url": "..."}],   # optional
              "state": {"enabled": true, "types": ["bookmarks", "history", ...]}}
   }
@@ -18,7 +20,13 @@ One request does both directions (a single short request, fine on PythonAnywhere
 The latest change wins (by the phone's `updated_ms`); deletions travel as tombstones. History is
 kept 90 days, bookmarks up to 5,000. Work and Incognito never reach this endpoint (the app only
 sends Normal data), and the admin sees counts only.
+
+Tools → Calendar sends its to-dos (`task`) and lists (`tasklist`); Tools → Forest its trees (`tree`)
+and calm minutes per day and phone (`calmlog`). When a phone changes to-dos, the account's other
+phones get a silent "sync" push, so their reminders follow at once.
 """
+import logging
+
 from datetime import timedelta
 
 from django.db import transaction
@@ -28,6 +36,7 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import fcm
 from .auth import app_token_required, json_body
 from .models import AppDevice, SyncItem
 from .views import _bad
@@ -36,7 +45,14 @@ HISTORY_DAYS = 90
 MAX_BOOKMARKS = 5000
 MAX_CHANGES_PER_CALL = 1000
 OTHER_DEVICE_DAYS = 30
-CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting"}
+CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist", "tree", "calmlog"}
+# Live items per account, so one runaway phone can't fill the database.
+MAX_LIVE = {"task": 5000, "tasklist": 100, "tree": 2000, "calmlog": 3000}
+CALM_LOG_DAYS = 400
+# Changes to these kinds ping the account's other phones (their reminders must follow).
+PING_KINDS = {"task", "tasklist"}
+
+logger = logging.getLogger(__name__)
 
 
 def _item_dict(i):
@@ -64,11 +80,16 @@ def browser_sync(request):
     now = timezone.now()
     since = parse_datetime(data.get("since") or "") if data.get("since") else None
     history_cutoff_ms = int((now - timedelta(days=HISTORY_DAYS)).timestamp() * 1000)
+    calm_cutoff_ms = int((now - timedelta(days=CALM_LOG_DAYS)).timestamp() * 1000)
     rejected = []
+    asked = data.get("kinds")
+    wanted = CLIENT_KINDS & {str(k) for k in asked} if isinstance(asked, list) and asked else CLIENT_KINDS
+    applied_kinds = set()
 
     with transaction.atomic():
         # ---- apply the phone's changes (latest change wins)
         bookmark_count = SyncItem.objects.filter(account=account, kind="bookmark", deleted=False).count()
+        live = {}  # kind → live count, read once when a capped kind first shows up
         for ch in changes:
             if not isinstance(ch, dict):
                 continue
@@ -93,6 +114,16 @@ def browser_sync(request):
                 bookmark_count += 1
             if kind == "bookmark" and deleted and item and not item.deleted:
                 bookmark_count -= 1
+            if kind in MAX_LIVE:
+                if kind not in live:
+                    live[kind] = SyncItem.objects.filter(account=account, kind=kind, deleted=False).count()
+                if not deleted and (item is None or item.deleted):
+                    if live[kind] >= MAX_LIVE[kind]:
+                        rejected.append({"kind": kind, "key": key, "reason": f"{kind} limit reached"})
+                        continue
+                    live[kind] += 1
+                elif deleted and item and not item.deleted:
+                    live[kind] -= 1
             payload = ch.get("data") if isinstance(ch.get("data"), dict) else {}
             if item is None:
                 SyncItem.objects.create(
@@ -105,6 +136,7 @@ def browser_sync(request):
                 item.deleted = deleted
                 item.device_id = device_id
                 item.save()
+            applied_kinds.add(kind)
 
         # ---- this device's open Normal tabs (one row per device, replaced each time)
         tabs = data.get("tabs")
@@ -132,9 +164,10 @@ def browser_sync(request):
 
         # ---- trim history past the window (tombstones older than the window are dropped too)
         SyncItem.objects.filter(account=account, kind="history", updated_ms__lt=history_cutoff_ms).delete()
+        SyncItem.objects.filter(account=account, kind="calmlog", updated_ms__lt=calm_cutoff_ms).delete()
 
     # ---- what changed on the server since the phone's cursor
-    qs = SyncItem.objects.filter(account=account, kind__in=CLIENT_KINDS)
+    qs = SyncItem.objects.filter(account=account, kind__in=wanted)
     if since:
         qs = qs.filter(changed_at__gt=since)
     else:
@@ -154,6 +187,8 @@ def browser_sync(request):
         for t in SyncItem.objects.filter(account=account, kind="tabs", changed_at__gte=recent)
         .exclude(key=device_id).order_by("-changed_at")
     ]
+    if applied_kinds & PING_KINDS:
+        _ping_other_phones(account, device_id, "calendar")
     return JsonResponse({
         "success": True,
         "cursor": cursor,
@@ -162,6 +197,23 @@ def browser_sync(request):
         "rejected": rejected,
         "limits": {"history_days": HISTORY_DAYS, "max_bookmarks": MAX_BOOKMARKS},
     })
+
+
+def _ping_other_phones(account, device_id, what):
+    """A silent push to the account's other signed-in phones: "sync now". Best-effort — a phone
+    that misses it syncs when it's next opened."""
+    if not fcm.is_configured():
+        return
+    tokens = list(
+        AppDevice.objects.filter(account=account, is_active=True).exclude(device_id=device_id)
+        .exclude(fcm_token="").values_list("fcm_token", flat=True)
+    )
+    if not tokens:
+        return
+    try:
+        fcm.send_silent(tokens, {"type": "sync", "what": what})
+    except Exception:  # noqa: BLE001 — never fail the sync over a ping
+        logger.exception("Sync ping failed")
 
 
 @csrf_exempt

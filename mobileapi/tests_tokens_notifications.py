@@ -173,15 +173,19 @@ class NotificationsTests(TestCase):
     def test_push_carries_its_log_id(self):
         sent = {}
 
-        def fake_send(tokens, title, body, data=None, **kw):
-            sent["data"] = data
+        def fake_send(tokens, title, body, data=None, android=None, **kw):
+            sent["data"], sent["android"] = data, android
             return len(tokens), 0
 
         with mock.patch.object(fcm, "is_configured", lambda: True), mock.patch.object(fcm, "send", fake_send):
             result = fcm.push(["tok"], "T", "B", source="admin", account=self.ravi, data={"link_url": "https://a.b"})
-        self.assertEqual(sent["data"]["log_id"], result.log.pk)
-        self.assertEqual(result.log.data, {"link_url": "https://a.b"}, "the log keeps the original data")
-        self.assertEqual(result.log.status, "sent")
+            self.assertEqual(sent["data"]["log_id"], result.log.pk)
+            # Shown under the log's tag, so the app can clear it from the panel once read.
+            self.assertEqual(sent["android"]["notification"]["tag"], f"syncup-log-{result.log.pk}")
+            self.assertEqual(result.log.data, {"link_url": "https://a.b"}, "the log keeps the original data")
+            self.assertEqual(result.log.status, "sent")
+            fcm.push(["tok"], "Chat", "B", source="chat", account=self.ravi)
+            self.assertIsNone(sent["android"], "chat isn't listed, so it isn't tagged")
 
 
 class AdminPagesTests(TestCase):

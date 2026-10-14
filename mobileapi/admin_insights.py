@@ -30,7 +30,7 @@ superuser_required = user_passes_test(
 
 CURRENT_APP = 6  # the first app version with sign-up, sync and partners; older installs are v5
 SYNC_TYPES = {"bookmarks": "Bookmarks", "history": "History", "tabs": "Open tabs",
-              "shortcuts": "Shortcuts", "settings": "Settings"}
+              "shortcuts": "Shortcuts", "settings": "Settings", "calendar": "Calendar", "forest": "Forest"}
 
 
 def ms_to_dt(ms):
@@ -87,6 +87,9 @@ def sync_summary(account):
         "shortcuts": len((shortcuts.data or {}).get("items") or []) if shortcuts else 0,
         "hidden_builtins": len((hidden.data or {}).get("urls") or []) if hidden else 0,
         "settings": counts.get("setting", 0),
+        "tasks": counts.get("task", 0),
+        "task_lists": counts.get("tasklist", 0),
+        "trees": counts.get("tree", 0),
         "devices": devices,
         "open_tabs": sum(d["tab_count"] for d in devices),
         "last_change": SyncItem.objects.filter(account=account).aggregate(m=Max("changed_at"))["m"],
