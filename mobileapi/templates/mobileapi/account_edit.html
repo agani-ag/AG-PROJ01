@@ -174,7 +174,7 @@
                     <dt>Shortcuts</dt><dd class="num">{{ sync.shortcuts }}{% if sync.hidden_builtins %} <span class="small muted">· {{ sync.hidden_builtins }} built-in hidden</span>{% endif %}</dd>
                     <dt>Settings</dt><dd class="num">{{ sync.settings }}</dd>
                     <dt>Calendar</dt><dd class="num">{{ sync.tasks }} to-do{{ sync.tasks|pluralize }} <span class="small muted">· {{ sync.task_lists }} list{{ sync.task_lists|pluralize }}</span></dd>
-                    <dt>Forest</dt><dd class="num">{{ sync.trees }} tree{{ sync.trees|pluralize }}</dd>
+                    <dt>Forest</dt><dd class="num">{{ sync.trees }} tree{{ sync.trees|pluralize }} <a class="small" href="{% url 'mobile_forest' account.id %}">· Open forest</a></dd>
                     <dt>Open tabs</dt><dd class="num">{{ sync.open_tabs }} <span class="small muted">on {{ sync.devices|length }} device{{ sync.devices|length|pluralize }}</span></dd>
                 </dl>
                 {% for r in sync.devices %}
