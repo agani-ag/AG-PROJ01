@@ -1,14 +1,19 @@
 """UI template tags, registered as builtins in settings (no {% load %} needed).
 
-    {% icon "plus" %}                      → <svg class="icon"><use href="/static/icons.svg#i-plus"></use></svg>
+    {% icon "plus" %}                      → <svg class="icon"><use href="/static/icons.svg?v=…#i-plus"></use></svg>
     {% icon "trash" "icon-sm" %}           → extra CSS classes
     {% nav_active "mobile_accounts mobile_account_edit" %}
                                            → aria-current="page" when the current URL name is in the list
     {{ some_datetime|ago }}                → "just now", "5 minutes ago", "2 days ago"
+    {% static_v "css/app.css" %}           → /static/css/app.css?v=… (changes when the file does)
 
 Icon names are Lucide names; static/icons.svg lists the ones available.
 """
+import hashlib
+from functools import lru_cache
+
 from django import template
+from django.contrib.staticfiles import finders
 from django.templatetags.static import static
 from django.utils.html import format_html
 from django.utils import timezone
@@ -18,11 +23,29 @@ from django.utils.timesince import timesince
 register = template.Library()
 
 
+@lru_cache(maxsize=32)
+def _versioned(path):
+    """The file's static URL with ?v=<short hash of its contents>. Our static files are served without
+    cache headers, so browsers keep a copy and guess how long it stays fresh; a new address after
+    each change (e.g. new icons in icons.svg) makes them fetch it again. Worked out once per process
+    (a reload after deploying picks up the new file)."""
+    found = finders.find(path)
+    if not found:
+        return static(path)
+    with open(found, "rb") as f:
+        return f"{static(path)}?v={hashlib.md5(f.read()).hexdigest()[:10]}"
+
+
+@register.simple_tag
+def static_v(path):
+    return _versioned(path)
+
+
 @register.simple_tag
 def icon(name, css=""):
     return format_html(
         '<svg class="icon {}" aria-hidden="true"><use href="{}#i-{}"></use></svg>',
-        css, static("icons.svg"), name,
+        css, _versioned("icons.svg"), name,
     )
 
 

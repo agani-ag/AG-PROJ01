@@ -1,5 +1,5 @@
 {% load static %}<!DOCTYPE html>
-<html lang="en" data-icons="{% static 'icons.svg' %}">
+<html lang="en" data-icons="{% static_v 'icons.svg' %}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -9,7 +9,7 @@
     {% include "mobileapi/_theme_color.html" with light="#ffffff" dark="#131a26" %}
     <title>{% block title %}SyncUp{% endblock %} · SyncUp</title>
     <link rel="icon" href="{% static 'images/app-icon.svg' %}" type="image/svg+xml">
-    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+    <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -58,7 +58,7 @@
 <script type="application/json" id="django-messages">[{% for m in messages %}{"text": "{{ m|escapejs }}", "level": "{{ m.level_tag|escapejs }}"}{% if not forloop.last %}, {% endif %}{% endfor %}]</script>
 {% endif %}
 {# Loaded at the end of <body> (not render-blocking) and before page scripts, so they can use window.App directly. #}
-<script src="{% static 'js/app.js' %}"></script>
+<script src="{% static_v 'js/app.js' %}"></script>
 {% block script %}{% endblock %}
 </body>
 </html>
