@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    {# Theme before first paint (no flash). Light is the default; dark and "follow my device"
-       are opt-in from the toggle in the top bar, remembered per browser. #}
+    {% comment %}Theme before first paint (no flash). Light is the default; dark and "follow my
+    device" are opt-in from the toggle in the top bar, remembered per browser.{% endcomment %}
     <script>try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",t==="dark"||t==="system"?t:"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
     {# Status-bar colour for the app WebView: matches the top bar (--surface). #}
     {% include "mobileapi/_theme_color.html" with light="#ffffff" dark="#131a26" %}
