@@ -3,8 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    {# Apply a saved light/dark choice before first paint (no flash). #}
-    <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+    {# Theme before first paint (no flash). Light is the default; dark and "follow my device"
+       are opt-in from the toggle in the top bar, remembered per browser. #}
+    <script>try{var t=localStorage.getItem("theme");document.documentElement.setAttribute("data-theme",t==="dark"||t==="system"?t:"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
     {# Status-bar colour for the app WebView: matches the top bar (--surface). #}
     {% include "mobileapi/_theme_color.html" with light="#ffffff" dark="#131a26" %}
     <title>{% block title %}SyncUp{% endblock %} · SyncUp</title>
@@ -30,7 +31,8 @@
             <a class="brand" href="{% url 'home' %}"><span class="brand-mark is-app"><img src="{% static 'images/app-icon.svg' %}" alt=""></span>SyncUp</a>
             <div class="spacer"></div>
             {% endif %}
-            <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme">{% icon "monitor" %}</button>
+            {# Light by default; app.js swaps this for the moon/monitor icon when another theme is chosen. #}
+            <button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Switch theme" title="Theme: light">{% icon "sun" %}</button>
             {% if not user.is_authenticated %}
             <a class="btn btn-sm btn-primary" href="{% url 'login' %}">{% icon "log-in" %}Sign in</a>
             {% endif %}

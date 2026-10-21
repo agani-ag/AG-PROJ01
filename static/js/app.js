@@ -195,7 +195,8 @@
   });
 
   /* ---- Theme: system → light → dark (remembered per browser) ---- */
-  function currentTheme() { return document.documentElement.getAttribute("data-theme") || "system"; }
+  // Light unless this browser chose otherwise; "system" follows the device (see base.html).
+  function currentTheme() { return document.documentElement.getAttribute("data-theme") || "light"; }
   function paintThemeButton() {
     var b = $("[data-theme-toggle]"); if (!b) return;
     var th = currentTheme();
@@ -203,8 +204,8 @@
     b.title = "Theme: " + th;
   }
   function cycleTheme() {
-    var order = ["system", "light", "dark"], next = order[(order.indexOf(currentTheme()) + 1) % 3];
-    if (next === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", next);
+    var order = ["light", "dark", "system"], next = order[(order.indexOf(currentTheme()) + 1) % 3];
+    document.documentElement.setAttribute("data-theme", next);   // always stamped, so "no value" can mean light
     try { localStorage.setItem("theme", next); } catch (err) { /* private mode */ }
     paintThemeButton();
     syncThemeColor();
