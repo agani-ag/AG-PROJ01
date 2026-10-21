@@ -15,6 +15,8 @@ from django.core.validators import MinValueValidator
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
+from . import link_icons
+
 # How long an issued bearer token stays valid. After this the app gets a 401 and
 # transparently returns the user to the login screen (see the app's 401 handling).
 TOKEN_TTL_DAYS = 60
@@ -552,27 +554,10 @@ class AppActionRequest(models.Model):
         return f"{self.action_type} → {self.account.login_label} ({self.status})"
 
 
-# Icon names understood by the app (empty = auto-pick from the title).
-APP_ICON_CHOICES = [
-    ("", "Auto (from title)"),
-    ("link", "Link"),
-    ("globe", "Globe / Web"),
-    ("camera", "Camera"),
-    ("location", "Location"),
-    ("upload", "Upload / File"),
-    ("youtube", "Video / YouTube"),
-    ("notification", "Notification / Bell"),
-    ("speed", "Speed / Bolt"),
-    ("newtab", "New tab / Popup"),
-    ("home", "Home"),
-    ("cart", "Cart / Shop"),
-    ("person", "Person / Account"),
-    ("settings", "Settings"),
-    ("document", "Document"),
-    ("phone", "Phone / Call"),
-    ("image", "Image"),
-    ("star", "Star"),
-]
+# Icon names understood by the app (empty = Auto: the website's own icon) and their colours —
+# one list for the admin picker and the APIs, see link_icons.py.
+APP_ICON_CHOICES = link_icons.choices()
+APP_ICON_COLOR_CHOICES = link_icons.color_choices()
 
 
 # =============== Per-account links (the URL list shown in the app) ===============
@@ -585,7 +570,16 @@ class AppLink(models.Model):
     url = models.URLField(max_length=500)
     description = models.CharField(max_length=200, null=True, blank=True)
     icon = models.CharField(max_length=50, null=True, blank=True, choices=APP_ICON_CHOICES)
+    # The picked icon's colour (blank = blue). Ignored for Auto (the website's own icon).
+    color = models.CharField(max_length=12, blank=True, default="", choices=APP_ICON_COLOR_CHOICES)
     is_active = models.BooleanField(default=True)
+    # General links added by SyncHub through /app/v1/hub/links (their external_id is SyncHub's ref):
+    # SyncHub can hide one (hub_hidden); the admin switching one off (admin_off) always wins —
+    # SyncHub can still change its name / address / icon, but can't turn it back on.
+    # is_active = not hub_hidden and not admin_off for these.
+    hub_hidden = models.BooleanField(default=False)
+    admin_off = models.BooleanField(default=False)
+    hub_updated_at = models.DateTimeField(null=True, blank=True)
     # A partner's own key for this link (their system's id). Unique per account, so a partner can
     # replace-by-key: upserting a user's link with the same key updates it instead of duplicating.
     external_id = models.CharField(max_length=128, null=True, blank=True)
@@ -736,6 +730,8 @@ class AppConfig(models.Model):
     # Page tokens from before per-site tokens (one signed token per account, or per link for app v6)
     # still push until this day. Set automatically to 60 days after the first request on the new
     # code, i.e. the release; see site_tokens.legacy_tokens_allowed().
+    # The key SyncHub sends to add / update General links (POST /app/v1/hub/links). Blank = closed.
+    links_key = models.CharField(max_length=64, blank=True, default="")
     legacy_page_tokens_until = models.DateField(
         null=True, blank=True,
         help_text="Old-style page tokens (before per-site tokens) still work until this day.",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load link_icon_tags %}
 {% block title %}General links{% endblock %}
 
 {% block content %}
@@ -26,6 +27,7 @@
                 <tr>
                     <th data-sort="text">Title</th>
                     <th data-sort="text">URL</th>
+                    <th>From</th>
                     <th>Status</th>
                     <th class="t-right"><span class="sr-only">Actions</span></th>
                 </tr>
@@ -33,17 +35,23 @@
             <tbody>
                 {% for link in links %}
                 <tr>
-                    <td class="t-primary"><a class="t-cell-main" href="{% url 'mobile_general_link_edit' link.id %}">{{ link.title }}</a></td>
+                    <td class="t-primary"><span class="row gap-sm" style="flex-wrap:nowrap">{% link_icon link 32 %}<a class="t-cell-main" href="{% url 'mobile_general_link_edit' link.id %}">{{ link.title }}</a></span></td>
                     <td data-label="URL"><span class="truncate muted url-cell" title="{{ link.url }}">{{ link.url }}</span></td>
+                    <td data-label="From">
+                        {% if link.external_id %}<span class="badge badge-accent" title="{{ link.external_id }}">{% icon "plug" %}SyncHub{% if link.hub_updated_at %} · {{ link.hub_updated_at|ago }}{% endif %}</span>
+                        {% else %}<span class="badge">Admin</span>{% endif %}
+                    </td>
                     <td data-label="Status">
                         {% if link.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
+                        {% elif link.admin_off %}<span class="badge">Off (you)</span>
+                        {% elif link.hub_hidden %}<span class="badge">Hidden by SyncHub</span>
                         {% else %}<span class="badge">Inactive</span>{% endif %}
                     </td>
                     <td class="t-right">
                         <div class="row gap-sm actions">
                             <a href="{% url 'mobile_general_link_edit' link.id %}" class="btn btn-sm">{% icon "pencil" %}Edit</a>
                             <form method="POST" action="{% url 'mobile_link_delete' link.id %}"
-                                  data-confirm="Delete this general link for everyone?" data-confirm-text="“{{ link.title }}” disappears for all users."
+                                  data-confirm="Delete this general link for everyone?" data-confirm-text="“{{ link.title }}” disappears for all users.{% if link.external_id %} SyncHub may add it again on its next send — switching it off keeps it away.{% endif %}"
                                   data-confirm-button="Delete link" data-danger>
                                 {% csrf_token %}
                                 <button class="btn btn-sm btn-icon text-danger" type="submit" title="Delete" aria-label="Delete {{ link.title }}">{% icon "trash" %}</button>
@@ -52,7 +60,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr data-empty><td colspan="4"><div class="empty">{% icon "link-2" %}<b>No general links yet</b><a class="btn btn-primary btn-sm" href="{% url 'mobile_general_link_add' %}">{% icon "plus" %}Add general link</a></div></td></tr>
+                <tr data-empty><td colspan="5"><div class="empty">{% icon "link-2" %}<b>No general links yet</b><a class="btn btn-primary btn-sm" href="{% url 'mobile_general_link_add' %}">{% icon "plus" %}Add general link</a></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -60,9 +68,28 @@
     </div>
     <div class="table-foot"><span data-table-count></span></div>
 </div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-head">{% icon "key-round" %}<h2>SyncUp links key</h2></div>
+    <div class="card-body stack">
+        <p class="small muted" style="margin:0">SyncHub sends this key to add and update its tools here as General links ({{ hub_count }} so far). Paste it into SyncHub → Settings. Nobody else needs it — without it, no one can add links from outside.</p>
+        {% if links_key %}
+        <div class="row gap-sm" style="flex-wrap:nowrap">
+            <input class="input" type="password" value="{{ links_key }}" readonly id="links-key" aria-label="SyncUp links key" style="font-family:monospace">
+            <button type="button" class="btn" onclick="var k=document.getElementById('links-key');k.type=k.type==='password'?'text':'password'">{% icon "eye" %}Show</button>
+            <button type="button" class="btn" onclick="navigator.clipboard.writeText(document.getElementById('links-key').value);this.textContent='Copied'">{% icon "copy" %}Copy</button>
+        </div>
+        {% endif %}
+        <form method="POST" action="{% url 'mobile_general_links_key' %}" {% if links_key %}data-confirm="Make a new links key?" data-confirm-text="The old key stops working at once — SyncHub can't add or update links until you paste the new one there." data-confirm-button="Make new key"{% endif %}>
+            {% csrf_token %}
+            <button class="btn{% if not links_key %} btn-primary{% endif %}" type="submit">{% icon "rotate-ccw" %}{% if links_key %}New key{% else %}Make a key{% endif %}</button>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block head %}
+{% link_icon_css %}
 <style>
     .url-cell { display: block; max-width: 420px; }
     .actions { justify-content: flex-end; flex-wrap: nowrap; }

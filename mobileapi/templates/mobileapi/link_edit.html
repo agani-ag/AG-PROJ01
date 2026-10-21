@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load link_icon_tags %}
 {% block title %}{% if is_edit %}Edit link{% else %}Add link{% endif %}{% endblock %}
 {% block page_class %}page-narrow{% endblock %}
 
@@ -48,12 +49,8 @@
                     {{ form.description }}
                     {% for e in form.description.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
-                <div class="field{% if form.icon.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ form.icon.id_for_label }}">Icon <span class="opt">optional</span></label>
-                    {{ form.icon }}
-                    {% for e in form.icon.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                </div>
             </div>
+            {% icon_picker form %}
             {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
         </div>
     </div>

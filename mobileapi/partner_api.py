@@ -39,6 +39,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import link_icons
 from . import fcm, telegram
 from .identity import normalize_email, normalize_phone
 from .models import (
@@ -95,6 +96,18 @@ def _with_ignored(body, c):
     if ignored:
         body["ignored"] = ignored
     return body
+
+
+def _icon(value):
+    """A link icon by name (see link_icons.py); an unknown or empty name is Auto (the website's own icon)."""
+    name, err = link_icons.clean_icon(value if isinstance(value, str) else "")
+    return None if err or not name else name
+
+
+def _color(value):
+    """A link colour by name; unknown or empty = the default."""
+    name, err = link_icons.clean_color(value if isinstance(value, str) else "")
+    return "" if err else name
 
 
 def _link_json(link):
@@ -409,7 +422,8 @@ def _apply_links(account, partner, links):
         fields = {
             "title": title, "url": url,
             "description": (item.get("description") or "").strip() or None,
-            "icon": (item.get("icon") or "").strip() or None,
+            "icon": _icon(item.get("icon")),
+            "color": _color(item.get("color")),
         }
         if "token" in item:
             fields["give_token"] = bool(item.get("token"))
@@ -592,7 +606,8 @@ def _links_collection(request, c):
         fields = {
             "title": title, "url": url,
             "description": (data.get("description") or "").strip() or None,
-            "icon": (data.get("icon") or "").strip() or None,
+            "icon": _icon(data.get("icon")),
+            "color": _color(data.get("color")),
         }
         # "token": true gives the link's website this user's SyncUp page token (off by default).
         if "token" in data:
@@ -657,7 +672,9 @@ def link_detail(request, link_id):
     if "description" in data:
         link.description = (data.get("description") or "").strip() or None
     if "icon" in data:
-        link.icon = (data.get("icon") or "").strip() or None
+        link.icon = _icon(data.get("icon"))
+    if "color" in data:
+        link.color = _color(data.get("color"))
     if "is_active" in data:
         link.is_active = bool(data.get("is_active"))
     if "token" in data:

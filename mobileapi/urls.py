@@ -7,6 +7,7 @@ from . import account_views
 from . import browser_sync
 from . import home_shortcuts
 from . import notifications_api
+from . import hub_links
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -42,6 +43,7 @@ urlpatterns = [
     path("config", views.config, name="app_config"),
     path("shortcuts", home_shortcuts.catalog, name="app_shortcuts"),  # home page catalogue, no sign-in
     path("general-links", views.general_links, name="app_general_links"),  # SyncUp links for everyone, no sign-in
+    path("hub/links", hub_links.hub_links, name="app_hub_links"),  # SyncHub adds / updates General links (links key)
     # Partner action / verification prompts shown on the phone
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),

@@ -27,6 +27,8 @@ def link_dict(link, notify_token=""):
         "url": link.url,
         "description": link.description or "",
         "icon": link.icon or "",
+        # The picked icon's colour (blank = blue); with no icon the app shows the website's own icon.
+        "color": link.color or "",
         # Where the link comes from, for grouping on the app's Work home: a partner (by name) or
         # SyncUp (the admin). Older app versions ignore these.
         "source": "partner" if link.partner_id else "admin",

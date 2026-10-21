@@ -1,0 +1,117 @@
+{# The link icon chooser: Auto (the website's own icon) or Pick one (an icon + a colour), with a live light / dark preview. Context from link_icon_tags.icon_picker. #}
+<div class="field icon-picker" data-icon-picker data-title="{{ title_id }}" data-url="{{ url_id }}">
+    <span class="label">Icon</span>
+    <div class="ip-modes" role="radiogroup" aria-label="Icon">
+        <label class="ip-mode"><input type="radio" name="ip_mode" value="auto" {% if not current_icon %}checked{% endif %}>
+            <span><b>Auto</b><small>The website's own icon</small></span></label>
+        <label class="ip-mode"><input type="radio" name="ip_mode" value="pick" {% if current_icon %}checked{% endif %}>
+            <span><b>Pick one</b><small>An icon and a colour</small></span></label>
+    </div>
+    <div class="ip-body">
+        <div class="ip-pick" {% if not current_icon %}hidden{% endif %}>
+            <input type="radio" name="icon" value="" class="ip-auto" {% if not current_icon %}checked{% endif %} hidden>
+            {% if legacy %}
+            <div class="ip-group">Current mark</div>
+            <div class="ip-grid"><label class="ip-ico" title="{{ legacy }}"><input type="radio" name="icon" value="{{ legacy }}" checked><span><svg viewBox="0 0 24 24">{{ legacy_path|safe }}</svg></span></label></div>
+            {% endif %}
+            {% for group, items in groups %}
+            <div class="ip-group">{{ group }}</div>
+            <div class="ip-grid">
+                {% for name, label, path in items %}
+                <label class="ip-ico" title="{{ label }}"><input type="radio" name="icon" value="{{ name }}" {% if name == current_icon %}checked{% endif %}><span><svg viewBox="0 0 24 24">{{ path|safe }}</svg></span></label>
+                {% endfor %}
+            </div>
+            {% endfor %}
+            <div class="ip-group">Colour</div>
+            <div class="ip-colors">
+                {% for name, accent, tile, dark_accent, dark_tile in colors %}
+                <label class="ip-color" title="{{ name|capfirst }}"><input type="radio" name="color" value="{{ name }}" data-accent="{{ accent }}" data-tile="{{ tile }}" data-dark-accent="{{ dark_accent }}" data-dark-tile="{{ dark_tile }}" {% if name == current_color %}checked{% endif %}><span style="background:{{ accent }}"></span></label>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="ip-preview">
+            <div class="ip-pt">How it looks</div>
+            <div class="ip-row"><span class="ip-tile" data-tile="light"></span><span class="ip-name"><b></b><small>SyncUp link</small></span></div>
+            <div class="ip-pt">Dark theme</div>
+            <div class="ip-row dark"><span class="ip-tile" data-tile="dark"></span><span class="ip-name"><b></b><small>SyncUp link</small></span></div>
+        </div>
+    </div>
+    {% for e in errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+    <span class="help">Auto shows the website's own icon (the phone fetches it), or its first letter if it has none.</span>
+</div>
+<style>
+    .icon-picker .ip-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .ip-mode { cursor: pointer; } .ip-mode input { position: absolute; opacity: 0; pointer-events: none; }
+    .ip-mode > span { display: block; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+    .ip-mode b { display: block; font-size: 14px; } .ip-mode small { color: var(--muted); font-size: 12px; }
+    .ip-mode input:checked + span { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+    .ip-body { display: grid; grid-template-columns: 1fr 230px; gap: 18px; margin-top: 10px; align-items: start; }
+    @media (max-width: 760px) { .ip-body { grid-template-columns: 1fr; } }
+    .ip-group { font-size: 11.5px; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
+    .ip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 6px; }
+    .ip-ico, .ip-color { cursor: pointer; } .ip-ico input, .ip-color input { position: absolute; opacity: 0; pointer-events: none; }
+    .ip-ico span { display: flex; aspect-ratio: 1; align-items: center; justify-content: center; border-radius: 10px; background: var(--surface-2, #F1F5F9); color: var(--muted); }
+    .ip-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .ip-ico input:checked + span { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+    .ip-ico input:focus-visible + span, .ip-color input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .ip-colors { display: flex; flex-wrap: wrap; gap: 10px; }
+    .ip-color span { display: block; width: 28px; height: 28px; border-radius: 14px; }
+    .ip-color input:checked + span { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--text, #0F172A); }
+    .ip-preview { background: var(--surface-2, #F1F5F9); border-radius: 14px; padding: 12px; }
+    .ip-pt { font-size: 11.5px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); margin: 2px 0 6px; }
+    .ip-pt + .ip-row + .ip-pt { margin-top: 12px; }
+    .ip-row { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: #fff; border: 1px solid #E2E8F0; color: #0F172A; }
+    .ip-row.dark { background: #111827; border-color: #1F2937; color: #E2E8F0; }
+    .ip-row small { display: block; font-size: 11.5px; opacity: .65; } .ip-name { min-width: 0; } .ip-name b { display: block; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ip-tile { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex: none; position: relative; overflow: hidden; font-weight: 700; }
+    .ip-tile svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .ip-tile img { position: absolute; inset: 6px; width: 24px; height: 24px; object-fit: contain; background: #fff; border-radius: 4px; }
+</style>
+<script>
+(function () {
+    var root = document.querySelector("[data-icon-picker]");
+    if (!root) return;
+    var pick = root.querySelector(".ip-pick");
+    var title = document.getElementById(root.dataset.title);
+    var url = document.getElementById(root.dataset.url);
+    function checked(name) { return root.querySelector('input[name="' + name + '"]:checked'); }
+    function draw() {
+        var mode = checked("ip_mode").value;
+        pick.hidden = mode !== "pick";
+        if (mode === "auto") root.querySelector(".ip-auto").checked = true;
+        else if (!checked("icon") || checked("icon").value === "") {
+            var first = root.querySelector('.ip-ico input[value="link"]');
+            if (first) first.checked = true;
+        }
+        var icon = checked("icon"), color = checked("color");
+        var name = (title && title.value.trim()) || "Link";
+        root.querySelectorAll(".ip-name b").forEach(function (b) { b.textContent = name; });
+        root.querySelectorAll(".ip-tile").forEach(function (t) {
+            var dark = t.dataset.tile === "dark";
+            t.innerHTML = "";
+            if (mode === "pick" && icon && icon.value) {
+                var svg = icon.parentNode.querySelector("svg").cloneNode(true);
+                t.appendChild(svg);
+                t.style.background = dark ? color.dataset.darkTile : color.dataset.tile;
+                t.style.color = dark ? color.dataset.darkAccent : color.dataset.accent;
+            } else {
+                t.style.background = dark ? "#1F2937" : "#F1F5F9";
+                t.style.color = dark ? "#CBD5E1" : "#64748B";
+                t.textContent = name.charAt(0).toUpperCase();
+                var host = "";
+                try { host = new URL(url.value.trim()).hostname; } catch (e) { host = ""; }
+                if (host) {
+                    var img = document.createElement("img");
+                    img.alt = ""; img.src = "https://" + host + "/favicon.ico";
+                    img.onerror = function () { img.remove(); };
+                    t.appendChild(img);
+                }
+            }
+        });
+    }
+    root.addEventListener("change", draw);
+    if (title) title.addEventListener("input", draw);
+    if (url) url.addEventListener("change", draw);
+    draw();
+})();
+</script>

@@ -5,6 +5,7 @@ Function-based views + templates styled by static/css/app.css, matching the exis
 Mounted at /mobile/ (see admin_urls.py). Separate from the JSON API (/app/v1/).
 """
 import json
+import secrets
 from datetime import datetime, timezone as dt_timezone
 from datetime import timedelta
 
@@ -302,7 +303,24 @@ def link_delete(request, link_id):
 @superuser_required
 def general_links(request):
     links = AppLink.objects.filter(account__isnull=True).order_by("title")
-    return render(request, "mobileapi/general_links.html", {"links": links})
+    return render(request, "mobileapi/general_links.html", {
+        "links": links, "links_key": AppConfig.load().links_key,
+        "hub_count": sum(1 for l in links if l.external_id),
+    })
+
+
+@superuser_required
+@require_POST
+def general_links_key(request):
+    """A new SyncUp links key — the one SyncHub sends to add / update General links. The old key
+    stops at once, so paste the new one into SyncHub → Settings."""
+    cfg = AppConfig.load()
+    first = not cfg.links_key
+    cfg.links_key = secrets.token_urlsafe(32)
+    cfg.save(update_fields=["links_key"])
+    messages.success(request, "Links key made — copy it into SyncHub → Settings." if first
+                     else "New links key made. The old one no longer works — paste this one into SyncHub → Settings.")
+    return redirect("mobile_general_links")
 
 
 @superuser_required
@@ -329,12 +347,18 @@ def general_link_edit(request, link_id):
     if request.method == "POST":
         form = GeneralLinkForm(request.POST, instance=link)
         if form.is_valid():
-            form.save()
+            link = form.save(commit=False)
+            if link.external_id:
+                # From SyncHub: the Active switch is the admin's own off switch, and it wins —
+                # SyncHub can still change the link but can't turn it back on.
+                link.admin_off = not form.cleaned_data["is_active"]
+                link.is_active = not link.admin_off and not link.hub_hidden
+            link.save()
             messages.success(request, "General link saved.")
             return redirect("mobile_general_links")
         messages.error(request, form.errors.as_text())
     else:
-        form = GeneralLinkForm(instance=link)
+        form = GeneralLinkForm(instance=link, initial={"is_active": not link.admin_off} if link.external_id else None)
     return render(request, "mobileapi/general_link_edit.html", {
         "form": form, "link": link, "is_edit": True, "all_urls": _distinct_link_urls(),
         "token_site": token_site_info(link.url),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load link_icon_tags %}
 {% block title %}{% if is_edit %}Edit general link{% else %}Add general link{% endif %}{% endblock %}
 {% block page_class %}page-narrow{% endblock %}
 
@@ -13,6 +14,13 @@
 
 <form method="POST" class="stack">
     {% csrf_token %}
+    {% if link.external_id %}
+    <div class="card"><div class="card-body row gap-sm" style="flex-wrap:nowrap;align-items:flex-start">
+        {% icon "plug" %}
+        <div><b>From SyncHub</b> <span class="muted small">· {{ link.external_id }}{% if link.hub_updated_at %} · updated {{ link.hub_updated_at|ago }}{% endif %}</span>
+            <div class="small muted">SyncHub adds and updates this link (name, address, icon). Switching it off here keeps it off — SyncHub can't turn it back on.{% if link.hub_hidden %} SyncHub has hidden it right now.{% endif %}</div></div>
+    </div></div>
+    {% endif %}
 
     <div class="card">
         <div class="card-head">{% icon "globe" %}<h2>Link</h2></div>
@@ -41,12 +49,8 @@
                     {{ form.description }}
                     {% for e in form.description.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
-                <div class="field{% if form.icon.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ form.icon.id_for_label }}">Icon <span class="opt">optional</span></label>
-                    {{ form.icon }}
-                    {% for e in form.icon.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                </div>
             </div>
+            {% icon_picker form %}
             {% for e in form.non_field_errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
         </div>
     </div>
@@ -55,7 +59,7 @@
         <div class="card-head">{% icon "sliders-horizontal" %}<h2>Options</h2></div>
         <div class="card-body" style="padding-block:4px">
             <div class="switch-row">
-                <div class="text"><b>Active</b><span class="help">Inactive links are hidden for everyone.</span></div>
+                <div class="text"><b>Active</b><span class="help">{% if link.external_id %}Off = hidden for everyone, and it stays off whatever SyncHub sends.{% else %}Inactive links are hidden for everyone.{% endif %}</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
             {% include "mobileapi/_token_switch.html" with who="each user's (or, signed out, each phone's) own" %}
