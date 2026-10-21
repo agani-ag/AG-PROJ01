@@ -63,6 +63,10 @@
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
             {% include "mobileapi/_token_switch.html" with who="each user's (or, signed out, each phone's) own" %}
+            <div class="switch-row">
+                <div class="text"><b>Sign in with SyncUp</b><span class="help">This website can sign people in with their SyncUp account (a "Continue with SyncUp" button, then SyncUp asks them once). For SyncHub's tools — SyncHub turns it on when it sends them. It needs the sign-in key below the list.</span></div>
+                <label class="switch">{{ form.allow_sso }}<span class="track"></span><span class="sr-only">Sign in with SyncUp</span></label>
+            </div>
         </div>
     </div>
 

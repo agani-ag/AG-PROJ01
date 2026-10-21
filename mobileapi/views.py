@@ -774,11 +774,15 @@ def sync(request):
     """Everything the app refreshes at once: the user's own details (name/email — an admin may
     have edited them), their link list, the chat-badge count, and the server config. Replaces
     four separate GETs. Reminders stay on their own endpoint (they have a scheduling/ack flow)."""
+    from . import sso  # sso imports this module
     return JsonResponse({
         "user": account_dict(request.account),
         "urls": links_for(request.account),
         # Websites switched on for this user and the page token each one gets (window.SyncUp.token).
         "token_sites": site_tokens.tokens_for(account=request.account),
+        # Sign in with SyncUp: the websites that may use it, this person's id there, and whether
+        # they already said yes (window.SyncUp.account / signIn(), see sso.py).
+        "sso": sso.app_info(request.account),
         # Notifications page badge: pushes this user hasn't opened yet.
         "notifications_new": notifications_api.new_count(account=request.account),
         "chat_unread": _chat_unread_count(request.account),

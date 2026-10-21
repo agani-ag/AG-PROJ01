@@ -593,6 +593,11 @@ class AppLink(models.Model):
     give_token = models.BooleanField(
         default=False, help_text="Give this link's website the user's SyncUp token (window.SyncUp.token).",
     )
+    # On (general links only): "Sign in with SyncUp" works on this link's website — the app adds
+    # window.SyncUp.account / signIn() there (see sso.py). SyncHub turns it on for its tools.
+    allow_sso = models.BooleanField(
+        default=False, help_text="Let this website sign people in with their SyncUp account.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -727,11 +732,14 @@ class AppConfig(models.Model):
     cleanup_log_days = models.PositiveIntegerField(
         default=30, help_text="Delete push/notification logs older than this many days (0 = keep all).",
     )
+    # The key SyncHub sends to add / update General links (POST /app/v1/hub/links). Blank = closed.
+    links_key = models.CharField(max_length=64, blank=True, default="")
+    # The key SyncHub sends to swap a "Sign in with SyncUp" code for who the person is
+    # (POST /app/v1/hub/sso/check, see sso.py). Separate from links_key on purpose. Blank = off.
+    sso_key = models.CharField(max_length=64, blank=True, default="")
     # Page tokens from before per-site tokens (one signed token per account, or per link for app v6)
     # still push until this day. Set automatically to 60 days after the first request on the new
     # code, i.e. the release; see site_tokens.legacy_tokens_allowed().
-    # The key SyncHub sends to add / update General links (POST /app/v1/hub/links). Blank = closed.
-    links_key = models.CharField(max_length=64, blank=True, default="")
     legacy_page_tokens_until = models.DateField(
         null=True, blank=True,
         help_text="Old-style page tokens (before per-site tokens) still work until this day.",
@@ -1322,3 +1330,41 @@ class AppNotificationRead(models.Model):
 
     def __str__(self):
         return f"#{self.log_id} read"
+
+
+# =============== Sign in with SyncUp (SyncHub's tools) ===============
+class AppSsoIdentity(models.Model):
+    """One person as SyncHub knows them (sso.py): a random id that never changes, and whether they
+    said yes to "Sign in with SyncUp" — asked once for all of SyncHub. Disconnect (You → Signed-in
+    sites) withdraws the yes; the id stays, so SyncHub still knows them if they connect again."""
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="sso_identities")
+    client = models.CharField(max_length=32, default="synchub")
+    sub = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    consented_at = models.DateTimeField(null=True, blank=True)
+    disconnected_at = models.DateTimeField(null=True, blank=True)
+    last_sign_in_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["account", "client"], name="uniq_sso_identity_account_client")]
+
+    @property
+    def connected(self):
+        return self.consented_at is not None
+
+    def __str__(self):
+        return f"{self.client} · {self.account.login_label}"
+
+
+class AppSsoCode(models.Model):
+    """A one-time sign-in code: one person, one website, good for 60 seconds, used up by any check.
+    Only its hash is kept. Kept a month for the admin's counts (ok = it signed someone in)."""
+    code_hash = models.CharField(max_length=64, unique=True)
+    identity = models.ForeignKey(AppSsoIdentity, on_delete=models.CASCADE, related_name="codes")
+    host = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    ok = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.host} · {self.created_at:%Y-%m-%d %H:%M}"

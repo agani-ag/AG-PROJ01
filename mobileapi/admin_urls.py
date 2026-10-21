@@ -26,6 +26,7 @@ urlpatterns = [
     path("general-links", v.general_links, name="mobile_general_links"),
     path("general-links/add", v.general_link_add, name="mobile_general_link_add"),
     path("general-links/key", v.general_links_key, name="mobile_general_links_key"),
+    path("general-links/sso-key", v.general_links_sso_key, name="mobile_general_links_sso_key"),
     path("general-links/<int:link_id>/edit", v.general_link_edit, name="mobile_general_link_edit"),
     path("site-tokens/reset", v.site_tokens_reset, name="mobile_site_tokens_reset"),
 
