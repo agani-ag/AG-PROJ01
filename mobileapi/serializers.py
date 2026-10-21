@@ -31,6 +31,9 @@ def link_dict(link, notify_token=""):
         # SyncUp (the admin). Older app versions ignore these.
         "source": "partner" if link.partner_id else "admin",
         "source_name": link.partner.name if link.partner_id else "",
+        # A general link (no account): every phone shows it, signed in or not, in its own
+        # "For everyone" group. Older app versions ignore it.
+        "general": link.account_id is None,
         # App v6 puts this on the link's own tab: the website's page token, only when the link has
         # "Give SyncUp token" on (newer apps get the list in /sync as token_sites instead).
         "notify_token": notify_token,
@@ -47,6 +50,11 @@ def live_partner_ids(account):
     )
 
 
+def active_general_links():
+    """The admin's general links (no account) — for everyone, signed in or not."""
+    return AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title")
+
+
 def links_for(account):
     """The app's URL list: this user's own active links, then the shared general links.
 
@@ -61,7 +69,7 @@ def links_for(account):
         .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))
         .select_related("partner").order_by("title")
     )
-    general = list(AppLink.objects.filter(is_active=True, account__isnull=True).select_related("partner").order_by("title"))
+    general = list(active_general_links())
     tokens = {}
     if any(link.give_token for link in own + general):
         tokens = {t["host"]: t["token"] for t in tokens_for(account=account)}

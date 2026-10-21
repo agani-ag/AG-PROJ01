@@ -39,7 +39,9 @@ from .models import (
     AppReminder,
     AppReminderReceipt,
 )
-from .serializers import PARTNER_NOTIFY_SALT, account_dict, links_for, reminders_for
+from .serializers import (
+    PARTNER_NOTIFY_SALT, account_dict, active_general_links, link_dict, links_for, reminders_for,
+)
 
 # Ultimate fallbacks if the (DB-managed) privacy fields are ever blank.
 PRIVACY_FALLBACK_COMPANY = "SyncUp"
@@ -639,6 +641,16 @@ def _config_dict(request):
 @require_http_methods(["GET"])
 def config(request):
     return JsonResponse(_config_dict(request))
+
+
+@require_http_methods(["GET"])
+def general_links(request):
+    """The admin's general links for a signed-out phone's SyncUp section (no sign-in; signed-in
+    phones get them in /sync after their own links). Versioned like the shortcut catalogue. Page
+    tokens for these websites come from device/hello (token_sites), so none are sent here."""
+    from .home_shortcuts import versioned_json
+
+    return versioned_json(request, {"links": [link_dict(link) for link in active_general_links()]})
 
 
 # --------------------------------------------------------------------------- #

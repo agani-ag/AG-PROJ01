@@ -175,6 +175,7 @@
                     <dt>Settings</dt><dd class="num">{{ sync.settings }}</dd>
                     <dt>Calendar</dt><dd class="num">{{ sync.tasks }} to-do{{ sync.tasks|pluralize }} <span class="small muted">· {{ sync.task_lists }} list{{ sync.task_lists|pluralize }}</span></dd>
                     <dt>Forest</dt><dd class="num">{{ sync.trees }} tree{{ sync.trees|pluralize }} <a class="small" href="{% url 'mobile_forest' account.id %}">· Open forest</a></dd>
+                    <dt>Wellbeing</dt><dd class="num">{{ sync.drinks }} drink{{ sync.drinks|pluralize }} <span class="small muted">· {{ sync.habits }} habit{{ sync.habits|pluralize }} · {{ sync.nights }} night{{ sync.nights|pluralize }} · {{ sync.moods }} mood{{ sync.moods|pluralize }} · {{ sync.step_days }} step day{{ sync.step_days|pluralize }}</span></dd>
                     <dt>Open tabs</dt><dd class="num">{{ sync.open_tabs }} <span class="small muted">on {{ sync.devices|length }} device{{ sync.devices|length|pluralize }}</span></dd>
                 </dl>
                 {% for r in sync.devices %}

@@ -3,6 +3,17 @@
 
 {% block head %}
 <style>
+    .open-in { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 640px) { .open-in { grid-template-columns: 1fr; } }
+    .open-opt { position: relative; cursor: pointer; }
+    .open-opt input { position: absolute; opacity: 0; pointer-events: none; }
+    .open-opt > span { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); }
+    .open-opt > span .icon { grid-row: span 2; color: var(--muted); }
+    .open-opt b { font-weight: 600; font-size: 14px; } .open-opt small { color: var(--muted); font-size: 12px; line-height: 16px; }
+    .open-opt input:checked + span { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: var(--accent-soft); }
+    .open-opt input:checked + span .icon { color: var(--accent); }
+    .open-opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .open-opt.off { opacity: .5; cursor: not-allowed; }
     /* Live notification preview (Android-style card) */
     .push-phone { background: var(--surface-2); border-radius: 0; }
     .notif { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px 14px 14px; box-shadow: var(--shadow-sm); }
@@ -46,7 +57,7 @@
             <div class="field{% if form.audience.errors %} invalid{% endif %}">
                 <label class="label" for="{{ form.audience.id_for_label }}">Send to</label>
                 {{ form.audience }}
-                <span class="help">Everyone / Signed out / Signed in go out in one send (a topic), however many installs there are. Their link opens in a Normal tab.</span>
+                <span class="help">Everyone / Signed out / Signed in go out in one send (a topic), however many installs there are.</span>
             </div>
             <div class="field{% if form.account.errors %} invalid{% endif %}" id="account-field">
                 <label class="label" for="{{ form.account.id_for_label }}">Account</label>
@@ -81,6 +92,22 @@
                     {% for e in form.link_url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                     <span class="help">HTTPS campaign or form URL. Opens inside the app when tapped.</span>
                 </div>
+            </div>
+            <div class="field" id="open-in-field">
+                <span class="label">Open the link in</span>
+                <div class="open-in" role="radiogroup" aria-label="Open the link in">
+                    <label class="open-opt"><input type="radio" name="open_in" value="normal" {% if form.open_in.value != "syncup" %}checked{% endif %}>
+                        <span>{% icon "globe" %}<b>Normal tab</b><small>Like any website — the address shows</small></span></label>
+                    <label class="open-opt" id="open-syncup"><input type="radio" name="open_in" value="syncup" {% if form.open_in.value == "syncup" %}checked{% endif %}>
+                        <span>{% icon "shield-check" %}<b>SyncUp tab</b><small>Shown by its name, address hidden, apart from normal browsing</small></span></label>
+                </div>
+                <span class="help" id="open-in-help"></span>
+            </div>
+            <div class="field{% if form.link_title.errors %} invalid{% endif %}" id="link-title-field">
+                <label class="label" for="{{ form.link_title.id_for_label }}">Name in the SyncUp tab <span class="opt">optional</span></label>
+                {{ form.link_title }}
+                {% for e in form.link_title.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+                <span class="help">Shown instead of the address. Blank = the notification's title.</span>
             </div>
             <div class="field{% if form.image_url.errors %} invalid{% endif %}">
                 <label class="label" for="{{ form.image_url.id_for_label }}">Image URL <span class="opt">optional</span></label>
@@ -236,6 +263,7 @@
             </div>
             <div class="card-foot stack" style="gap:10px">
                 <div class="row small muted" style="flex-wrap:nowrap">{% icon "users" "icon-sm" %}<span class="truncate">Sends to <b id="pv-target"></b></span></div>
+                <div class="row small muted" style="flex-wrap:nowrap" id="pv-open-row" hidden>{% icon "external-link" "icon-sm" %}<span class="truncate">Link opens in <b id="pv-open"></b></span></div>
                 <button type="submit" class="btn btn-primary btn-lg btn-block">{% icon "send" %}Send notification</button>
             </div>
         </div>
@@ -281,8 +309,38 @@
     var audience = document.getElementById("{{ form.audience.id_for_label }}");
     var accountField = document.getElementById("account-field");
     function syncAudience() { accountField.hidden = audience.value !== "account"; }
-    audience.addEventListener("change", function () { syncAudience(); syncText(); });
+    audience.addEventListener("change", function () { syncAudience(); syncOpenIn(true); syncText(); });
     syncAudience();
+
+    // Where the link opens: Normal or SyncUp tab. Until the admin picks one, it follows the audience
+    // (one account: SyncUp tab, everyone else: Normal); signed-out installs can't open SyncUp tabs.
+    var linkUrl = document.getElementById("{{ form.link_url.id_for_label }}");
+    var openField = document.getElementById("open-in-field"), titleField = document.getElementById("link-title-field");
+    var openSyncup = document.getElementById("open-syncup"), openHelp = document.getElementById("open-in-help");
+    var radios = document.querySelectorAll('input[name="open_in"]');
+    var openPicked = {% if form.is_bound %}true{% else %}false{% endif %};
+    radios.forEach(function (r) { r.addEventListener("change", function () { openPicked = true; syncOpenIn(false); }); });
+    function openValue() { var v = "normal"; radios.forEach(function (r) { if (r.checked) v = r.value; }); return v; }
+    function syncOpenIn(audienceChanged) {
+        var signedOut = audience.value === "signed_out";
+        var syncupRadio = openSyncup.querySelector("input");
+        syncupRadio.disabled = signedOut;
+        openSyncup.classList.toggle("off", signedOut);
+        if (signedOut) radios[0].checked = true;
+        else if (audienceChanged && !openPicked) (audience.value === "account" ? syncupRadio : radios[0]).checked = true;
+        var hasLink = linkUrl.value.trim() !== "";
+        openField.hidden = !hasLink;
+        titleField.hidden = !hasLink || openValue() !== "syncup";
+        openHelp.textContent = signedOut ? "Signed-out installs open links in a Normal tab."
+            : openValue() === "syncup" && audience.value !== "account" ? "Signed-in phones open it in a SyncUp tab; signed-out ones in a Normal tab."
+            : "";
+        var pvRow = document.getElementById("pv-open-row");
+        pvRow.hidden = !hasLink;
+        document.getElementById("pv-open").textContent = openValue() === "syncup" ? "a SyncUp tab" : "a Normal tab";
+    }
+    linkUrl.addEventListener("input", function () { syncOpenIn(false); });
+    document.getElementById("push-url-pick").addEventListener("change", function () { syncOpenIn(false); });
+    syncOpenIn({% if form.is_bound %}false{% else %}true{% endif %});
     var title = document.getElementById("{{ form.title.id_for_label }}");
     var body = document.getElementById("{{ form.body.id_for_label }}");
     var image = document.getElementById("{{ form.image_url.id_for_label }}");

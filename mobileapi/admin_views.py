@@ -1013,8 +1013,12 @@ def push(request):
             link_url = form.cleaned_data.get("link_url")
             image_url = form.cleaned_data.get("image_url")
             data = {"link_url": link_url} if link_url else None  # tap target
-            if data and audience != "account":
-                data["open_in"] = "normal"  # a broadcast link opens in a Normal tab (v6); v5 ignores it
+            if data:
+                # Where the link opens: a Normal tab, or a SyncUp tab named by link_title (its address
+                # hidden). Signed-out phones always open it in a Normal tab. v5 ignores both.
+                data["open_in"] = form.cleaned_data["open_in"]
+                if data["open_in"] == "syncup":
+                    data["link_title"] = (form.cleaned_data.get("link_title") or "").strip() or title
 
             # Advanced FCM (AndroidConfig) options, optionally persisted as master defaults.
             fcm_opts = form.fcm_options()

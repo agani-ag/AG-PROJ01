@@ -6,8 +6,8 @@ never in Incognito); the site's backend pushes with it plus the SyncUp notify ke
 (POST /app/v1/partner/notify).
 
   signed in   one token per (account, website) — a push reaches all of that user's phones
-  signed out  one token per (phone, website)   — a push reaches that phone only (shortcuts only;
-              SyncUp links need sign-in)
+  signed out  one token per (phone, website)   — a push reaches that phone only (shortcuts and
+              general links; a user's own links need sign-in)
 
 Tokens are random and different for every website, so two sites can't match up users; deleting a
 website's rows (reset) makes the app fetch new ones on its next sync. A user's own link counts only
@@ -45,18 +45,18 @@ def _hosts(urls):
 
 def enabled_hosts(account=None):
     """Websites that get a token for this user (account) or, with no account, for a signed-out
-    phone: switched-on shortcuts, plus — signed in — switched-on general links and the user's own
-    switched-on links (partner links only while that partner is enabled, as on the Work home)."""
+    phone: switched-on shortcuts and general links, plus — signed in — the user's own switched-on
+    links (partner links only while that partner is enabled, as on the Work home)."""
     from .serializers import live_partner_ids  # serializers imports this module
 
     urls = list(
         HomeShortcut.objects.filter(give_token=True, is_active=True, category__is_active=True)
         .values_list("url", flat=True)
     )
+    urls += list(
+        AppLink.objects.filter(give_token=True, is_active=True, account__isnull=True).values_list("url", flat=True)
+    )
     if account is not None:
-        urls += list(
-            AppLink.objects.filter(give_token=True, is_active=True, account__isnull=True).values_list("url", flat=True)
-        )
         urls += list(
             AppLink.objects.filter(give_token=True, is_active=True, account=account)
             .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))

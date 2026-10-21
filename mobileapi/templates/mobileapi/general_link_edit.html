@@ -7,7 +7,7 @@
     <div class="titles">
         <a class="back" href="{% url 'mobile_general_links' %}">{% icon "arrow-left" "icon-sm" %}General links</a>
         <h1>{% if is_edit %}Edit general link{% else %}Add general link{% endif %}</h1>
-        <p class="page-sub">Shown to all users with general links turned on</p>
+        <p class="page-sub">In every phone's SyncUp section, signed in or not</p>
     </div>
 </div>
 
@@ -58,7 +58,7 @@
                 <div class="text"><b>Active</b><span class="help">Inactive links are hidden for everyone.</span></div>
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
-            {% include "mobileapi/_token_switch.html" with who="each signed-in user's own" %}
+            {% include "mobileapi/_token_switch.html" with who="each user's (or, signed out, each phone's) own" %}
         </div>
     </div>
 

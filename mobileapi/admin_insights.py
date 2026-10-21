@@ -90,6 +90,12 @@ def sync_summary(account):
         "tasks": counts.get("task", 0),
         "task_lists": counts.get("tasklist", 0),
         "trees": counts.get("tree", 0),
+        # Wellbeing: counts only (settings rows not counted).
+        "drinks": live.filter(kind="water").exclude(key="settings").count(),
+        "habits": counts.get("habit", 0),
+        "nights": live.filter(kind="sleep").exclude(key="settings").count(),
+        "moods": live.filter(kind="mood").exclude(key="settings").count(),
+        "step_days": live.filter(kind="steps").exclude(key="settings").count(),
         "devices": devices,
         "open_tabs": sum(d["tab_count"] for d in devices),
         "last_change": SyncItem.objects.filter(account=account).aggregate(m=Max("changed_at"))["m"],

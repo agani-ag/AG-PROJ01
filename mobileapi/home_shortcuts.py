@@ -32,7 +32,11 @@ def catalog_dict():
 
 @require_http_methods(["GET"])
 def catalog(request):
-    data = catalog_dict()
+    return versioned_json(request, catalog_dict())
+
+
+def versioned_json(request, data):
+    """`data` plus its `version`; 304 when the app already has that version (?v= or If-None-Match)."""
     version = hashlib.sha1(json.dumps(data, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
     etag = f'"{version}"'
     if request.GET.get("v") == version or request.headers.get("If-None-Match") == etag:

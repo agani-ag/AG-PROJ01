@@ -7,7 +7,7 @@ One request does both directions (a single short request, fine on PythonAnywhere
   {
     "device_id": "...",
     "since": "<cursor from the last response, or empty for a full download>",
-    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|tree|calmlog",
+    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|tree|calmlog|water|steps|habit|habitlog|sleep|mood",
                   "key": "<stable id>", "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
     "kinds": ["task", "tasklist"],   # optional: only these kinds come back (each app feature keeps
                                      # its own cursor — Calendar and Forest sync on their own)
@@ -22,8 +22,11 @@ kept 90 days, bookmarks up to 5,000. Work and Incognito never reach this endpoin
 sends Normal data), and the admin sees counts only.
 
 Tools → Calendar sends its to-dos (`task`) and lists (`tasklist`); Tools → Forest its trees (`tree`)
-and calm minutes per day and phone (`calmlog`). When a phone changes to-dos, the account's other
-phones get a silent "sync" push, so their reminders follow at once.
+and calm minutes per day and phone (`calmlog`). Tools → Wellbeing: drinks (`water`), step totals per
+day and phone (`steps`), habits and their days (`habit`, `habitlog`), nights (`sleep`) and mood
+check-ins (`mood`) — each tool's settings ride in its own kind under the key "settings". When a
+phone changes to-dos or wellbeing items (not steps), the account's other phones get a silent "sync"
+push, so their reminders and Home rows follow at once.
 """
 import logging
 
@@ -45,12 +48,18 @@ HISTORY_DAYS = 90
 MAX_BOOKMARKS = 5000
 MAX_CHANGES_PER_CALL = 1000
 OTHER_DEVICE_DAYS = 30
-CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist", "tree", "calmlog"}
+WELLBEING_KINDS = {"water", "steps", "habit", "habitlog", "sleep", "mood"}
+CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist", "tree", "calmlog"} | WELLBEING_KINDS
 # Live items per account, so one runaway phone can't fill the database.
-MAX_LIVE = {"task": 5000, "tasklist": 100, "tree": 2000, "calmlog": 3000}
+MAX_LIVE = {"task": 5000, "tasklist": 100, "tree": 2000, "calmlog": 3000,
+            "water": 20000, "steps": 3000, "habit": 200, "habitlog": 20000, "sleep": 3000, "mood": 10000}
 CALM_LOG_DAYS = 400
-# Changes to these kinds ping the account's other phones (their reminders must follow).
-PING_KINDS = {"task", "tasklist"}
+# Drinks and step totals older than this are dropped (habits, nights and moods are kept).
+WELLBEING_DAYS = 400
+# Changes to these kinds ping the account's other phones (their reminders must follow), with the
+# "what" the app syncs. Step totals change all day long, so they never ping.
+PING_KINDS = {"task": "calendar", "tasklist": "calendar",
+              "water": "wellbeing", "habit": "wellbeing", "habitlog": "wellbeing", "sleep": "wellbeing", "mood": "wellbeing"}
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +90,7 @@ def browser_sync(request):
     since = parse_datetime(data.get("since") or "") if data.get("since") else None
     history_cutoff_ms = int((now - timedelta(days=HISTORY_DAYS)).timestamp() * 1000)
     calm_cutoff_ms = int((now - timedelta(days=CALM_LOG_DAYS)).timestamp() * 1000)
+    wellbeing_cutoff_ms = int((now - timedelta(days=WELLBEING_DAYS)).timestamp() * 1000)
     rejected = []
     asked = data.get("kinds")
     wanted = CLIENT_KINDS & {str(k) for k in asked} if isinstance(asked, list) and asked else CLIENT_KINDS
@@ -165,6 +175,7 @@ def browser_sync(request):
         # ---- trim history past the window (tombstones older than the window are dropped too)
         SyncItem.objects.filter(account=account, kind="history", updated_ms__lt=history_cutoff_ms).delete()
         SyncItem.objects.filter(account=account, kind="calmlog", updated_ms__lt=calm_cutoff_ms).delete()
+        SyncItem.objects.filter(account=account, kind__in=["water", "steps"], updated_ms__lt=wellbeing_cutoff_ms)             .exclude(key="settings").delete()
 
     # ---- what changed on the server since the phone's cursor
     qs = SyncItem.objects.filter(account=account, kind__in=wanted)
@@ -187,8 +198,8 @@ def browser_sync(request):
         for t in SyncItem.objects.filter(account=account, kind="tabs", changed_at__gte=recent)
         .exclude(key=device_id).order_by("-changed_at")
     ]
-    if applied_kinds & PING_KINDS:
-        _ping_other_phones(account, device_id, "calendar")
+    for what in sorted({PING_KINDS[k] for k in applied_kinds if k in PING_KINDS}):
+        _ping_other_phones(account, device_id, what)
     return JsonResponse({
         "success": True,
         "cursor": cursor,

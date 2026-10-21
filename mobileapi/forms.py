@@ -95,8 +95,9 @@ class AppLinkForm(forms.ModelForm):
 
 
 class GeneralLinkForm(forms.ModelForm):
-    """A shared link with no account — shown to every user. With "Give SyncUp token" on, its
-    website gets each signed-in user's own page token (see site_tokens.py)."""
+    """A shared link with no account — in every phone's SyncUp section, signed in or not. With
+    "Give SyncUp token" on, its website gets each user's (or, signed out, each phone's) own page
+    token (see site_tokens.py)."""
 
     class Meta:
         model = AppLink
@@ -166,6 +167,13 @@ PUSH_AUDIENCE_CHOICES = [
 ]
 
 
+# Where a push's link opens on the phone (the app reads "open_in": "normal", anything else = SyncUp tab).
+PUSH_OPEN_IN_CHOICES = [
+    ("normal", "Normal tab"),
+    ("syncup", "SyncUp tab"),
+]
+
+
 class PushForm(forms.Form):
     audience = forms.ChoiceField(choices=PUSH_AUDIENCE_CHOICES, initial="everyone", label="Send to")
     account = forms.ModelChoiceField(
@@ -178,6 +186,14 @@ class PushForm(forms.Form):
     link_url = forms.CharField(
         required=False, max_length=500, label="Open URL on tap",
         help_text="Optional HTTPS URL (campaign/form) opened in the app on tap.",
+    )
+    # Normal tab: the address shows, like any website. SyncUp tab: the link's name shows instead of
+    # its address, kept apart from normal browsing (signed-in phones; others open it in a Normal tab).
+    open_in = forms.ChoiceField(choices=PUSH_OPEN_IN_CHOICES, required=False, initial="normal", label="Open the link in",
+                                widget=forms.RadioSelect)
+    link_title = forms.CharField(
+        required=False, max_length=60, label="Name in the SyncUp tab",
+        help_text="Shown instead of the address. Blank = the notification's title.",
     )
     image_url = forms.CharField(
         required=False, max_length=500, label="Image URL",
@@ -275,6 +291,17 @@ class PushForm(forms.Form):
 
     def clean_link_url(self):
         return self._clean_https("link_url")
+
+    def clean_open_in(self):
+        """Normal or SyncUp tab; when not chosen, what each audience always had (one account: SyncUp
+        tab, everyone else: Normal). Signed-out installs can't open SyncUp tabs."""
+        value = self.cleaned_data.get("open_in") or ""
+        audience = self.data.get("audience")
+        if audience == "signed_out":
+            return "normal"
+        if value not in ("normal", "syncup"):
+            value = "syncup" if audience == "account" else "normal"
+        return value
 
     def clean_image_url(self):
         return self._clean_https("image_url")

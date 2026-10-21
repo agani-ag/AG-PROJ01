@@ -63,11 +63,12 @@ class TokenSitesTests(TestCase):
         self.assertEqual(links["Mine off"]["notify_token"], "")
         self.assertNotIn("notify_token", data["user"])
 
-    def test_signed_out_phone_gets_shortcut_websites_only(self):
+    def test_signed_out_phone_gets_shortcut_and_general_link_websites(self):
         r = self.client.post("/app/v1/device/hello", json.dumps({"device_id": "phone-1"}), content_type="application/json")
         self.assertEqual(r.status_code, 200)
         sites = r.json()["token_sites"]
-        self.assertEqual([s["host"] for s in sites], ["portal.example.com"])
+        self.assertEqual([s["host"] for s in sites], ["general.example.org", "portal.example.com"])
+        sites = [s for s in sites if s["host"] == "portal.example.com"]
         ravi_token = {s["host"]: s["token"] for s in self._sync()["token_sites"]}["portal.example.com"]
         self.assertNotEqual(sites[0]["token"], ravi_token, "phone token differs from the user's")
 
