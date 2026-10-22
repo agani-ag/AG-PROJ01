@@ -1,7 +1,6 @@
 """HTML admin routes for the SyncUp mobile API — mounted at /mobile/ (superuser-only)."""
 from django.urls import path
 
-from . import admin_forests as fo
 from . import admin_insights as insights
 from . import admin_shortcuts as sc
 from . import admin_views as v
@@ -43,14 +42,6 @@ urlpatterns = [
     path("home-shortcuts/categories/<int:category_id>/delete", sc.category_delete, name="mobile_shortcut_category_delete"),
     path("home-shortcuts/reorder", sc.reorder, name="mobile_home_shortcuts_reorder"),
     path("home-shortcuts/bulk", sc.bulk_add, name="mobile_home_shortcuts_bulk"),
-
-    # Forests: every user's Forest (Tools → Forest in the app), and trees the admin gives
-    path("forests", fo.forests, name="mobile_forests"),
-    path("forests/<int:account_id>", fo.forest_detail, name="mobile_forest"),
-    path("forests/<int:account_id>/add", fo.forest_add, name="mobile_forest_add"),
-    path("forests/<int:account_id>/trees/<str:key>/remove", fo.forest_remove, name="mobile_forest_remove"),
-    path("forests/art/pond.svg", fo.forest_pond, name="mobile_forest_pond"),
-    path("forests/art/<str:name>.svg", fo.forest_art, name="mobile_forest_art"),
 
     path("verify-test", v.action_test, name="mobile_action_test"),
 

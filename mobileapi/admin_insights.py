@@ -30,7 +30,7 @@ superuser_required = user_passes_test(
 
 CURRENT_APP = 6  # the first app version with sign-up, sync and partners; older installs are v5
 SYNC_TYPES = {"bookmarks": "Bookmarks", "history": "History", "tabs": "Open tabs",
-              "shortcuts": "Shortcuts", "settings": "Settings", "calendar": "Calendar", "forest": "Forest"}
+              "shortcuts": "Shortcuts", "settings": "Settings", "calendar": "Calendar"}
 
 
 def ms_to_dt(ms):
@@ -89,7 +89,6 @@ def sync_summary(account):
         "settings": counts.get("setting", 0),
         "tasks": counts.get("task", 0),
         "task_lists": counts.get("tasklist", 0),
-        "trees": counts.get("tree", 0),
         # Wellbeing: counts only (settings rows not counted).
         "drinks": live.filter(kind="water").exclude(key="settings").count(),
         "habits": counts.get("habit", 0),

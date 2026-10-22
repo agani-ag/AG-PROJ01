@@ -1,5 +1,6 @@
-"""Calendar & Forest items in the browser sync (browser_sync.py): new kinds, per-feature `kinds`
-filter, live-item caps and the silent "sync" ping.  Run: python manage.py test mobileapi.tests_calendar_forest_sync"""
+"""Calendar items in the browser sync (browser_sync.py): new kinds, per-feature `kinds` filter,
+live-item caps and the silent "sync" ping — and Forest's old kinds being ignored (Forest is
+phone-only now).  Run: python manage.py test mobileapi.tests_calendar_sync"""
 import json
 from unittest import mock
 
@@ -16,7 +17,7 @@ def _account(name, email):
     return a
 
 
-class CalendarForestSyncTests(TestCase):
+class CalendarSyncTests(TestCase):
     def setUp(self):
         AppConfig.load()
         self.ravi = _account("Ravi", "ravi@example.com")
@@ -51,20 +52,34 @@ class CalendarForestSyncTests(TestCase):
 
     @mock.patch.object(fcm, "is_configured", lambda: True)
     @mock.patch.object(fcm, "send_silent")
-    def test_forest_and_browser_kinds_do_not_ping(self, send_silent):
-        self._sync("phone-a", [self._ch("tree", "tr1", 1000, {"species": "NEEM"}), self._ch("calmlog", "20261014|phone-a", 1000, {"min": 20}),
-                               self._ch("bookmark", "b1", 1000, {"url": "https://x.example"})])
+    def test_browser_kinds_do_not_ping(self, send_silent):
+        self._sync("phone-a", [self._ch("bookmark", "b1", 1000, {"url": "https://x.example"})])
         send_silent.assert_not_called()
+
+    @mock.patch.object(fcm, "is_configured", lambda: True)
+    @mock.patch.object(fcm, "send_silent")
+    def test_forest_kinds_are_ignored_and_old_rows_left_alone(self, send_silent):
+        # A row stored before Forest went phone-only (very old, so the old calm-log trim would have
+        # dropped it): it stays in the database and is never sent back.
+        SyncItem.objects.create(account=self.ravi, kind="calmlog", key="20250101|phone-a", data={"min": 5}, updated_ms=1000)
+        r = self._sync("phone-a", [self._ch("tree", "tr1", 1000, {"species": "NEEM"}),
+                                   self._ch("calmlog", "20261014|phone-a", 1000, {"min": 20})])
+        self.assertEqual(r["rejected"], [], "skipped quietly, not rejected")
+        send_silent.assert_not_called()
+        self.assertFalse(SyncItem.objects.filter(kind="tree").exists())
+        self.assertEqual(list(SyncItem.objects.filter(kind="calmlog").values_list("key", flat=True)), ["20250101|phone-a"])
+        self.assertEqual(self._sync("phone-b", kinds=["tree", "calmlog"])["changes"], [])
+        self.assertEqual(self._sync("phone-b")["changes"], [])
 
     @mock.patch.object(fcm, "is_configured", lambda: False)
     def test_kinds_filter_keeps_features_apart(self):
-        self._sync("phone-a", [self._ch("task", "t1", 1000), self._ch("tree", "tr1", 1000), self._ch("bookmark", "b1", 1000, {"url": "u"})])
+        self._sync("phone-a", [self._ch("task", "t1", 1000), self._ch("habit", "h1", 1000), self._ch("bookmark", "b1", 1000, {"url": "u"})])
         cal = self._sync("phone-b", kinds=["task", "tasklist"])
         self.assertEqual([c["key"] for c in cal["changes"]], ["t1"])
-        forest = self._sync("phone-b", kinds=["tree", "calmlog"])
-        self.assertEqual([c["key"] for c in forest["changes"]], ["tr1"])
+        wellbeing = self._sync("phone-b", kinds=["habit", "habitlog"])
+        self.assertEqual([c["key"] for c in wellbeing["changes"]], ["h1"])
         everything = self._sync("phone-b")  # older apps: no filter
-        self.assertEqual({c["key"] for c in everything["changes"]}, {"t1", "tr1", "b1"})
+        self.assertEqual({c["key"] for c in everything["changes"]}, {"t1", "h1", "b1"})
         junk = self._sync("phone-b", kinds=["tabs", "nope"])  # unknown kinds → nothing
         self.assertEqual(junk["changes"], [])
 

@@ -7,10 +7,10 @@ One request does both directions (a single short request, fine on PythonAnywhere
   {
     "device_id": "...",
     "since": "<cursor from the last response, or empty for a full download>",
-    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|tree|calmlog|water|steps|habit|habitlog|sleep|mood",
+    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|water|steps|habit|habitlog|sleep|mood|shoplist|shopitem",
                   "key": "<stable id>", "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
     "kinds": ["task", "tasklist"],   # optional: only these kinds come back (each app feature keeps
-                                     # its own cursor — Calendar and Forest sync on their own)
+                                     # its own cursor — Calendar, Wellbeing and Shopping sync on their own)
     "tabs": {"device_name": "Pixel 8", "tabs": [{"title": "...", "url": "..."}],   # optional
              "state": {"enabled": true, "types": ["bookmarks", "history", ...]}}
   }
@@ -21,12 +21,16 @@ The latest change wins (by the phone's `updated_ms`); deletions travel as tombst
 kept 90 days, bookmarks up to 5,000. Work and Incognito never reach this endpoint (the app only
 sends Normal data), and the admin sees counts only.
 
-Tools → Calendar sends its to-dos (`task`) and lists (`tasklist`); Tools → Forest its trees (`tree`)
-and calm minutes per day and phone (`calmlog`). Tools → Wellbeing: drinks (`water`), step totals per
-day and phone (`steps`), habits and their days (`habit`, `habitlog`), nights (`sleep`) and mood
-check-ins (`mood`) — each tool's settings ride in its own kind under the key "settings". When a
-phone changes to-dos or wellbeing items (not steps), the account's other phones get a silent "sync"
-push, so their reminders and Home rows follow at once.
+Tools → Calendar sends its to-dos (`task`) and lists (`tasklist`). Tools → Wellbeing: drinks
+(`water`), step totals per day and phone (`steps`), habits and their days (`habit`, `habitlog`),
+nights (`sleep`) and mood check-ins (`mood`) — each tool's settings ride in its own kind under the
+key "settings". Tools → Shopping: lists (`shoplist`) and the things on them (`shopitem`). When a phone
+changes to-dos, wellbeing items (not steps) or shopping lists, the account's other phones get a silent
+"sync" push, so their reminders, Home rows and open lists follow at once.
+
+Tools → Forest lives only on the phone (worked out from the date and time), so it is not synced: the
+old `tree` / `calmlog` kinds are not accepted any more (such uploads are skipped and never sent back),
+and rows already stored are left as they are.
 """
 import logging
 
@@ -49,17 +53,19 @@ MAX_BOOKMARKS = 5000
 MAX_CHANGES_PER_CALL = 1000
 OTHER_DEVICE_DAYS = 30
 WELLBEING_KINDS = {"water", "steps", "habit", "habitlog", "sleep", "mood"}
-CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist", "tree", "calmlog"} | WELLBEING_KINDS
+SHOPPING_KINDS = {"shoplist", "shopitem"}
+CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist"} | WELLBEING_KINDS | SHOPPING_KINDS
 # Live items per account, so one runaway phone can't fill the database.
-MAX_LIVE = {"task": 5000, "tasklist": 100, "tree": 2000, "calmlog": 3000,
-            "water": 20000, "steps": 3000, "habit": 200, "habitlog": 20000, "sleep": 3000, "mood": 10000}
-CALM_LOG_DAYS = 400
+MAX_LIVE = {"task": 5000, "tasklist": 100,
+            "water": 20000, "steps": 3000, "habit": 200, "habitlog": 20000, "sleep": 3000, "mood": 10000,
+            "shoplist": 200, "shopitem": 5000}
 # Drinks and step totals older than this are dropped (habits, nights and moods are kept).
 WELLBEING_DAYS = 400
 # Changes to these kinds ping the account's other phones (their reminders must follow), with the
 # "what" the app syncs. Step totals change all day long, so they never ping.
 PING_KINDS = {"task": "calendar", "tasklist": "calendar",
-              "water": "wellbeing", "habit": "wellbeing", "habitlog": "wellbeing", "sleep": "wellbeing", "mood": "wellbeing"}
+              "water": "wellbeing", "habit": "wellbeing", "habitlog": "wellbeing", "sleep": "wellbeing", "mood": "wellbeing",
+              "shoplist": "shopping", "shopitem": "shopping"}
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +95,6 @@ def browser_sync(request):
     now = timezone.now()
     since = parse_datetime(data.get("since") or "") if data.get("since") else None
     history_cutoff_ms = int((now - timedelta(days=HISTORY_DAYS)).timestamp() * 1000)
-    calm_cutoff_ms = int((now - timedelta(days=CALM_LOG_DAYS)).timestamp() * 1000)
     wellbeing_cutoff_ms = int((now - timedelta(days=WELLBEING_DAYS)).timestamp() * 1000)
     rejected = []
     asked = data.get("kinds")
@@ -159,7 +164,7 @@ def browser_sync(request):
             raw_state = tabs.get("state") if isinstance(tabs.get("state"), dict) else {}
             state = {
                 "enabled": bool(raw_state.get("enabled", True)),
-                "types": [str(t)[:20] for t in (raw_state.get("types") or [])][:10],
+                "types": [str(t)[:20] for t in (raw_state.get("types") or [])][:20],
             }
             SyncItem.objects.update_or_create(
                 account=account, kind="tabs", key=device_id,
@@ -174,7 +179,6 @@ def browser_sync(request):
 
         # ---- trim history past the window (tombstones older than the window are dropped too)
         SyncItem.objects.filter(account=account, kind="history", updated_ms__lt=history_cutoff_ms).delete()
-        SyncItem.objects.filter(account=account, kind="calmlog", updated_ms__lt=calm_cutoff_ms).delete()
         SyncItem.objects.filter(account=account, kind__in=["water", "steps"], updated_ms__lt=wellbeing_cutoff_ms)             .exclude(key="settings").delete()
 
     # ---- what changed on the server since the phone's cursor
