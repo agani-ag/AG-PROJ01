@@ -8,7 +8,6 @@ from . import browser_sync
 from . import home_shortcuts
 from . import notifications_api
 from . import hub_links
-from . import sso
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -45,11 +44,6 @@ urlpatterns = [
     path("shortcuts", home_shortcuts.catalog, name="app_shortcuts"),  # home page catalogue, no sign-in
     path("general-links", views.general_links, name="app_general_links"),  # SyncUp links for everyone, no sign-in
     path("hub/links", hub_links.hub_links, name="app_hub_links"),
-    # Sign in with SyncUp (SyncHub's tools): the app's code + Signed-in sites, and SyncHub's check.
-    path("sso/code", sso.sso_code, name="app_sso_code"),
-    path("sso/sites", sso.sso_sites, name="app_sso_sites"),
-    path("sso/disconnect", sso.sso_disconnect, name="app_sso_disconnect"),
-    path("hub/sso/check", sso.hub_sso_check, name="app_hub_sso_check"),  # SyncHub adds / updates General links (links key)
     # Partner action / verification prompts shown on the phone
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),

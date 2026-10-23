@@ -593,8 +593,8 @@ class AppLink(models.Model):
     give_token = models.BooleanField(
         default=False, help_text="Give this link's website the user's SyncUp token (window.SyncUp.token).",
     )
-    # On (general links only): "Sign in with SyncUp" works on this link's website — the app adds
-    # window.SyncUp.account / signIn() there (see sso.py). SyncHub turns it on for its tools.
+    # Unused since 23 Oct 2026: "Sign in with SyncUp" was removed. Kept because server migrations
+    # only ever add.
     allow_sso = models.BooleanField(
         default=False, help_text="Let this website sign people in with their SyncUp account.",
     )
@@ -734,8 +734,7 @@ class AppConfig(models.Model):
     )
     # The key SyncHub sends to add / update General links (POST /app/v1/hub/links). Blank = closed.
     links_key = models.CharField(max_length=64, blank=True, default="")
-    # The key SyncHub sends to swap a "Sign in with SyncUp" code for who the person is
-    # (POST /app/v1/hub/sso/check, see sso.py). Separate from links_key on purpose. Blank = off.
+    # Unused since 23 Oct 2026 ("Sign in with SyncUp" was removed); kept because migrations only add.
     sso_key = models.CharField(max_length=64, blank=True, default="")
     # Page tokens from before per-site tokens (one signed token per account, or per link for app v6)
     # still push until this day. Set automatically to 60 days after the first request on the new
@@ -1333,6 +1332,8 @@ class AppNotificationRead(models.Model):
 
 
 # =============== Sign in with SyncUp (SyncHub's tools) ===============
+# Unused since 23 Oct 2026: "Sign in with SyncUp" was removed. The two tables stay because server
+# migrations only ever add; nothing reads or writes them any more.
 class AppSsoIdentity(models.Model):
     """One person as SyncHub knows them (sso.py): a random id that never changes, and whether they
     said yes to "Sign in with SyncUp" — asked once for all of SyncHub. Disconnect (You → Signed-in

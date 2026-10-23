@@ -304,11 +304,9 @@ def link_delete(request, link_id):
 def general_links(request):
     links = AppLink.objects.filter(account__isnull=True).order_by("title")
     cfg = AppConfig.load()
-    from . import sso
     return render(request, "mobileapi/general_links.html", {
-        "links": links, "links_key": cfg.links_key, "sso_key": cfg.sso_key,
+        "links": links, "links_key": cfg.links_key,
         "hub_count": sum(1 for l in links if l.external_id),
-        "sso_count": sum(1 for l in links if l.allow_sso), "sso_stats": sso.admin_counts(),
     })
 
 
@@ -323,20 +321,6 @@ def general_links_key(request):
     cfg.save(update_fields=["links_key"])
     messages.success(request, "Links key made — copy it into SyncHub → Settings." if first
                      else "New links key made. The old one no longer works — paste this one into SyncHub → Settings.")
-    return redirect("mobile_general_links")
-
-
-@superuser_required
-@require_POST
-def general_links_sso_key(request):
-    """A new SyncUp sign-in key — the one SyncHub sends to swap a Sign in with SyncUp code for who
-    the person is. Separate from the links key. The old key stops at once."""
-    cfg = AppConfig.load()
-    first = not cfg.sso_key
-    cfg.sso_key = secrets.token_urlsafe(32)
-    cfg.save(update_fields=["sso_key"])
-    messages.success(request, "Sign-in key made — copy it into SyncHub → Settings." if first
-                     else "New sign-in key made. The old one no longer works — paste this one into SyncHub → Settings.")
     return redirect("mobile_general_links")
 
 

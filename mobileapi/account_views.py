@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from . import notifications_api, site_tokens, sso
+from . import notifications_api, site_tokens
 from .auth import _extract_bearer, app_token_required, json_body
 from .identity import normalize_email, normalize_phone, normalize_username
 from .models import (
@@ -243,7 +243,6 @@ def device_hello(request):
         "success": True,
         "device_secret": device.device_secret,
         "token_sites": site_tokens.tokens_for(**who),
-        "sso": sso.app_info(account),
         "notifications_new": notifications_api.new_count(**who),
     })
 

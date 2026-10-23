@@ -54,7 +54,6 @@ def link_json(link):
         "icon": link.icon or "",
         "color": link.color or "",
         "give_token": link.give_token,
-        "sso": link.allow_sso,
         "active": not link.hub_hidden,
         "admin_off": link.admin_off,
         "shown": link.is_active,
@@ -125,13 +124,11 @@ def _clean(data, creating):
         if err:
             return None, err
         out["color"] = color
-    for field in ("give_token", "sso", "active"):
+    for field in ("give_token", "active"):
         if field in data and not isinstance(data.get(field), bool):
             return None, f"{field} must be true or false"
     if "give_token" in data:
         out["give_token"] = data["give_token"]
-    if "sso" in data:
-        out["allow_sso"] = data["sso"]
     if "active" in data:
         out["hub_hidden"] = not data["active"]
     return out, None

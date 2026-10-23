@@ -1,7 +1,7 @@
 """Live radio channel registry — the receiver for AudioSync's presence protocol.
 
 Broadcasters (AudioSync) POST register / heartbeat / stop events to `ingest` (shared Bearer key).
-The app reads the live channel list from `channels` (app token). Liveness is heartbeat-driven and
+The app reads the live channel list from `channels` (no sign-in: live stations are for everyone). Liveness is heartbeat-driven and
 evaluated at READ time — no cron: a channel is on air only while `is_live` AND its last heartbeat is
 within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily whenever the list is read.
 """
@@ -14,7 +14,6 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .auth import app_token_required
 from .models import AppConfig, RadioChannel
 
 
@@ -115,9 +114,9 @@ def ingest(request):
 
 
 @require_http_methods(["GET"])
-@app_token_required
 def channels(request):
-    """The app's live channel list. `enabled` = the Radio page's switch (one place, for everyone)."""
+    """The app's live channel list, for every phone, signed in or not. `enabled` = the Radio page's
+    switch (one place, for everyone)."""
     cfg = AppConfig.load()
     enabled = bool(cfg.radio_enabled)
     if not enabled:

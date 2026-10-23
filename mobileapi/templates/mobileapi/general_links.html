@@ -42,7 +42,6 @@
                         {% else %}<span class="badge">Admin</span>{% endif %}
                     </td>
                     <td data-label="Status">
-                        {% if link.allow_sso %}<span class="badge badge-accent" title="Sign in with SyncUp">Sign-in</span>{% endif %}
                         {% if link.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
                         {% elif link.admin_off %}<span class="badge">Off (you)</span>
                         {% elif link.hub_hidden %}<span class="badge">Hidden by SyncHub</span>
@@ -85,25 +84,6 @@
             {% csrf_token %}
             <button class="btn{% if not links_key %} btn-primary{% endif %}" type="submit">{% icon "rotate-ccw" %}{% if links_key %}New key{% else %}Make a key{% endif %}</button>
         </form>
-    </div>
-</div>
-
-<div class="card" style="margin-top:16px">
-    <div class="card-head">{% icon "log-in" %}<h2>SyncUp sign-in key</h2></div>
-    <div class="card-body stack">
-        <p class="small muted" style="margin:0">SyncHub sends this key to check a "Sign in with SyncUp" — it swaps a one-time code for the person's id, name, email and phone. Separate from the links key on purpose. Works only on links with "Sign in with SyncUp" on ({{ sso_count }} so far). Paste it into SyncHub → Settings.</p>
-        {% if sso_key %}
-        <div class="row gap-sm" style="flex-wrap:nowrap">
-            <input class="input" type="password" value="{{ sso_key }}" readonly id="sso-key" aria-label="SyncUp sign-in key" style="font-family:monospace">
-            <button type="button" class="btn" onclick="var k=document.getElementById('sso-key');k.type=k.type==='password'?'text':'password'">{% icon "eye" %}Show</button>
-            <button type="button" class="btn" onclick="navigator.clipboard.writeText(document.getElementById('sso-key').value);this.textContent='Copied'">{% icon "copy" %}Copy</button>
-        </div>
-        {% endif %}
-        <form method="POST" action="{% url 'mobile_general_links_sso_key' %}" {% if sso_key %}data-confirm="Make a new sign-in key?" data-confirm-text="The old key stops working at once — nobody can sign in to SyncHub with SyncUp until you paste the new one there." data-confirm-button="Make new key"{% endif %}>
-            {% csrf_token %}
-            <button class="btn{% if not sso_key %} btn-primary{% endif %}" type="submit">{% icon "rotate-ccw" %}{% if sso_key %}New key{% else %}Make a key{% endif %}</button>
-        </form>
-        <p class="small muted" style="margin:0">Last 30 days: {{ sso_stats.sign_ins }} sign-in{{ sso_stats.sign_ins|pluralize }} · {{ sso_stats.people }} {{ sso_stats.people|pluralize:"person,people" }} · {{ sso_stats.disconnected }} disconnected. Counts only — what anyone does in SyncHub stays there.</p>
     </div>
 </div>
 {% endblock %}

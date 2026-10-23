@@ -101,7 +101,7 @@ class GeneralLinkForm(forms.ModelForm):
 
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token", "allow_sso"]
+        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
