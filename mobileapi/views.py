@@ -14,6 +14,7 @@ import requests
 from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -442,14 +443,18 @@ def device_unregister(request):
 @require_http_methods(["POST"])
 @app_token_required
 def delete_account(request):
-    """User-initiated account deletion. Deactivates the account, revokes all tokens, and
-    turns off all devices. Admin can restore access later if needed."""
+    """User-initiated account deletion — for good (Google Play's account-deletion policy): the account
+    and everything kept for it are erased, and there is nothing to restore. Deleting the account row
+    takes, by cascade, its sign-in tokens, partner connections and prompts, its own links, reminders
+    and their receipts, the chat with support, all synced data (browser, Calendar, Shopping,
+    Wellbeing), page tokens and read marks. Pushes sent to this person go too; broadcasts stay (they
+    weren't theirs). Its phones stay registered as signed-out installs, as after a sign-out, so they
+    keep getting public broadcasts. The email and phone are free to sign up with again."""
     account = request.account
-    account.is_active = False
-    account.save(update_fields=["is_active", "updated_at"])
-    AppAuthToken.objects.filter(account=account).update(revoked=True)
-    AppDevice.objects.filter(account=account).update(account=None)
-    SyncItem.objects.filter(account=account).delete()  # synced browser data is erased for good
+    with transaction.atomic():
+        AppNotificationLog.objects.filter(account=account).delete()
+        AppDevice.objects.filter(account=account).update(account=None)
+        account.delete()
     return JsonResponse({"success": True})
 
 
