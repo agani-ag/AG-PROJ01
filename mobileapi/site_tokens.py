@@ -45,17 +45,19 @@ def _hosts(urls):
 
 def enabled_hosts(account=None):
     """Websites that get a token for this user (account) or, with no account, for a signed-out
-    phone: switched-on shortcuts and general links, plus — signed in — the user's own switched-on
-    links (partner links only while that partner is enabled, as on the Work home)."""
+    phone: switched-on shortcuts and general links (only for a user who sees general links), plus
+    — signed in — the user's own switched-on links (partner links only while that partner is
+    enabled, as on the Work home)."""
     from .serializers import live_partner_ids  # serializers imports this module
 
     urls = list(
         HomeShortcut.objects.filter(give_token=True, is_active=True, category__is_active=True)
         .values_list("url", flat=True)
     )
-    urls += list(
-        AppLink.objects.filter(give_token=True, is_active=True, account__isnull=True).values_list("url", flat=True)
-    )
+    if account is None or account.gets_general_links():
+        urls += list(
+            AppLink.objects.filter(give_token=True, is_active=True, account__isnull=True).values_list("url", flat=True)
+        )
     if account is not None:
         urls += list(
             AppLink.objects.filter(give_token=True, is_active=True, account=account)

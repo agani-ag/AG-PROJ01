@@ -27,6 +27,10 @@ class AppAccountForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
         help_text="Set a password (required for a new account). Leave blank to keep the current one.",
     )
+    # The switch shows what this user gets now. Saved as the admin's own choice only when it
+    # differs from the automatic rule (partner users off, everyone else on); otherwise it stays
+    # automatic, so a user a partner adds later still loses the general links.
+    general_links_on = forms.BooleanField(label="General links", required=False)
 
     class Meta:
         model = AppAccount
@@ -40,6 +44,17 @@ class AppAccountForm(forms.ModelForm):
         self.fields["email"].required = not self.instance.pk
         self.fields["phone"].help_text = "Indian mobile number, e.g. 98765 43210 (optional)."
         self.fields["username"].help_text = "Optional. 3–30 letters, numbers, dots or underscores."
+        self.partner_user = self.instance.is_partner_user()
+        self.fields["general_links_on"].initial = self.instance.gets_general_links()
+        if self.partner_user:
+            help_text = ("Partner user: off by default, so they see only their partner links."
+                         if self.instance.general_links is None else
+                         "Partner user: you switched the general links on for them.")
+        else:
+            help_text = ("The admin's links for everyone, after their own links."
+                         if self.instance.general_links is None else
+                         "You switched the general links off for this user.")
+        self.fields["general_links_on"].help_text = help_text
 
     def _identifier(self, field, normalizer):
         raw = self.cleaned_data.get(field)
@@ -78,6 +93,8 @@ class AppAccountForm(forms.ModelForm):
         pw = self.cleaned_data.get("new_password")
         if pw:
             account.set_password(pw)
+        on = self.cleaned_data.get("general_links_on", False)
+        account.general_links = None if on == (not self.partner_user) else on
         if commit:
             account.save()
         return account

@@ -114,6 +114,7 @@ def accounts(request):
         a.last_active = max((d.last_seen for d in devs if d.last_seen), default=None)
         a.sync_count = items.get(a.id, 0)
         a.sync = sync_state.get(a.id)
+        a.no_general = not a.gets_general_links(a.partner_count)
         if app_filter == "current" and a.app_code < insights.CURRENT_APP:
             continue
         if app_filter == "older" and not (0 < a.app_code < insights.CURRENT_APP):

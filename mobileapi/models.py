@@ -53,12 +53,18 @@ class AppAccount(models.Model):
         default=False,
         help_text="Support agent — their app Chat opens the admin inbox instead of a personal chat.",
     )
-    # No longer used: every account gets the shared general links directly now, no per-account
-    # opt-out (2026-10-09, the admin per-account toggle was dropped). Kept unchanged so no migration
-    # is needed; safe to drop later.
+    # No longer used: replaced by `general_links` below (2026-10-28). Kept because server
+    # migrations only ever add.
     show_general_links = models.BooleanField(
         default=True,
-        help_text="Unused — kept for a future migration. General links show for every account now.",
+        help_text="Unused — kept for a future migration. See general_links.",
+    )
+    # The admin's general links for this user. Blank = automatic: hidden for partner users (created
+    # or added by a partner — they see only their partner links), shown for everyone else. On / Off
+    # = the admin's own choice for this user, from the account page.
+    general_links = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="General links: blank = automatic (off for partner users); on / off = set by the admin.",
     )
     # No longer used: Radio is on/off for everyone from the Radio page (AppConfig.radio_enabled).
     # Kept unchanged so no migration is needed; safe to drop later.
@@ -102,6 +108,22 @@ class AppAccount(models.Model):
 
     def check_password(self, raw_password):
         return check_password(raw_password, self.password)
+
+    def is_partner_user(self, partner_count=None):
+        """Created by a partner, or added by one (any partner connection, whatever its status).
+        `partner_count`: a Count("partner_connections") annotation, to skip the query in lists."""
+        if self.source == "partner":
+            return True
+        if partner_count is not None:
+            return partner_count > 0
+        return bool(self.pk) and self.partner_connections.exists()
+
+    def gets_general_links(self, partner_count=None):
+        """The app shows this user the admin's general links: the admin's choice when set,
+        otherwise everyone except partner users."""
+        if self.general_links is not None:
+            return self.general_links
+        return not self.is_partner_user(partner_count)
 
     def is_active_on_chat(self, window_seconds=15):
         """True if the user's chat screen polled within the last `window_seconds` (i.e. they're

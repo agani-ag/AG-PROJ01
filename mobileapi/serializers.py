@@ -61,8 +61,8 @@ def links_for(account):
     """The app's URL list: this user's own active links, then the shared general links.
 
     A partner's links appear only while that partner's connection is enabled (and not suspended);
-    admin links (no partner) always appear. General links (account is null) are appended for every
-    account — no per-account opt-out any more (2026-10-09).
+    admin links (no partner) always appear. General links (account is null) are appended unless
+    this is a partner user, or the admin switched them off for this user (gets_general_links).
     """
     from .site_tokens import site_host, tokens_for
 
@@ -71,7 +71,7 @@ def links_for(account):
         .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))
         .select_related("partner").order_by("title")
     )
-    general = list(active_general_links())
+    general = list(active_general_links()) if account.gets_general_links() else []
     tokens = {}
     if any(link.give_token for link in own + general):
         tokens = {t["host"]: t["token"] for t in tokens_for(account=account)}
