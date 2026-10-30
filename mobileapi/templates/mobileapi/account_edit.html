@@ -16,8 +16,8 @@
             <span class="small muted">Created {{ account.created_at|date:"d M Y" }} · Last sign-in {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
         </div>
         <div class="chips" style="margin-top:8px" aria-label="Ways to sign in">
-            {% if account.email %}<span class="chip">{% icon "mail" %}{{ account.email }}</span>{% endif %}
-            {% if account.phone %}<span class="chip">{% icon "phone" %}{{ account.phone }}</span>{% endif %}
+            {% if account.email %}<a class="chip" href="mailto:{{ account.email }}" title="Send an email to {{ account.email }}">{% icon "mail" %}{{ account.email }}</a>{% endif %}
+            {% if account.phone %}<a class="chip" href="tel:{{ account.phone|tel }}" title="Call {{ account.phone }}">{% icon "phone" %}{{ account.phone }}</a>{% endif %}
             {% if account.username %}<span class="chip">{% icon "at-sign" %}{{ account.username }}</span>{% endif %}
         </div>
         {% endif %}

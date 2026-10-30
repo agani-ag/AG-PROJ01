@@ -5,6 +5,7 @@
     {% nav_active "mobile_accounts mobile_account_edit" %}
                                            → aria-current="page" when the current URL name is in the list
     {{ some_datetime|ago }}                → "just now", "5 minutes ago", "2 days ago"
+    {{ account.phone|tel }}               → +919876543210 (for href="tel:…")
     {% static_v "css/app.css" %}           → /static/css/app.css?v=… (changes when the file does)
 
 Icon names are Lucide names; static/icons.svg lists the ones available.
@@ -62,6 +63,15 @@ def nav_active(context, url_names):
         if name == current and (not slug or match.kwargs.get("slug") == slug):
             return mark_safe('aria-current="page"')
     return ""
+
+
+@register.filter
+def tel(value):
+    """A phone number as a tel: target — digits only, keeping a leading +, so a number stored
+    as "+91 98765 43210" still dials."""
+    raw = str(value or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return ("+" if raw.startswith("+") else "") + digits
 
 
 @register.filter

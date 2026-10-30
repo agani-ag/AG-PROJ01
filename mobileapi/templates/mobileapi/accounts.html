@@ -76,8 +76,8 @@
                         <a class="t-cell-main" href="{% url 'mobile_account_edit' a.id %}">{{ a.name }}</a>
                         <div class="t-cell-sub">{{ a.login_label }}</div>
                         <div class="row gap-sm small muted" style="margin-top:2px" title="Ways to sign in">
-                            {% if a.email %}<span title="{{ a.email }}">{% icon "mail" "icon-sm" %}</span>{% endif %}
-                            {% if a.phone %}<span title="{{ a.phone }}">{% icon "phone" "icon-sm" %}</span>{% endif %}
+                            {% if a.email %}<a class="contact-dot" href="mailto:{{ a.email }}" title="Send an email to {{ a.email }}" aria-label="Email {{ a.name }}">{% icon "mail" "icon-sm" %}</a>{% endif %}
+                            {% if a.phone %}<a class="contact-dot" href="tel:{{ a.phone|tel }}" title="Call {{ a.phone }}" aria-label="Call {{ a.name }}">{% icon "phone" "icon-sm" %}</a>{% endif %}
                             {% if a.username %}<span title="@{{ a.username }}">{% icon "at-sign" "icon-sm" %}</span>{% endif %}
                             <span class="sr-only">{{ a.phone }} {{ a.username }}</span>
                         </div>
