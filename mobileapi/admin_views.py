@@ -15,6 +15,7 @@ from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Count, Max, Q, Sum
+from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -89,7 +90,7 @@ def accounts(request):
     qs = AppAccount.objects.select_related("partner").annotate(
         link_count=Count("links", distinct=True),
         partner_count=Count("partner_connections", distinct=True),
-    )
+    ).order_by(Lower("name"))   # A→Z regardless of capitals; the table header can re-sort
     # Filter: "admin" = admin-created, "self" = self sign-ups, "<id>" = connected to one partner.
     selected = (request.GET.get("partner") or "").strip()
     if selected in ("admin", "self"):

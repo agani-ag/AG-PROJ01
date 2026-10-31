@@ -102,7 +102,7 @@
                 {% for n in page %}
                 <tr>
                     <td data-label="When" class="nowrap">
-                        <div>{{ n.sent_at|date:"d M Y" }}<div class="small muted">{{ n.sent_at|date:"H:i:s" }}</div></div>
+                        <div>{{ n.sent_at|date:"d M Y" }}<div class="small muted">{{ n.sent_at|date:"g:i:s A" }}</div></div>
                     </td>
                     <td data-label="Source"><span class="badge">{{ n.get_source_display }}</span></td>
                     <td data-label="To">

@@ -11,7 +11,7 @@
             {% else %}<span class="badge badge-danger"><span class="dot"></span>Inactive</span>{% endif %}
             <span class="badge {% if current %}badge-success{% endif %}">App v{{ device.app_version|default:"?" }}{% if not current %} · older version{% endif %}</span>
             {% if device.account %}<span class="badge badge-info">{% icon "log-in" %}Signed in</span>{% else %}<span class="badge">Signed out</span>{% endif %}
-            <span class="small muted">Last seen {{ device.last_seen|date:"d M Y, H:i" }} ({{ device.last_seen|ago }})</span>
+            <span class="small muted">Last seen {{ device.last_seen|date:"d M Y, g:i A" }} ({{ device.last_seen|ago }})</span>
         </div>
     </div>
     {% if device.is_active %}
@@ -52,9 +52,9 @@
                 <dt>App version</dt><dd>v{{ device.app_version|default:"?" }}</dd>
                 <dt>Notifications</dt><dd>{% if device.notifications_allowed == False %}<span class="text-danger">Blocked in Android settings</span>{% elif device.notifications_allowed %}Allowed{% else %}<span class="muted">Not reported (older app)</span>{% endif %}</dd>
                 <dt>SyncUp updates</dt><dd>{% if device.updates_enabled %}On{% else %}Off — no broadcasts{% endif %}</dd>
-                <dt>Installed</dt><dd>{{ device.installed_at|date:"d M Y, H:i" }}</dd>
-                <dt>First sign-in</dt><dd>{{ device.converted_at|date:"d M Y, H:i"|default:"Never" }}</dd>
-                <dt>Reminder sync</dt><dd>{{ device.last_reminder_sync_at|date:"d M Y, H:i"|default:"—" }}</dd>
+                <dt>Installed</dt><dd>{{ device.installed_at|date:"d M Y, g:i A" }}</dd>
+                <dt>First sign-in</dt><dd>{{ device.converted_at|date:"d M Y, g:i A"|default:"Never" }}</dd>
+                <dt>Reminder sync</dt><dd>{{ device.last_reminder_sync_at|date:"d M Y, g:i A"|default:"—" }}</dd>
             </dl>
         </div>
     </div>
@@ -98,7 +98,7 @@
             <li class="list-item">
                 <span class="main-col">
                     <span class="title" style="display:block"><a href="{% url 'mobile_account_edit' t.account.id %}">{{ t.account.name }}</a></span>
-                    <span class="sub" style="display:block">Signed in {{ t.created_at|date:"d M Y, H:i" }}{% if t.last_used_at %} · used {{ t.last_used_at|ago }}{% endif %}</span>
+                    <span class="sub" style="display:block">Signed in {{ t.created_at|date:"d M Y, g:i A" }}{% if t.last_used_at %} · used {{ t.last_used_at|ago }}{% endif %}</span>
                 </span>
                 {% if t.revoked %}<span class="badge">Ended</span>
                 {% elif t.expires_at and t.expires_at < now %}<span class="badge">Expired</span>

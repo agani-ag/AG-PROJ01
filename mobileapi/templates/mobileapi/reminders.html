@@ -35,7 +35,7 @@
     <div class="alert-body cron-facts">
         <span>Cron every <b style="display:inline">{{ cron_interval_minutes }} min</b></span>
         <span>Last run:
-            {% if cron_last_run %}<b style="display:inline">{{ cron_last_run|date:"d M Y, H:i" }}</b>
+            {% if cron_last_run %}<b style="display:inline">{{ cron_last_run|date:"d M Y, g:i A" }}</b>
             {% else %}<span class="text-danger">never</span>{% endif %}
         </span>
         <span>Queued pushes: <b style="display:inline">{{ pending_push_count }}</b></span>
@@ -189,7 +189,7 @@
                         </div>
                     </td>
                     <td data-label="When (IST)" data-value="{{ r.scheduled_at|date:'c' }}" class="nowrap">
-                        <div>{{ r.scheduled_at|date:"d M Y, H:i" }}<div class="small muted">Repeat: {{ r.get_recurrence_display }}</div></div>
+                        <div>{{ r.scheduled_at|date:"d M Y, g:i A" }}<div class="small muted">Repeat: {{ r.get_recurrence_display }}</div></div>
                     </td>
                     <td data-label="Delivery">
                         {% comment %}Delivery is tracked differently per mode: device rows get a
@@ -202,7 +202,7 @@
                                     <span class="badge badge-success">{{ r.success_count }} sent</span>
                                     {% if r.fail_count %}<span class="badge badge-danger">{{ r.fail_count }} failed</span>{% endif %}
                                 </div>
-                                <span class="small muted nowrap">last {{ r.sent_at|date:"d M, H:i" }}</span>
+                                <span class="small muted nowrap">last {{ r.sent_at|date:"d M, g:i A" }}</span>
                                 {% else %}
                                 <span class="small muted">not sent yet</span>
                                 {% endif %}
@@ -215,7 +215,7 @@
                                     <span class="badge badge-info">{{ r.synced_count }} synced</span>
                                     <span class="badge badge-success">{{ r.fired_count }} shown</span>
                                 </a>
-                                {% if r.last_fired %}<span class="small muted nowrap">last {{ r.last_fired|date:"d M, H:i" }}</span>{% endif %}
+                                {% if r.last_fired %}<span class="small muted nowrap">last {{ r.last_fired|date:"d M, g:i A" }}</span>{% endif %}
                             {% endif %}
                         </div>
                     </td>

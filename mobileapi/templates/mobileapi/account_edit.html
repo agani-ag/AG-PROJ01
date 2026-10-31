@@ -13,7 +13,7 @@
             {% if account.source == "partner" %}<span class="badge badge-info">{% icon "handshake" %}Created by {{ account.partner.name|default:"a partner" }}</span>
             {% elif account.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self sign-up</span>
             {% else %}<span class="badge">Created by an admin</span>{% endif %}
-            <span class="small muted">Created {{ account.created_at|date:"d M Y" }} · Last sign-in {{ account.last_login|date:"d M Y, H:i"|default:"never" }}</span>
+            <span class="small muted">Created {{ account.created_at|date:"d M Y" }} · Last sign-in {{ account.last_login|date:"d M Y, g:i A"|default:"never" }}</span>
         </div>
         <div class="chips" style="margin-top:8px" aria-label="Ways to sign in">
             {% if account.email %}<a class="chip" href="mailto:{{ account.email }}" title="Send an email to {{ account.email }}">{% icon "mail" %}{{ account.email }}</a>{% endif %}
@@ -101,7 +101,7 @@
                 <span class="t-ico">{% icon e.icon %}</span>
                 <div class="main-col" style="min-width:0">
                     <div class="truncate">{{ e.title }}</div>
-                    <div class="small muted">{{ e.at|date:"d M Y, H:i" }}{% if e.sub %} · {{ e.sub }}{% endif %}</div>
+                    <div class="small muted">{{ e.at|date:"d M Y, g:i A" }}{% if e.sub %} · {{ e.sub }}{% endif %}</div>
                 </div>
             </li>
             {% empty %}

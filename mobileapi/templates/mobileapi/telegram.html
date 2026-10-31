@@ -305,7 +305,7 @@
             <tbody>
                 {% for l in logs %}
                 <tr>
-                    <td data-label="When" class="nowrap small">{{ l.created_at|date:"d M, H:i:s" }}</td>
+                    <td data-label="When" class="nowrap small">{{ l.created_at|date:"d M, g:i:s A" }}</td>
                     <td data-label="Chat ID"><code>{{ l.chat_id }}</code></td>
                     <td class="t-primary"><span class="small">{{ l.text|truncatechars:70 }}</span></td>
                     <td data-label="Status">

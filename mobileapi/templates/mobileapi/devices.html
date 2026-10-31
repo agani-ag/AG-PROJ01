@@ -93,7 +93,7 @@
                         {% if not d.updates_enabled %}<div class="small muted">Updates off</div>{% endif %}
                     </td>
                     <td data-label="Installed" data-value="{{ d.installed_at|date:'c' }}" class="nowrap">{{ d.installed_at|date:"d M Y" }}</td>
-                    <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{{ d.last_seen|date:"d M Y, H:i" }}</td>
+                    <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{{ d.last_seen|date:"d M Y, g:i A" }}</td>
                     <td class="t-right">
                         {% if d.is_active %}
                         <form method="post" action="{% url 'mobile_device_deactivate' d.id %}"

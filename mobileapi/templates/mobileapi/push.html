@@ -281,7 +281,7 @@
             <tbody>
                 {% for n in logs %}
                 <tr>
-                    <td data-label="When" class="nowrap small">{{ n.sent_at|date:"d M, H:i" }}</td>
+                    <td data-label="When" class="nowrap small">{{ n.sent_at|date:"d M, g:i A" }}</td>
                     <td data-label="Target"><span class="truncate" style="display:block;max-width:220px" title="{{ n.target_label }}">{{ n.target_label }}</span></td>
                     <td class="t-primary"><span class="t-cell-main">{{ n.title }}</span></td>
                     <td data-label="Message" class="t-hide-sm"><span class="truncate muted" style="display:block;max-width:260px" title="{{ n.body }}">{{ n.body }}</span></td>

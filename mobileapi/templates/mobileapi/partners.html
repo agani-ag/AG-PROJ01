@@ -60,7 +60,7 @@
                         {% else %}<span class="faint">Not set</span>{% endif %}
                     </td>
                     <td data-label="Users" class="t-right">{{ p.user_count }}</td>
-                    <td data-label="Last used" data-value="{{ p.last_used_at|date:'c' }}" class="nowrap">{% if p.last_used_at %}{{ p.last_used_at|date:"d M Y, H:i" }}{% else %}<span class="faint">Never</span>{% endif %}</td>
+                    <td data-label="Last used" data-value="{{ p.last_used_at|date:'c' }}" class="nowrap">{% if p.last_used_at %}{{ p.last_used_at|date:"d M Y, g:i A" }}{% else %}<span class="faint">Never</span>{% endif %}</td>
                     <td data-label="Status">
                         {% if p.is_active %}<span class="badge badge-success"><span class="dot"></span>Active</span>
                         {% else %}<span class="badge">Disabled</span>{% endif %}

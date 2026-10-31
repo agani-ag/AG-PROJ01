@@ -87,7 +87,7 @@
                     <td class="t-primary"><b>{{ r.c.name }}</b><div class="small muted break">{{ r.c.stream_url }}</div></td>
                     <td>{{ r.c.now_playing|default:"—" }}</td>
                     <td>{{ r.c.listeners }}</td>
-                    <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, H:i:s" }}</td>
+                    <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, g:i:s A" }}</td>
                     <td>
                         {% if r.fresh %}<span class="badge badge-success"><span class="dot"></span>On air</span>
                         {% else %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>{% endif %}

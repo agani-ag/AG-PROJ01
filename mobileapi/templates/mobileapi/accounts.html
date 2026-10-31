@@ -101,13 +101,13 @@
                     </td>
                     <td data-label="Sync" data-value="{{ a.sync.last|date:'c' }}">
                         {% if a.sync %}
-                            {% if a.sync.on %}<span class="badge badge-success" title="Last synced {{ a.sync.last|date:'d M Y, H:i' }}">{% icon "refresh-cw" %}{{ a.sync.last|ago }}</span>
+                            {% if a.sync.on %}<span class="badge badge-success" title="Last synced {{ a.sync.last|date:'d M Y, g:i A' }}">{% icon "refresh-cw" %}{{ a.sync.last|ago }}</span>
                             {% else %}<span class="badge" title="Sync turned off on their phone">Off</span>{% endif %}
                             {% if a.sync_count %}<div class="small muted">{{ a.sync_count }} item{{ a.sync_count|pluralize }}</div>{% endif %}
                         {% else %}<span class="muted">—</span>{% endif %}
                     </td>
                     <td data-label="Last active" data-value="{{ a.last_active|date:'c' }}" class="nowrap">
-                        {{ a.last_active|date:"d M Y, H:i"|default:"—" }}
+                        {{ a.last_active|date:"d M Y, g:i A"|default:"—" }}
                         {% if a.last_login %}<div class="small muted">Sign-in {{ a.last_login|date:"d M Y" }}</div>{% endif %}
                     </td>
                     <td data-label="Links" class="t-right t-hide-sm">{{ a.link_count }}</td>

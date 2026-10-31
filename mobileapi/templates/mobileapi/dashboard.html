@@ -158,7 +158,7 @@
             {% for n in recent_notifications %}
             <li class="list-item">
                 <div class="main-col">
-                    <div class="row-between"><span class="title truncate">{{ n.title }}</span><span class="small faint num nowrap">{{ n.sent_at|date:"d M, H:i" }}</span></div>
+                    <div class="row-between"><span class="title truncate">{{ n.title }}</span><span class="small faint num nowrap">{{ n.sent_at|date:"d M, g:i A" }}</span></div>
                     <div class="sub">{{ n.target_label }} · {{ n.get_source_display }} · <span class="text-success num">{{ n.success_count }} delivered</span>{% if n.fail_count %} · <span class="text-danger num">{{ n.fail_count }} failed</span>{% endif %}</div>
                 </div>
             </li>

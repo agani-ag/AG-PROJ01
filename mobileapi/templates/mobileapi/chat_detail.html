@@ -35,7 +35,7 @@
         <div class="msg-row {% if m.sender == 'admin' %}admin{% else %}user{% endif %}">
             <div class="bubble">
                 <div class="body">{{ m.body }}</div>
-                <div class="meta">{{ m.sender|title }} · {{ m.created_at|date:"d M, H:i" }}</div>
+                <div class="meta">{{ m.sender|title }} · {{ m.created_at|date:"d M, g:i A" }}</div>
             </div>
         </div>
         {% empty %}

@@ -38,11 +38,11 @@
                         <span>{{ row.platform|default:"—" }}{% if row.app_version %} <span class="small muted">v{{ row.app_version }}</span>{% endif %}</span>
                     </td>
                     <td data-label="Synced at" data-value="{{ row.synced_at|date:'c' }}">
-                        {% if row.synced_at %}<span class="badge badge-info">{{ row.synced_at|date:"d M, H:i" }}</span>
+                        {% if row.synced_at %}<span class="badge badge-info">{{ row.synced_at|date:"d M, g:i A" }}</span>
                         {% else %}<span class="faint">—</span>{% endif %}
                     </td>
                     <td data-label="Shown at" data-value="{{ row.fired_at|date:'c' }}">
-                        {% if row.fired_at %}<span class="badge badge-success">{{ row.fired_at|date:"d M, H:i" }}</span>
+                        {% if row.fired_at %}<span class="badge badge-success">{{ row.fired_at|date:"d M, g:i A" }}</span>
                         {% else %}<span class="muted small">not shown</span>{% endif %}
                     </td>
                 </tr>
