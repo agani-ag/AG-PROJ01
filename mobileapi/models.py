@@ -960,6 +960,9 @@ class RadioChannel(models.Model):
     broadcaster_id = models.CharField(max_length=64, unique=True, db_index=True)
     name = models.CharField(max_length=120, default="Radio")
     stream_url = models.URLField(max_length=500)
+    # Optional live channel the station serves next to its audio (ws:// or wss://). We only pass it
+    # through to the app — nothing on the server connects to it.
+    ws_url = models.CharField(max_length=500, blank=True, default="")
     session_id = models.CharField(max_length=64, blank=True, default="")
     is_live = models.BooleanField(default=True)
     now_playing = models.CharField(max_length=300, blank=True, default="")

@@ -56,7 +56,7 @@
                 <input type="text" class="input mono" id="ingest-url" value="{{ ingest_url }}" readonly onclick="this.select()">
                 <button class="btn" type="button" data-copy-target="#ingest-url">{% icon "copy" %}Copy</button>
             </div>
-            <span class="help">Anyone who can reach this address can register a station or heartbeat one.</span>
+            <span class="help">Anyone who can reach this address can register a station or heartbeat one. A station may also send a <code>ws_url</code> — we pass it to the app, which connects to the station directly.</span>
         </div>
     </div>
 </div>
@@ -73,7 +73,11 @@
             <tbody>
                 {% for r in rows %}
                 <tr>
-                    <td class="t-primary"><b>{{ r.c.name }}</b><div class="small muted break">{{ r.c.stream_url }}</div></td>
+                    <td class="t-primary">
+                        <b>{{ r.c.name }}</b>
+                        <div class="small muted break">{{ r.c.stream_url }}</div>
+                        {% if r.c.ws_url %}<div class="small muted break" title="Live channel the app connects to directly">{% icon "zap" "icon-sm" %}{{ r.c.ws_url }}</div>{% endif %}
+                    </td>
                     <td>{{ r.c.now_playing|default:"—" }}</td>
                     <td>{{ r.c.listeners }}</td>
                     <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, g:i:s A" }}</td>

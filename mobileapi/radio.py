@@ -2,6 +2,10 @@
 
 Broadcasters (AudioSync) POST register / heartbeat / stop events to `ingest`, which is OPEN —
 no key, no sign-in (see the Radio page). Every reply carries the heartbeat cadence.
+
+A station may also advertise a `ws_url` (its own WebSocket, through the same tunnel as its audio).
+We only store it and hand it to the app: the server never connects to it — PythonAnywhere runs
+WSGI, so there is no process here that could hold a socket open.
 The app reads the live channel list from `channels` (no sign-in: live stations are for everyone). Liveness is heartbeat-driven and
 evaluated at READ time — no cron: a channel is on air only while `is_live` AND its last heartbeat is
 within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily whenever the list is read.
@@ -26,6 +30,16 @@ def _int(v, default=0):
         return max(0, int(v))
     except (TypeError, ValueError):
         return default
+
+
+def _ws_url(data):
+    """Validate an optional ws_url. Returns (value, error) — the value is "" when none was sent."""
+    url = (data.get("ws_url") or "").strip()
+    if not url:
+        return "", None
+    if not url.lower().startswith(("ws://", "wss://")):
+        return "", "ws_url must start with ws:// or wss://"
+    return url[:500], None
 
 
 def _cadence(cfg):
@@ -67,11 +81,16 @@ def ingest(request):
         stream_url = (data.get("stream_url") or "").strip()
         if not stream_url.lower().startswith(("http://", "https://")):
             return _err("stream_url (http/https) is required")
+        ws_url, ws_error = _ws_url(data)
+        if ws_error:
+            return _err(ws_error)
         ch, _created = RadioChannel.objects.update_or_create(
             broadcaster_id=bid,
             defaults={
                 "name": (data.get("name") or "Radio").strip()[:120] or "Radio",
                 "stream_url": stream_url[:500],
+                # A fresh go-live replaces it, so a station that dropped its socket clears the old one.
+                "ws_url": ws_url,
                 "session_id": sid,
                 "is_live": True,
                 "now_playing": (data.get("now_playing") or "").strip()[:300],
@@ -92,9 +111,14 @@ def ingest(request):
             ch.listeners = _int(data.get("listeners"))
             if data.get("stream_url"):
                 ch.stream_url = str(data["stream_url"]).strip()[:500]
+            if "ws_url" in data:
+                ws_url, ws_error = _ws_url(data)
+                if ws_error:
+                    return _err(ws_error)
+                ch.ws_url = ws_url
             ch.last_heartbeat_at = timezone.now()
             ch.save(update_fields=[
-                "session_id", "is_live", "now_playing", "listeners", "stream_url",
+                "session_id", "is_live", "now_playing", "listeners", "stream_url", "ws_url",
                 "last_heartbeat_at", "updated_at",
             ])
         return JsonResponse({"success": True, **cadence})
@@ -123,6 +147,8 @@ def channels(request):
         "id": str(c.id),
         "name": c.name,
         "stream_url": c.stream_url,
+        # Live channel for now-playing/listener updates, straight to the station. "" = poll instead.
+        "ws_url": c.ws_url,
         "now_playing": c.now_playing,
         "listeners": c.listeners,
         "since": c.created_at.isoformat(),
