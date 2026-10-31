@@ -48,31 +48,59 @@
 <div class="card">
     <div class="card-head">{% icon "plug" %}<h2>Connect AudioSync</h2></div>
     <div class="card-body stack">
-        <p class="help">In AudioSync → Settings, paste these into “Receiver API URL” and “Auth token”, tick Enable, and set a Station name.</p>
+        <p class="help">In AudioSync → Settings, paste this into “Receiver API URL”, tick Enable, and set a
+            Station name. No token — the endpoint is open.</p>
         <div class="field">
             <label class="label">Receiver API URL</label>
-            <input type="text" class="input mono" value="{{ ingest_url }}" readonly onclick="this.select()">
+            <div class="input-group">
+                <input type="text" class="input mono" id="ingest-url" value="{{ ingest_url }}" readonly onclick="this.select()">
+                <button class="btn" type="button" data-copy-target="#ingest-url">{% icon "copy" %}Copy</button>
+            </div>
+            <span class="help">Anyone who can reach this address can register a station or heartbeat one.</span>
         </div>
-        <div class="field">
-            <label class="label">Auth token (ingest key)</label>
-            {% if cfg.radio_ingest_key %}
-            <input type="text" class="input mono" value="{{ cfg.radio_ingest_key }}" readonly onclick="this.select()">
-            {% else %}
-            <span class="help">No key yet — saving Settings generates one.</span>
-            {% endif %}
-        </div>
-        <form method="POST" action="{% url 'mobile_radio_save' %}">
-            {% csrf_token %}
-            <input type="hidden" name="radio_enabled" value="{% if cfg.radio_enabled %}on{% endif %}">
-            <input type="hidden" name="heartbeat" value="{{ cfg.radio_heartbeat_interval_seconds }}">
-            <input type="hidden" name="stale" value="{{ cfg.radio_stale_after_seconds }}">
-            <input type="hidden" name="regenerate" value="1">
-            <button type="submit" class="btn btn-sm" onclick="return confirm('Regenerate the ingest key? Every AudioSync will need the new key.')">{% icon "refresh-cw" %}Regenerate key</button>
-        </form>
     </div>
 </div>
 
 <!-- Live channels -->
+<div class="card">
+    <div class="card-head">{% icon "send" %}<h2>Message a station</h2></div>
+    <form method="POST" action="{% url 'mobile_radio_message' %}" class="card-body stack">
+        {% csrf_token %}
+        <p class="help">AudioSync polls us, so a message waits for that station's next heartbeat
+            (within {{ cfg.radio_heartbeat_interval_seconds }}s) and is handed over in the reply.
+            Only stations on air can receive one.</p>
+        <div class="row gap-sm" style="flex-wrap:wrap">
+            <select name="channel" class="input input-sm" style="width:auto" aria-label="Station">
+                <option value="">All stations on air</option>
+                {% for r in rows %}{% if r.fresh %}<option value="{{ r.c.id }}">{{ r.c.name }}</option>{% endif %}{% endfor %}
+            </select>
+            <input type="text" name="text" class="input" style="flex:1 1 280px" maxlength="300"
+                   placeholder="e.g. Wrap up by 9 pm — the next show starts then" required>
+            <button class="btn btn-primary" type="submit">{% icon "send" %}Send</button>
+        </div>
+    </form>
+    {% if recent_messages %}
+    <div class="table-wrap">
+        <table class="table table-compact table-stack">
+            <thead><tr><th>Sent</th><th>Station</th><th>Message</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for m in recent_messages %}
+                <tr>
+                    <td data-label="Sent" class="nowrap small">{{ m.created_at|date:"d M, g:i A" }}</td>
+                    <td data-label="Station">{{ m.channel.name }}</td>
+                    <td class="t-primary">{{ m.text }}</td>
+                    <td data-label="Status">
+                        {% if m.delivered_at %}<span class="badge badge-success"><span class="dot"></span>Delivered {{ m.delivered_at|date:"g:i A" }}</span>
+                        {% else %}<span class="badge badge-warning"><span class="dot"></span>Waiting for heartbeat</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
 <div class="card">
     <div class="card-head">
         {% icon "signal" %}<h2>Channels</h2>
@@ -80,7 +108,7 @@
     </div>
     <div class="table-wrap">
         <table class="table table-stack">
-            <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th>Queued</th><th></th></tr></thead>
             <tbody>
                 {% for r in rows %}
                 <tr>
@@ -92,15 +120,20 @@
                         {% if r.fresh %}<span class="badge badge-success"><span class="dot"></span>On air</span>
                         {% else %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>{% endif %}
                     </td>
+                    <td data-label="Queued">
+                        {% if r.pending %}<span class="badge badge-warning" title="Waiting for the next heartbeat">{{ r.pending }} waiting</span>
+                        {% else %}<span class="muted">—</span>{% endif %}
+                    </td>
                     <td>
-                        <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}" onsubmit="return confirm('Remove this channel?')">
+                        <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}"
+                              data-confirm="Remove {{ r.c.name }}?" data-confirm-text="It comes back on the station's next heartbeat if AudioSync is still broadcasting." data-confirm-button="Remove" data-danger>
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-ghost" title="Remove">{% icon "trash-2" %}</button>
+                            <button type="submit" class="btn btn-sm btn-ghost" title="Remove">{% icon "trash" %}</button>
                         </form>
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6" class="text-muted text-center">No stations on air.</td></tr>
+                <tr><td colspan="7"><div class="empty">{% icon "radio" %}<b>No stations on air</b><span>A station appears here once AudioSync registers it.</span></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>

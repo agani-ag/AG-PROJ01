@@ -53,6 +53,7 @@ from .models import (
     AppTelegramLog,
     CronLock,
     RadioChannel,
+    RadioMessage,
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
 )
@@ -797,36 +798,76 @@ def telegram_live_toggle(request):
 # ------------------------------------------------------------------ Radio (live channels)
 @superuser_required
 def radio_page(request):
-    """Master radio switch + ingest key (for AudioSync) + the live channel registry."""
+    """Master radio switch, the open ingest URL for AudioSync, the live channel registry, and the
+    messages queued for those stations."""
     from datetime import timedelta
     cfg = AppConfig.load()
     cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
-    channels = RadioChannel.objects.all()
-    rows = [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff} for c in channels]
-    ingest_url = request.build_absolute_uri("/radio/ingest")
+    channels = RadioChannel.objects.prefetch_related("messages")
+    rows = []
+    for c in channels:
+        pending = [m for m in c.messages.all() if m.delivered_at is None]
+        rows.append({"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff,
+                     "pending": len(pending)})
     return render(request, "mobileapi/radio.html", {
-        "cfg": cfg, "rows": rows, "ingest_url": ingest_url,
+        "cfg": cfg, "rows": rows,
+        "ingest_url": request.build_absolute_uri("/radio/ingest"),
+        "recent_messages": RadioMessage.objects.select_related("channel", "created_by")[:10],
     })
 
 
 @superuser_required
 @require_POST
 def radio_save(request):
-    import secrets
     cfg = AppConfig.load()
     cfg.radio_enabled = request.POST.get("radio_enabled") == "on"
-    if request.POST.get("regenerate") == "1" or not cfg.radio_ingest_key:
-        cfg.radio_ingest_key = secrets.token_urlsafe(32)
     try:
         cfg.radio_heartbeat_interval_seconds = max(2, int(request.POST.get("heartbeat") or 15))
         cfg.radio_stale_after_seconds = max(10, int(request.POST.get("stale") or 45))
     except (TypeError, ValueError):
         pass
     cfg.save(update_fields=[
-        "radio_enabled", "radio_ingest_key", "radio_heartbeat_interval_seconds",
+        "radio_enabled", "radio_heartbeat_interval_seconds",
         "radio_stale_after_seconds", "updated_at",
     ])
     messages.success(request, "Radio settings saved.")
+    return redirect("mobile_radio")
+
+
+@superuser_required
+@require_POST
+def radio_message_send(request):
+    """Queue a message for one station, or for every station on air.
+
+    We never call out to AudioSync — it polls us — so the message waits until that station's next
+    heartbeat (within one heartbeat interval) and is handed over in the reply."""
+    text = (request.POST.get("text") or "").strip()[:300]
+    target = (request.POST.get("channel") or "").strip()
+    if not text:
+        messages.error(request, "Type a message first.")
+        return redirect("mobile_radio")
+
+    cfg = AppConfig.load()
+    cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
+    if target.isdigit():
+        targets = list(RadioChannel.objects.filter(id=int(target)))
+    else:
+        # "All on air" fans out now, so each station gets its own copy to collect.
+        targets = list(RadioChannel.objects.filter(is_live=True, last_heartbeat_at__gte=cutoff))
+
+    if not targets:
+        messages.error(request, "No station is on air to send to.")
+        return redirect("mobile_radio")
+
+    RadioMessage.objects.bulk_create([
+        RadioMessage(channel=c, text=text, created_by=request.user) for c in targets
+    ])
+    where = targets[0].name if len(targets) == 1 else f"{len(targets)} stations"
+    messages.success(
+        request,
+        f"Message queued for {where} — it arrives on the next heartbeat "
+        f"(within {cfg.radio_heartbeat_interval_seconds}s).",
+    )
     return redirect("mobile_radio")
 
 
