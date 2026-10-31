@@ -26,11 +26,11 @@
         <div class="card-body form">
             <div class="form-grid">
                 <div class="field{% if form.min_supported_version.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ form.min_supported_version.id_for_label }}">Minimum supported version (code)</label>
+                    <label class="label" for="{{ form.min_supported_version.id_for_label }}">Minimum app version</label>
                     {{ form.min_supported_version }}
                     {% for e in form.min_supported_version.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>
-                <p class="help" style="align-self:end;padding-bottom:4px">Devices below this version code are forced to update (blocking screen). Keep it at or below the lowest live version to force nobody.</p>
+                <p class="help" style="align-self:end;padding-bottom:4px">Phones on an older version get a blocking “Update SyncUp” screen and can't use the app until they update. Choose “No forced update” to block nobody.</p>
                 <div class="field{% if form.android_package_name.errors %} invalid{% endif %}">
                     <label class="label" for="{{ form.android_package_name.id_for_label }}">Android package name</label>
                     {{ form.android_package_name }}

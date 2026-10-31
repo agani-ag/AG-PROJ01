@@ -158,6 +158,14 @@ class AppConfigForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from .app_versions import minimum_choices
+
+        # Pick a release by the name people see ("7.1"); it's stored as its Play version code (9),
+        # which is what the app compares.
+        self.fields["min_supported_version"] = forms.TypedChoiceField(
+            label="Minimum app version", coerce=int,
+            choices=minimum_choices(self.instance.min_supported_version),
+        )
         _style(self.fields)
 
 
