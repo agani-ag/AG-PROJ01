@@ -220,20 +220,37 @@
   function enhanceTable(root) {
     var table = $("table", root); if (!table || !table.tBodies[0]) return;
     var tbody = table.tBodies[0];
-    var rows = $$("tr", tbody).filter(function (r) { return !r.hasAttribute("data-empty"); });
-    var placeholder = $("tr[data-empty]", tbody);
-    var search = $("[data-table-search]", root), count = $("[data-table-count]", root), empty = $("[data-table-empty]", root);
+    var search = $("[data-table-search]", root);   // lives outside the live-refreshed regions
     var filterFn = null;
+    // Read the rows each time rather than caching them: a live refresh replaces the tbody
+    // contents underneath us, and a cached list would point at rows that are no longer there.
+    function dataRows() { return $$("tr", tbody).filter(function (r) { return !r.hasAttribute("data-empty"); }); }
+
     function apply() {
-      var q = (search && search.value || "").trim().toLowerCase(), shown = 0;
+      var q = (search && search.value || "").trim().toLowerCase(), rows = dataRows(), shown = 0;
+      // Looked up per run: a live refresh can replace the footer (and its count) underneath us.
+      var count = $("[data-table-count]", root), empty = $("[data-table-empty]", root);
       rows.forEach(function (r) {
         var ok = (!q || r.textContent.toLowerCase().indexOf(q) !== -1) && (!filterFn || filterFn(r));
         r.hidden = !ok; if (ok) shown++;
       });
       if (count) count.textContent = shown === rows.length ? rows.length + " total" : shown + " of " + rows.length;
       if (empty) { empty.hidden = !(rows.length && shown === 0); var qEl = $("[data-query]", empty); if (qEl) qEl.textContent = q; }
+      var placeholder = $("tr[data-empty]", tbody);
       if (placeholder) placeholder.hidden = rows.length > 0;
     }
+
+    function reorder(th, dir) {
+      var idx = th.cellIndex, type = th.dataset.sort, rows = dataRows();
+      var key = function (r) {
+        var c = r.cells[idx]; if (!c) return "";
+        var v = c.dataset.value != null ? c.dataset.value : c.textContent.trim();
+        return type === "num" ? (parseFloat(v) || 0) : v.toLowerCase();
+      };
+      rows.sort(function (a, b) { var x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * (dir === "ascending" ? 1 : -1); });
+      rows.forEach(function (r) { tbody.appendChild(r); });
+    }
+
     if (search) search.addEventListener("input", apply);
     $$("th[data-sort]", table).forEach(function (th) {
       var idx = th.cellIndex, type = th.dataset.sort;
@@ -242,17 +259,17 @@
         var dir = th.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
         $$("th[aria-sort]", table).forEach(function (o) { o.removeAttribute("aria-sort"); });
         th.setAttribute("aria-sort", dir);
-        var key = function (r) {
-          var c = r.cells[idx]; if (!c) return "";
-          var v = c.dataset.value != null ? c.dataset.value : c.textContent.trim();
-          return type === "num" ? (parseFloat(v) || 0) : v.toLowerCase();
-        };
-        rows.sort(function (a, b) { var x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * (dir === "ascending" ? 1 : -1); });
-        rows.forEach(function (r) { tbody.appendChild(r); });
+        reorder(th, dir);
       });
     });
+
     root.setFilter = function (fn) { filterFn = fn; apply(); };
-    root.refresh = apply;
+    // Re-apply the chosen sort and the search box after a live refresh brings new rows in.
+    root.refresh = function () {
+      var th = $("th[aria-sort]", table);
+      if (th) reorder(th, th.getAttribute("aria-sort"));
+      apply();
+    };
     apply();
   }
 
@@ -303,6 +320,81 @@
     form.addEventListener("reset", function () { setTimeout(check, 0); });
   }
 
+
+  /* ---- Live tables: refresh [data-live-part] regions in place, no page reload ----
+   * <div data-live="20"> somewhere on the page sets the interval in seconds; every element with
+   * [data-live-part] (and an id) is swapped for its counterpart from a fresh copy of this same
+   * URL — so filters, paging, the search box, the chosen sort and the scroll position all stay.
+   * It holds off while the tab is hidden, a dialog is open, or someone is typing or selecting.
+   */
+  function startLive() {
+    var host = $("[data-live]"); if (!host) return;
+    var every = Math.max(5, parseInt(host.dataset.live, 10) || 20) * 1000;
+    var label = $("[data-live-label]"), dot = $("[data-live-dot]"), toggle = $("[data-live-toggle]");
+    var paused = false, busy = false, lastAt = Date.now(), timer = null, clock = null;
+
+    function say() {
+      if (!label) return;
+      if (paused) { label.textContent = "Paused"; return; }
+      var secs = Math.round((Date.now() - lastAt) / 1000);
+      label.textContent = secs < 10 ? "Live" : (secs < 90 ? "Live · " + secs + "s ago"
+                                                          : "Live · " + Math.round(secs / 60) + "m ago");
+    }
+
+    function holdOff() {
+      if (document.hidden || $("dialog[open]")) return true;
+      var el = document.activeElement;
+      if (el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return true;
+      var sel = window.getSelection();
+      return !!(sel && String(sel).length > 2);   // don't yank text someone is copying
+    }
+
+    function tick() {
+      if (paused || busy || holdOff()) return;
+      busy = true;
+      fetch(location.href, { credentials: "same-origin", headers: { "X-Live-Refresh": "1" } })
+        .then(function (r) {
+          if (r.redirected && /\/login/.test(r.url)) throw new Error("signed out");
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.text();
+        })
+        .then(function (html) {
+          var fresh = new DOMParser().parseFromString(html, "text/html");
+          $$("[data-live-part]").forEach(function (part) {
+            var next = part.id && fresh.getElementById(part.id);
+            if (next && next.innerHTML !== part.innerHTML) part.innerHTML = next.innerHTML;
+          });
+          $$("[data-table]").forEach(function (t) { if (t.refresh) t.refresh(); });
+          lastAt = Date.now();
+          say();
+        })
+        .catch(function (err) {
+          // A dropped request is normal on a flaky connection; being signed out is not, so stop.
+          if (String(err.message) === "signed out") { stop(); if (label) label.textContent = "Signed out"; }
+        })
+        .then(function () { busy = false; });
+    }
+
+    function start() { stop(); timer = setInterval(tick, every); clock = setInterval(say, 10000); say(); }
+    function stop() { clearInterval(timer); clearInterval(clock); timer = clock = null; }
+
+    if (toggle) {
+      toggle.addEventListener("click", function () {
+        paused = !paused;
+        if (dot) dot.classList.toggle("on", !paused);
+        toggle.setAttribute("aria-pressed", String(!paused));
+        toggle.title = paused ? "Updates paused — click to resume" : "Updating automatically";
+        paused ? stop() : (tick(), start());
+        say();
+      });
+    }
+    // Catch up as soon as the tab comes back rather than waiting out the interval.
+    document.addEventListener("visibilitychange", function () { if (!document.hidden && !paused) tick(); });
+    start();
+    // Exposed so a page (or a test) can force a refresh without waiting for the next tick.
+    App.refreshLive = tick;
+  }
+
   function init() {
     // Top-bar breadcrumb from the active sidebar link and the page's <h1>:
     // "Accounts / Chat Tester" on a detail page, "Notify / Reminders" on a section page.
@@ -327,8 +419,10 @@
     }
     paintThemeButton();
     syncThemeColor();
+    startLive();
   }
+  window.App = { toast: toast, confirm: confirmDialog, fetchJSON: fetchJSON, csrf: csrf, icon: icon, openPalette: openPalette, enhanceTable: enhanceTable, copy: copyText };
+
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", init) : init();
 
-  window.App = { toast: toast, confirm: confirmDialog, fetchJSON: fetchJSON, csrf: csrf, icon: icon, openPalette: openPalette, enhanceTable: enhanceTable, copy: copyText };
 })();

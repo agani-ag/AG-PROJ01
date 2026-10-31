@@ -444,6 +444,11 @@ pre.code.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
 .status-dot.on { background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 25%, transparent); }
 .status-dot.live { background: var(--danger); animation: pulse 1.6s ease-in-out infinite; }
+/* "Live" chip on a self-refreshing table. */
+.live-chip { gap: 7px; color: var(--muted); }
+.live-chip[aria-pressed="true"] .status-dot { animation: pulse 2.4s ease-in-out infinite; }
+.live-chip[aria-pressed="false"] { color: var(--faint); }
+@media (prefers-reduced-motion: reduce) { .live-chip .status-dot { animation: none; } }
 @keyframes pulse { 50% { opacity: .35; } }
 
 /* ---------- Dialog: header with close, large size ---------- */

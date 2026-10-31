@@ -12,7 +12,7 @@
     </div>
 </div>
 
-<div class="card" data-table>
+<div class="card" data-table data-live="20">
     <div class="table-tools" style="flex-wrap:wrap">
         <label class="input-icon">
             <span class="sr-only">Search accounts</span>
@@ -53,6 +53,8 @@
             {% if filtered %}<a href="{% url 'mobile_accounts' %}" class="btn btn-ghost btn-sm">{% icon "x" %}Clear</a>{% endif %}
             <noscript><button class="btn btn-sm" type="submit">Apply</button></noscript>
         </form>
+        <button class="btn btn-ghost btn-sm live-chip" type="button" data-live-toggle aria-pressed="true"
+                title="Updating automatically — click to pause"><span class="status-dot on" data-live-dot></span><span data-live-label>Live</span></button>
     </div>
 
     <div class="table-wrap">
@@ -69,7 +71,7 @@
                     <th class="t-hide-sm"><span class="sr-only">Open</span></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="acc-rows" data-live-part>
                 {% for a in accounts %}
                 <tr data-href="{% url 'mobile_account_edit' a.id %}">
                     <td class="t-primary">
@@ -124,6 +126,6 @@
             <span>Try part of the name, email, phone or username.</span>
         </div>
     </div>
-    <div class="table-foot"><span data-table-count></span></div>
+    <div class="table-foot" id="acc-foot" data-live-part><span data-table-count></span></div>
 </div>
 {% endblock %}
