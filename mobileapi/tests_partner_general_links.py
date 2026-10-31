@@ -56,6 +56,15 @@ class PartnerGeneralLinksTests(TestCase):
         self._connect(self.ravi, status="not_enabled")
         self.assertEqual(self._titles(self.ravi), [])
 
+    def test_the_app_is_told_who_is_a_partner_user(self):
+        bearer = {"HTTP_AUTHORIZATION": f"Bearer {AppAuthToken.issue(self.ravi).key}"}
+        self.assertIs(self.client.get("/app/v1/sync", **bearer).json()["user"]["partner_user"], False)
+        self._connect(self.ravi)
+        self.assertIs(self.client.get("/app/v1/sync", **bearer).json()["user"]["partner_user"], True)
+        r = self.client.post("/app/v1/auth/login", json.dumps({"login": "ravi@example.com", "password": "secret123"}),
+                             content_type="application/json")
+        self.assertIs(r.json()["user"]["partner_user"], True)
+
     def test_admin_switches_them_on_for_one_partner_user(self):
         self._connect(self.ravi)
         self.ravi.general_links = True

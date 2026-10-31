@@ -17,6 +17,8 @@ def account_dict(account):
         "phone": account.phone or "",
         "username": account.username or "",
         "source": account.source,
+        # Created or added by a partner: the app keeps their Home to the partner's links (app v8+).
+        "partner_user": account.is_partner_user(),
     }
 
 
