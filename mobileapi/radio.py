@@ -1,8 +1,7 @@
 """Live radio channel registry — the receiver for AudioSync's presence protocol.
 
 Broadcasters (AudioSync) POST register / heartbeat / stop events to `ingest`, which is OPEN —
-no key, no sign-in (see the Radio page). Every reply carries the heartbeat cadence, and any
-messages the console has queued for that station ride back on its next heartbeat.
+no key, no sign-in (see the Radio page). Every reply carries the heartbeat cadence.
 The app reads the live channel list from `channels` (no sign-in: live stations are for everyone). Liveness is heartbeat-driven and
 evaluated at READ time — no cron: a channel is on air only while `is_live` AND its last heartbeat is
 within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily whenever the list is read.
@@ -15,7 +14,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .models import AppConfig, RadioChannel, RadioMessage
+from .models import AppConfig, RadioChannel
 
 
 def _err(msg, status=400):
@@ -36,24 +35,13 @@ def _cadence(cfg):
     }
 
 
-def _take_messages(channel):
-    """Messages the console queued for this station: hand them over once, then mark them delivered."""
-    if channel is None:
-        return []
-    pending = list(channel.messages.filter(delivered_at__isnull=True).order_by("created_at"))
-    if not pending:
-        return []
-    now = timezone.now()
-    RadioMessage.objects.filter(id__in=[m.id for m in pending]).update(delivered_at=now)
-    return [{"id": m.id, "text": m.text, "sent_at": m.created_at.isoformat()} for m in pending]
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def ingest(request):
     """Receive an AudioSync presence event. Open endpoint — anyone who can reach this URL may
     register a station or heartbeat one. Returns the heartbeat cadence (the POC adopts
-    `heartbeat_interval`) plus any messages waiting for this station."""
+    `heartbeat_interval`)."""
     cfg = AppConfig.load()
 
     try:
@@ -91,8 +79,7 @@ def ingest(request):
                 "last_heartbeat_at": timezone.now(),
             },
         )
-        return JsonResponse({"success": True, "channel_id": str(ch.id),
-                             "messages": _take_messages(ch), **cadence})
+        return JsonResponse({"success": True, "channel_id": str(ch.id), **cadence})
 
     ch = RadioChannel.objects.filter(broadcaster_id=bid).first()
 
@@ -110,7 +97,6 @@ def ingest(request):
                 "session_id", "is_live", "now_playing", "listeners", "stream_url",
                 "last_heartbeat_at", "updated_at",
             ])
-            return JsonResponse({"success": True, "messages": _take_messages(ch), **cadence})
         return JsonResponse({"success": True, **cadence})
 
     if event == "public_url_inactive":

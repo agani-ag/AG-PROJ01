@@ -75,7 +75,6 @@ urlpatterns = [
     # Radio (live channel registry + AudioSync ingest key)
     path("radio", v.radio_page, name="mobile_radio"),
     path("radio/save", v.radio_save, name="mobile_radio_save"),
-    path("radio/message", v.radio_message_send, name="mobile_radio_message"),
     path("radio/channels/<int:channel_id>/remove", v.radio_channel_remove, name="mobile_radio_channel_remove"),
 
     # Devices

@@ -981,30 +981,6 @@ class RadioChannel(models.Model):
         return f"{self.name} ({'live' if self.is_live else 'off'})"
 
 
-class RadioMessage(models.Model):
-    """A note the console sends to an AudioSync station.
-
-    We never connect out to AudioSync — it polls us. So a message waits here and rides back in the
-    reply to that station's next heartbeat (within one heartbeat interval), then is marked
-    delivered. Messages belong to a channel, so they disappear with it when the station goes off
-    air and the row is pruned.
-    """
-
-    channel = models.ForeignKey(RadioChannel, on_delete=models.CASCADE, related_name="messages")
-    text = models.CharField(max_length=300)
-    created_at = models.DateTimeField(auto_now_add=True)
-    delivered_at = models.DateTimeField(null=True, blank=True)
-    created_by = models.ForeignKey(
-        "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
-    )
-
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [models.Index(fields=["channel", "delivered_at"])]
-
-    def __str__(self):
-        return f"{self.channel_id}: {self.text[:40]}"
-
 
 # =============== Scheduled reminders (server-authored, device-fired) ===============
 REMINDER_RECURRENCE_CHOICES = [
