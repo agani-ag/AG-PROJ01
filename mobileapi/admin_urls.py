@@ -4,6 +4,7 @@ from django.urls import path
 from . import admin_insights as insights
 from . import admin_shortcuts as sc
 from . import admin_views as v
+from . import channels_admin as channels
 
 urlpatterns = [
     path("", v.dashboard, name="mobile_dashboard"),
@@ -65,14 +66,16 @@ urlpatterns = [
     path("telegram/chats/<int:chat_pk>/refresh", v.telegram_chat_refresh_one, name="mobile_telegram_chat_refresh"),
     path("telegram/chats/<int:chat_pk>/assign", v.telegram_chat_assign, name="mobile_telegram_chat_assign"),
     path("telegram/chats/<int:chat_pk>/forget", v.telegram_chat_forget, name="mobile_telegram_chat_forget"),
-    # Telegram inbox: conversations with groups and people
-    path("telegram/inbox", v.telegram_inbox, name="mobile_telegram_inbox"),
-    path("telegram/inbox/list.json", v.telegram_inbox_list, name="mobile_telegram_inbox_list"),
-    path("telegram/inbox/<int:chat_pk>/messages.json", v.telegram_inbox_thread, name="mobile_telegram_inbox_thread"),
-    path("telegram/inbox/<int:chat_pk>/send", v.telegram_inbox_send, name="mobile_telegram_inbox_send"),
-    path("telegram/live", v.telegram_live_toggle, name="mobile_telegram_live"),
 
     # Radio (live channel registry + AudioSync ingest key)
+    path("channels", channels.page, name="mobile_channels"),
+    path("channels/rows", channels.rows, name="mobile_channels_rows"),
+    path("channels/mark", channels.mark, name="mobile_channels_mark"),
+    path("channels/read", channels.read, name="mobile_channels_read"),
+    path("channels/new-link", channels.new_link, name="mobile_channels_new_link"),
+    path("channels/accounts", channels.accounts, name="mobile_channels_accounts"),
+    path("channels/send", channels.send, name="mobile_channels_send"),
+
     path("radio", v.radio_page, name="mobile_radio"),
     path("radio/save", v.radio_save, name="mobile_radio_save"),
     path("radio/channels/<int:channel_id>/remove", v.radio_channel_remove, name="mobile_radio_channel_remove"),
@@ -103,5 +106,6 @@ urlpatterns = [
     path("chats/<int:account_id>/messages.json", v.chat_thread_json, name="mobile_chat_thread_json"),
     path("chats/<int:account_id>/reply", v.chat_reply_json, name="mobile_chat_reply_json"),
     path("chats/<int:account_id>/typing", v.chat_typing_admin, name="mobile_chat_typing"),
+    path("chats/<int:account_id>/clear", v.chat_clear_json, name="mobile_chat_clear"),
     path("chats/<int:account_id>", v.chat_detail, name="mobile_chat_detail"),
 ]

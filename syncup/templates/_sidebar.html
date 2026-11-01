@@ -13,14 +13,13 @@
             <a class="nav-link" href="{% url 'mobile_devices' %}" {% nav_active "mobile_devices mobile_device_detail" %}>{% icon "smartphone" %}<span class="nav-text">Devices</span></a>
             <a class="nav-link" href="{% url 'mobile_general_links' %}" {% nav_active "mobile_general_links mobile_general_link_add mobile_general_link_edit" %}>{% icon "link-2" %}<span class="nav-text">General links</span></a>
             <a class="nav-link" href="{% url 'mobile_home_shortcuts' %}" {% nav_active "mobile_home_shortcuts mobile_home_shortcut_add mobile_home_shortcut_edit" %}>{% icon "globe" %}<span class="nav-text">Home shortcuts</span></a>
-            <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with n=nav_unread_chats %}{% if n %}<span class="count" title="{{ n }} unread">{{ n }}</span>{% endif %}{% endwith %}</a>
         </div>
         <div class="nav-group">
             <div class="nav-label">Notify</div>
+            <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with n=nav_unread_chats %}{% if n %}<span class="count" title="{{ n }} unread">{{ n }}</span>{% endif %}{% endwith %}</a>
             <a class="nav-link" href="{% url 'mobile_reminders' %}" {% nav_active "mobile_reminders mobile_reminder_edit mobile_reminder_receipts" %}>{% icon "calendar-clock" %}<span class="nav-text">Reminders</span></a>
             <a class="nav-link" href="{% url 'mobile_push' %}" {% nav_active "mobile_push" %}>{% icon "bell-ring" %}<span class="nav-text">Push notifications</span></a>
             <a class="nav-link" href="{% url 'mobile_telegram' %}" {% nav_active "mobile_telegram" %}>{% icon "send" %}<span class="nav-text">Telegram</span></a>
-            <a class="nav-link" href="{% url 'mobile_telegram_inbox' %}" {% nav_active "mobile_telegram_inbox" %}>{% icon "messages-square" %}<span class="nav-text">Telegram inbox</span></a>
             <a class="nav-link" href="{% url 'mobile_radio' %}" {% nav_active "mobile_radio" %}>{% icon "radio" %}<span class="nav-text">Radio</span></a>
         </div>
         <div class="nav-group">
@@ -39,7 +38,7 @@
             <div class="nav-label">Media</div>
             <a class="nav-link" href="{% url 'clicksend' %}" {% nav_active "clicksend" %}>{% icon "mail" %}<span class="nav-text">Click Send</span></a>
             <a class="nav-link" href="{% url 'cloudinary' %}" {% nav_active "cloudinary" %}>{% icon "image" %}<span class="nav-text">Cloudinary</span></a>
-            <a class="nav-link" href="{% url 'tv_station' %}" {% nav_active "tv_station" %}>{% icon "tv" %}<span class="nav-text">TV station</span></a>
+            <a class="nav-link" href="{% url 'mobile_channels' %}" {% nav_active "mobile_channels" %}>{% icon "tv" %}<span class="nav-text">Channels</span></a>
         </div>
     </nav>
     <div class="side-foot">

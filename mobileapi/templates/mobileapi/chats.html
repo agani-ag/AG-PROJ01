@@ -53,6 +53,7 @@
     .thread-presence.online { color: var(--success); font-weight: 600; }
     .thread-presence.online .pdot { background: var(--success); }
     .th-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; max-width: 45%; }
+    .th-clear { flex: 0 0 auto; }
 
     .thread-scroll { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .thread-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
@@ -109,6 +110,7 @@
         .thread-back { display: inline-flex; }
         .thread-head { padding: 8px 12px; }
         .th-email { display: none; }
+        .th-clear-text { display: none; }
         .msg-col { max-width: 84%; }
         #threadMessages { padding: 12px 12px 8px; }
         #typingRow { padding: 0 12px 12px; }
@@ -153,6 +155,7 @@
                 <span class="small muted truncate th-email" id="thEmail"></span>
                 <span id="thInactive" class="badge badge-danger" hidden><span class="dot"></span>Inactive</span>
             </div>
+            <button id="clearChat" class="btn btn-sm btn-ghost th-clear" type="button" aria-label="Clear chat" title="Clear chat" hidden>{% icon "trash" %}<span class="th-clear-text">Clear chat</span></button>
         </div>
         <div class="thread-scroll">
             <div id="threadBody" class="thread-body">
@@ -204,6 +207,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var URL_REPLY = "{% url 'mobile_chat_reply_json' 0 %}";
     var URL_TYPING = "{% url 'mobile_chat_typing' 0 %}";
     var URL_PEOPLE = "{% url 'mobile_chat_people_json' %}";
+    var URL_CLEAR = "{% url 'mobile_chat_clear' 0 %}";
     var lastTypingPing = 0;
 
     var page = document.querySelector("main.page");
@@ -213,6 +217,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var threadHeader = document.getElementById("threadHeader");
     var composer = document.getElementById("composer");
     var replyInput = document.getElementById("replyInput");
+    var clearBtn = document.getElementById("clearChat");
     var search = document.getElementById("chatSearch");
     var listStatus = document.getElementById("listStatus");
     var EMPTY_THREAD = threadBody.innerHTML;
@@ -226,6 +231,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function threadUrl(id) { return URL_THREAD.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
     function replyUrl(id) { return URL_REPLY.replace(/\/0\/reply$/, "/" + id + "/reply"); }
     function typingUrl(id) { return URL_TYPING.replace(/\/0\/typing$/, "/" + id + "/typing"); }
+    function clearUrl(id) { return URL_CLEAR.replace(/\/0\/clear$/, "/" + id + "/clear"); }
     function initials(n) { return (n || "?").trim().charAt(0).toUpperCase(); }
     function colorFor(id) { return COLORS[(id || 0) % COLORS.length]; }
     function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
@@ -332,6 +338,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function renderMessage(m) {
         if (seen[m.id]) return; seen[m.id] = true;
         var hint = document.getElementById("threadHint"); if (hint) hint.remove();
+        clearBtn.hidden = false;
         if (m.id > lastId) lastId = m.id;
         var box = tm(); if (!box) return;
         var day = new Date(m.created_at_ms).toDateString();
@@ -371,6 +378,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function resetThreadState() {
         lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+        clearBtn.hidden = true;
     }
 
     function openConversation(id, name, email, online, lastSeenMs) {
@@ -461,6 +469,22 @@ document.addEventListener("DOMContentLoaded", function () {
     threadBody.addEventListener("scroll", updateJump);
     jump.addEventListener("click", function () { scrollBottom(); updateJump(); });
     document.getElementById("threadBack").addEventListener("click", closeConversation);
+
+    /* ---------- Clear a chat ---------- */
+    clearBtn.addEventListener("click", function () {
+        var id = current, name = document.getElementById("thName").textContent;
+        App.confirm({
+            title: "Clear this chat?",
+            text: "All messages with " + name + " are deleted straight away, here and in their app. This can't be undone.",
+            confirmText: "Clear chat",
+            danger: true,
+        }).then(function (yes) {
+            if (!yes) return;
+            return App.fetchJSON(clearUrl(id), { method: "POST" }).then(function () {
+                if (id === current) closeConversation(); else loadList();
+            });
+        }).catch(function (err) { App.toast("Couldn't clear the chat: " + err.message, "error"); });
+    });
 
     /* ---------- Start a new chat ---------- */
     var newChat = document.getElementById("newChat");

@@ -101,6 +101,7 @@ def chat_messages(request):
     )
     return JsonResponse({
         "messages": rows,
+        "latest_id": AppChatMessage.objects.filter(account=account).aggregate(m=Max("id"))["m"] or 0,
         "read_upto_id": read_upto,
         "admin_typing": account.is_admin_typing(),
         "admin_online": account.is_admin_online(),
@@ -251,6 +252,7 @@ def chat_inbox_thread(request, account_id):
             "last_seen_ms": int(target.chat_last_seen_at.timestamp() * 1000) if target.chat_last_seen_at else 0,
         },
         "messages": rows,
+        "latest_id": AppChatMessage.objects.filter(account=target).aggregate(m=Max("id"))["m"] or 0,
         "read_upto_id": read_upto,
         "user_typing": target.is_typing(),
     })

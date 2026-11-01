@@ -1,225 +1,380 @@
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Status-bar colour for the app WebView: matches the page background. -->
-    {% include "mobileapi/_theme_color.html" with light="#f6f8fb" dark="#0b0f17" %}
+    <meta name="color-scheme" content="only light">
+    <!-- Status-bar colour for the app WebView: matches the top bar. -->
+    <meta name="theme-color" content="#ffffff">
     <title>Privacy Policy — {{ company_name }} (SyncUp)</title>
     <meta name="robots" content="index, follow">
     <style>
-        :root { color-scheme: light dark; }
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            color: #0f172a;
-            background: #f6f8fb;
+        /* Same colours as the console (static/css/app.css), light only: this page never follows a
+           dark phone or browser. "only light" also stops a WebView darkening it by itself. */
+        :root {
+            color-scheme: only light;
+            --bg: #f6f8fb; --surface: #ffffff; --surface-2: #f1f4f9; --border: #e2e8f0; --border-strong: #cbd5e1;
+            --text: #0f172a; --body: #334155; --muted: #5b6472;
+            --accent: #2563eb; --accent-soft: #eaf1fe; --accent-ink: #1e40af;
+            --success: #15803d; --success-soft: #e7f5ec;
+            --ring: 0 0 0 3px rgba(37, 99, 235, .28);
+            --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
         }
-        .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
-        h1 { font-size: 1.7rem; margin: 0 0 4px; }
-        h2 { font-size: 1.15rem; margin: 28px 0 6px; }
-        .muted { color: #5b6472; font-size: .92rem; }
-        a { color: #2563eb; }
-        code { background: rgba(148,163,184,.2); padding: 1px 5px; border-radius: 5px; font-size: .9em; }
-        ul { padding-left: 20px; }
-        hr { border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0; }
-        .card { background: #fff; border: 1px solid #e6eaf0; border-radius: 14px; padding: 22px 24px; }
-        @media (prefers-color-scheme: dark) {
-            body { color: #e6eaf2; background: #0b0f17; }
-            .muted { color: #9aa4b2; }
-            .card { background: #121826; border-color: #23304a; }
-            hr { border-top-color: #23304a; }
+        * { box-sizing: border-box; }
+        html { -webkit-text-size-adjust: 100%; }
+        @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+        body {
+            margin: 0; background: var(--bg); color: var(--body); line-height: 1.65; font-size: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        a { color: var(--accent); text-underline-offset: 2px; }
+        a:focus-visible, summary:focus-visible { outline: 0; box-shadow: var(--ring); border-radius: 6px; }
+        strong { color: var(--text); font-weight: 600; }
+        code { font-family: var(--mono); font-size: .88em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; overflow-wrap: anywhere; }
+        .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+        .container { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+        /* Top bar */
+        .topbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+        .topbar .container { display: flex; align-items: center; height: 56px; }
+        .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; font-size: 1.05rem; text-decoration: none; }
+        .brand img { width: 30px; height: 30px; display: block; }
+
+        /* Title */
+        .hero { padding: 32px 0 24px; }
+        .hero h1 { margin: 0 0 8px; color: var(--text); font-size: 1.85rem; line-height: 1.2; font-weight: 700; letter-spacing: -.01em; }
+        .hero p { margin: 0; color: var(--muted); }
+        .hero .effective { display: inline-block; margin-top: 12px; padding: 3px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: .875rem; font-weight: 600; }
+
+        .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding-bottom: 56px; }
+
+        /* Contents: folded away on phones, always open beside the text on wide screens */
+        .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+        .toc summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 16px; color: var(--text); font-weight: 600; cursor: pointer; list-style: none; }
+        .toc summary::-webkit-details-marker { display: none; }
+        .toc summary svg { width: 18px; height: 18px; color: var(--muted); transition: transform .15s; }
+        .toc[open] summary svg { transform: rotate(180deg); }
+        .toc ol { margin: 0; padding: 4px 8px 8px; list-style: none; border-top: 1px solid var(--border); }
+        .toc a { display: flex; gap: 4px; padding: 8px 10px; border-radius: 8px; color: var(--muted); font-size: .92rem; line-height: 1.35; text-decoration: none; }
+        .toc a:hover { background: var(--surface-2); color: var(--text); }
+        .toc a[aria-current="true"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+        .toc .num { flex: 0 0 auto; min-width: 1.6em; }
+
+        /* The policy */
+        .article { min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 1px 2px rgba(15, 23, 42, .05); padding: 0 18px; }
+        section { padding: 26px 0; border-top: 1px solid var(--border); scroll-margin-top: 12px; }
+        section:first-child { border-top: 0; }
+        section h2 { margin: 0 0 12px; color: var(--text); font-size: 1.2rem; line-height: 1.3; font-weight: 650; }
+        section h2 .num { color: var(--accent); margin-right: 2px; }
+        section > :last-child { margin-bottom: 0; }
+        section p { margin: 0 0 12px; }
+        .block { margin-bottom: 20px; }
+        .block > strong:first-child { display: block; margin-bottom: 2px; }
+        .list { margin: 0 0 16px; padding-left: 20px; }
+        .list li { margin: 8px 0; padding-left: 2px; }
+        .list li::marker { color: var(--accent); }
+        .callout { margin-top: 16px; padding: 12px 16px; border-radius: 10px; background: var(--success-soft); border-left: 3px solid var(--success); color: #14532d; font-weight: 500; }
+        .callout strong { color: inherit; font-weight: 700; }
+        .defs { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+        .defs li { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); font-size: .95rem; line-height: 1.55; }
+        .defs li > strong { display: block; margin-bottom: 2px; }
+        /* The text runs on from "Camera — the Sensors…"; shown under its own title it starts a sentence. */
+        .defs .def { display: block; }
+        .defs .def::first-letter { text-transform: uppercase; }
+        .contact { padding: 14px 16px; border-radius: 10px; background: var(--surface-2); color: var(--text); font-weight: 500; overflow-wrap: anywhere; }
+        .contact a { font-weight: 600; }
+
+        /* Back to top */
+        .to-top { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); box-shadow: 0 8px 24px rgba(15, 23, 42, .16); }
+        .to-top[hidden] { display: none; }
+        .to-top svg { width: 20px; height: 20px; }
+
+        @media (min-width: 640px) {
+            .defs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .article { padding: 0 32px; }
+            .hero { padding: 44px 0 28px; }
+            .hero h1 { font-size: 2.25rem; }
+        }
+        @media (min-width: 900px) {
+            .layout { grid-template-columns: 236px minmax(0, 1fr); gap: 24px; align-items: start; }
+            .toc { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+            .toc summary { pointer-events: none; }
+            .toc summary svg { display: none; }
+        }
+        @media print {
+            body { background: #fff; }
+            .topbar, .toc, .to-top { display: none; }
+            .layout { display: block; }
+            .article { border: 0; box-shadow: none; padding: 0; }
+            section { break-inside: avoid-page; }
         }
     </style>
 </head>
-<body>
-<div class="wrap">
-    <div class="card">
-        <h1>Privacy Policy</h1>
-        <p class="muted">
-            {{ company_name }} — SyncUp (<code>{{ app_id }}</code>)<br>
-            Effective date: {{ effective_date }}
-        </p>
-
-        <hr>
-
-        <h2>1. Overview</h2>
-        <p>SyncUp is a web browser with optional SyncUp accounts. You can browse without an account.
-           Accounts are either created for you by an administrator or a partner service, or created
-           by you in the app (when sign-up is available). This policy explains what data the app
-           handles, why, and your choices.</p>
-
-        <h2>2. Information we collect</h2>
-        <p><strong>Account information (you provide, only if you sign in).</strong> Your name and an
-           email address and/or mobile number, and optionally a username you choose — used to sign
-           you in and identify your account. Your password is sent over an encrypted (HTTPS)
-           connection and stored by our backend only as a secure hash. On your device, your session
-           token and optional app-lock PIN are kept in encrypted storage.</p>
-        <p><strong>Browser sync (only while you're signed in with Sync on).</strong> Your bookmarks,
-           your Normal-tab browsing history (kept for 90 days), your new-tab shortcuts, a few browser
-           settings (search engine, pop-up blocking, theme) and the titles and addresses of your open
-           Normal tabs are stored on our servers so they appear on your other signed-in devices.
-           <strong>They are used only for that.</strong> SyncUp staff do not view them — our
-           administrators see only counts (for example, how many bookmarks are synced) and when each
-           device last synced. Passwords, cookies, SyncUp tabs (links SyncUp provides), Incognito tabs, downloaded files and
-           site permissions are never synced. You can turn Sync (or any part of it) off, or delete
-           your synced data, in <strong>Settings → Sync</strong>. Browsing while signed out stays on
-           your device.</p>
-        <p><strong>Tools that sync (only while you're signed in with Sync on).</strong> Your
-           Calendar to-dos and lists, your Shopping lists, and your Wellbeing records — water
-           you drank, daily step counts, habits and their ticks, sleep times and mood check-ins —
-           are stored on our servers so they appear on your other signed-in devices. They are used
-           only for that; administrators see counts, never their contents (mood check-ins are
-           never shown to administrators at all). Each can be turned off in
-           <strong>Settings → Sync</strong>; signed out, they stay on your phone. Everything else
-           in Tools — Forest, Breaks, Decide, Split bill, Sensors, Music, Videos — stays on your
-           phone.</p>
-
-        <p><strong>Device information (automatic, for every install).</strong> A per-installation
-           identifier, a Firebase Cloud Messaging (FCM) push token, the app version, Android version,
-           device manufacturer and model, WebView version, language, time zone, the store the app
-           was installed from, whether notifications are allowed, and your country (worked out from
-           the connection — <strong>we do not store your IP address</strong>). Used to deliver
-           notifications, support the app and understand which devices and versions are in use. We
-           do not collect advertising IDs, hardware identifiers (such as IMEI), your location, or the
-           list of apps on your device. On the sign-in screen you can pick your number from
-           Google's own phone-number list; only the number you tap is filled in, and SyncUp never
-           reads it from the device itself.</p>
-        <p><strong>Partner services.</strong> If a partner service (for example your accounting
-           provider) added you to SyncUp, we keep that connection and the partner's own reference
-           for you. A partner can send you links, notices and verification prompts only after you
-           enable it with the password it gave you, and you can turn it off at any time.</p>
-        <p><strong>Camera, microphone, location and physical activity (only when a feature needs
-           them).</strong> Android asks you before any of these is used, and you can say no.
-           <strong>None of them is sent to or stored on our servers.</strong></p>
-        <ul>
-            <li><strong>Camera:</strong> the Sensors tools that look through the camera (for
-                example Magnifier and Colour picker). The picture is used on your phone while the
-                tool is open and is not saved or sent anywhere.</li>
-            <li><strong>Microphone:</strong> Walkie Talkie (in a channel or a SyncUp Group) sends
-                your voice only while you talk, straight to the nearby phones you chose — never to
-                our servers, and it is not recorded. The Sensors sound meter measures loudness on
-                your phone.</li>
-            <li><strong>Location:</strong> the Sensors tools that need GPS (speed, height, GPS
-                status) and, on older Android versions, finding nearby phones for SyncUp Share and
-                SyncUp Group. Used on your phone only.</li>
-            <li><strong>Physical activity:</strong> Steps in Wellbeing counts your steps on your
-                phone; the daily total syncs to your account only if you're signed in with Wellbeing
-                sync on.</li>
-            <li><strong>Pages you open in the app</strong> may ask for your camera, microphone or
-                location too; that goes to the page, at the moment it asks.</li>
-        </ul>
-
-        <p><strong>Nearby features (SyncUp Share, SyncUp Group, Party, Walkie Talkie).</strong>
-           Files, photos, songs, videos and voice you share with phones near you travel directly
-           between the phones over Bluetooth and Wi-Fi. They never pass through or stay on our
-           servers. Photos shared in a group are kept on each phone only until the group ends,
-           unless someone saves them.</p>
-        <p><strong>Files and photos you choose.</strong> When a page asks you to upload a file or
-           take a photo, or you add photos to SyncUp Share or a group, only what you explicitly
-           select (through Android's own picker) or capture is used. SyncUp does not scan your
-           photos or files. Music lists the songs on your phone to play them; they are never
-           uploaded.</p>
-
-        <h2>3. How we use information</h2>
-        <ul>
-            <li>To authenticate you and provide the app's features, including syncing your browser
-                data between your own devices.</li>
-            <li>To send you notifications and reminders you are configured to receive, and
-                announcements from SyncUp (you can turn these off in <strong>Settings →
-                Notifications → SyncUp updates</strong>).</li>
-            <li>To maintain security (e.g., the optional app-lock, limits on sign-in attempts) and to
-                operate and support the app, using counts and device details — not the contents of
-                your browsing.</li>
-        </ul>
-        <p>We do <strong>not</strong> sell your personal information and do <strong>not</strong> use
-           it for advertising.</p>
-
-        <h2>4. Sharing and third parties</h2>
-        <ul>
-            <li><strong>Google Firebase</strong> (Cloud Messaging and Remote Config) delivers push
-                notifications and configuration —
-                <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
-            <li><strong>Partner services</strong> you have enabled receive only what they need to
-                reach you (for example, whether a verification prompt was answered). They never
-                receive your synced browser data.</li>
-            <li><strong>Websites your administrator switched on</strong> (SyncUp links and
-                shortcuts) receive a random code for you, different for each website, so that website
-                can send you notifications through SyncUp. It does not include your name, email or
-                phone number.</li>
-            <li><strong>Web content you open in the app</strong> may be operated by us or third
-                parties; any camera/microphone/location/file access you grant goes to the page you
-                opened, under that page's own terms.</li>
-            <li>We may disclose information if required by law.</li>
-        </ul>
-
-        <h2>5. Data security</h2>
-        <ul>
-            <li>Communication between the app and SyncUp's servers uses HTTPS (encrypted in
-                transit). Web pages you choose to open may use plain HTTP, like in any browser.</li>
-            <li>Session tokens and the app-lock PIN are held in Android's encrypted storage.</li>
-            <li>Sign-in tokens expire automatically and can be revoked; you or an administrator can
-                sign a device out.</li>
-        </ul>
-
-        <h2>6. Data retention and deletion</h2>
-        <ul>
-            <li>Account data is retained while your account is active. Synced history older than 90
-                days is removed automatically.</li>
-            <li><strong>Delete your synced data:</strong> <strong>Settings → Sync → Delete synced
-                data</strong> erases it from our servers (each device keeps its own copy until you
-                clear it there).</li>
-            <li><strong>Delete your account in the app:</strong> open <strong>Settings → Delete
-                account</strong>. Your account is deleted permanently, straight away, and cannot be
-                restored: we erase your profile (name, email, phone, password), everything synced to it
-                (bookmarks, history, open tabs, settings, to-dos, shopping lists and wellbeing data),
-                your links, reminders, support chat, partner connections, page tokens and the
-                notifications sent to you. You are signed out on every device. Data already on your
-                phones stays there until you clear it or uninstall the app.</li>
-            <li>Installs nobody has signed in on are removed from our records after 6 months without
-                use.</li>
-            <li>You may also request deletion by contacting us at the address below.</li>
-            <li>Uninstalling the app removes locally stored data (browsing data, session token, PIN,
-                cached reminders) from your device.</li>
-        </ul>
-
-        <h2>7. Children</h2>
-        <p>SyncUp is intended for business use and is not directed to children under 13 (or the
-           minimum age in your jurisdiction).</p>
-
-        <h2>8. Permissions summary</h2>
-        <ul>
-            <li><strong>Camera</strong> — the Sensors tools that use the camera, and in-app pages
-                that ask. Never sent to us.</li>
-            <li><strong>Microphone</strong> — Walkie Talkie (to the nearby phones you chose) and the
-                Sensors sound meter, and in-app pages that ask. Never sent to us or recorded.</li>
-            <li><strong>Location</strong> — the Sensors GPS tools, finding nearby phones on older
-                Android versions, and in-app pages that ask. Used on your phone; not collected by
-                us.</li>
-            <li><strong>Nearby devices (Bluetooth, Wi-Fi)</strong> — SyncUp Share, SyncUp Group, Party
-                and Walkie Talkie, to connect to phones near you.</li>
-            <li><strong>Physical activity</strong> — Steps in Wellbeing.</li>
-            <li><strong>Music and audio</strong> — only when you open Music, to list and play the songs
-                on your phone. Your songs stay on your device; we never upload or collect them.</li>
-            <li><strong>Photos and videos</strong> — no permission: you pick them with Android's own
-                picker. On Android 9 and older, storage permission is asked only to save downloads and
-                photos.</li>
-            <li><strong>Notifications</strong> — to show push notifications and reminders.</li>
-            <li><strong>Fingerprint / face</strong> — only if you turn on the app lock with
-                biometrics.</li>
-            <li><strong>Running in the background</strong> — to keep music, transfers, downloads and
-                Walkie Talkie going while the screen is off; a notification shows while they do.</li>
-            <li><strong>Run after reboot</strong> — to restore your scheduled reminders after a restart.</li>
-        </ul>
-
-        <h2>9. Changes to this policy</h2>
-        <p>We may update this policy; the effective date above reflects the latest version.</p>
-
-        <h2>10. Contact</h2>
-        <p>{{ company_name }} — <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+<body id="top">
+<header class="topbar">
+    <div class="container">
+        <a class="brand" href="{% url 'home' %}"><img src="{% static 'images/app-icon.svg' %}" alt="" width="30" height="30">SyncUp</a>
     </div>
-</div>
+</header>
+
+<main class="container">
+    <div class="hero">
+        <h1>Privacy Policy</h1>
+        <p>{{ company_name }} — SyncUp (<code>{{ app_id }}</code>)</p>
+        <p class="effective">Effective date: {{ effective_date }}</p>
+    </div>
+
+    <div class="layout">
+        <details class="toc" id="toc">
+            <summary>On this page<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <ol>
+                <li><a href="#overview"><span class="num">1.</span> Overview</a></li>
+                <li><a href="#information-we-collect"><span class="num">2.</span> Information we collect</a></li>
+                <li><a href="#how-we-use-information"><span class="num">3.</span> How we use information</a></li>
+                <li><a href="#sharing-and-third-parties"><span class="num">4.</span> Sharing and third parties</a></li>
+                <li><a href="#data-security"><span class="num">5.</span> Data security</a></li>
+                <li><a href="#data-retention-and-deletion"><span class="num">6.</span> Data retention and deletion</a></li>
+                <li><a href="#children"><span class="num">7.</span> Children</a></li>
+                <li><a href="#permissions-summary"><span class="num">8.</span> Permissions summary</a></li>
+                <li><a href="#changes-to-this-policy"><span class="num">9.</span> Changes to this policy</a></li>
+                <li><a href="#contact"><span class="num">10.</span> Contact</a></li>
+            </ol>
+        </details>
+
+        <article class="article">
+            <section id="overview">
+                <h2><span class="num">1.</span> Overview</h2>
+                <p>SyncUp is a web browser with optional SyncUp accounts. You can browse without an account.
+                   Accounts are either created for you by an administrator or a partner service, or created
+                   by you in the app (when sign-up is available). This policy explains what data the app
+                   handles, why, and your choices.</p>
+            </section>
+
+            <section id="information-we-collect">
+                <h2><span class="num">2.</span> Information we collect</h2>
+                <p class="block"><strong>Account information (you provide, only if you sign in).</strong> Your name and an
+                   email address and/or mobile number, and optionally a username you choose — used to sign
+                   you in and identify your account. Your password is sent over an encrypted (HTTPS)
+                   connection and stored by our backend only as a secure hash. On your device, your session
+                   token and optional app-lock PIN are kept in encrypted storage.</p>
+                <p class="block"><strong>Browser sync (only while you're signed in with Sync on).</strong> Your bookmarks,
+                   your Normal-tab browsing history (kept for 90 days), your new-tab shortcuts, a few browser
+                   settings (search engine, pop-up blocking, theme) and the titles and addresses of your open
+                   Normal tabs are stored on our servers so they appear on your other signed-in devices.
+                   <strong>They are used only for that.</strong> SyncUp staff do not view them — our
+                   administrators see only counts (for example, how many bookmarks are synced) and when each
+                   device last synced. Passwords, cookies, SyncUp tabs (links SyncUp provides), Incognito tabs, downloaded files and
+                   site permissions are never synced. You can turn Sync (or any part of it) off, or delete
+                   your synced data, in <strong>Settings → Sync</strong>. Browsing while signed out stays on
+                   your device.</p>
+                <p class="block"><strong>Tools that sync (only while you're signed in with Sync on).</strong> Your
+                   Calendar to-dos and lists, your Shopping lists, and your Wellbeing records — water
+                   you drank, daily step counts, habits and their ticks, sleep times and mood check-ins —
+                   are stored on our servers so they appear on your other signed-in devices. They are used
+                   only for that; administrators see counts, never their contents (mood check-ins are
+                   never shown to administrators at all). Each can be turned off in
+                   <strong>Settings → Sync</strong>; signed out, they stay on your phone. Everything else
+                   in Tools — Forest, Breaks, Decide, Split bill, Sensors, Music, Videos — stays on your
+                   phone.</p>
+
+                <p class="block"><strong>Device information (automatic, for every install).</strong> A per-installation
+                   identifier, a Firebase Cloud Messaging (FCM) push token, the app version, Android version,
+                   device manufacturer and model, WebView version, language, time zone, the store the app
+                   was installed from, whether notifications are allowed, and your country (worked out from
+                   the connection — <strong>we do not store your IP address</strong>). Used to deliver
+                   notifications, support the app and understand which devices and versions are in use. We
+                   do not collect advertising IDs, hardware identifiers (such as IMEI), your location, or the
+                   list of apps on your device. On the sign-in screen you can pick your number from
+                   Google's own phone-number list; only the number you tap is filled in, and SyncUp never
+                   reads it from the device itself.</p>
+                <p class="block"><strong>Partner services.</strong> If a partner service (for example your accounting
+                   provider) added you to SyncUp, we keep that connection and the partner's own reference
+                   for you. A partner can send you links, notices and verification prompts only after you
+                   enable it with the password it gave you, and you can turn it off at any time.</p>
+                <p class="block"><strong>Camera, microphone, location and physical activity (only when a feature needs
+                   them).</strong> Android asks you before any of these is used, and you can say no.
+                   <strong>None of them is sent to or stored on our servers.</strong></p>
+                <ul class="list">
+                    <li><strong>Camera:</strong> the Sensors tools that look through the camera (for
+                        example Magnifier and Colour picker). The picture is used on your phone while the
+                        tool is open and is not saved or sent anywhere.</li>
+                    <li><strong>Microphone:</strong> Walkie Talkie (in a channel or a SyncUp Group) sends
+                        your voice only while you talk, straight to the nearby phones you chose — never to
+                        our servers, and it is not recorded. The Sensors sound meter measures loudness on
+                        your phone.</li>
+                    <li><strong>Location:</strong> the Sensors tools that need GPS (speed, height, GPS
+                        status) and, on older Android versions, finding nearby phones for SyncUp Share and
+                        SyncUp Group. Used on your phone only.</li>
+                    <li><strong>Physical activity:</strong> Steps in Wellbeing counts your steps on your
+                        phone; the daily total syncs to your account only if you're signed in with Wellbeing
+                        sync on.</li>
+                    <li><strong>Pages you open in the app</strong> may ask for your camera, microphone or
+                        location too; that goes to the page, at the moment it asks.</li>
+                </ul>
+
+                <p class="block"><strong>Nearby features (SyncUp Share, SyncUp Group, Party, Walkie Talkie).</strong>
+                   Files, photos, songs, videos and voice you share with phones near you travel directly
+                   between the phones over Bluetooth and Wi-Fi. They never pass through or stay on our
+                   servers. Photos shared in a group are kept on each phone only until the group ends,
+                   unless someone saves them.</p>
+                <p class="block"><strong>Files and photos you choose.</strong> When a page asks you to upload a file or
+                   take a photo, or you add photos to SyncUp Share or a group, only what you explicitly
+                   select (through Android's own picker) or capture is used. SyncUp does not scan your
+                   photos or files. Music lists the songs on your phone to play them; they are never
+                   uploaded.</p>
+            </section>
+
+            <section id="how-we-use-information">
+                <h2><span class="num">3.</span> How we use information</h2>
+                <ul class="list">
+                    <li>To authenticate you and provide the app's features, including syncing your browser
+                        data between your own devices.</li>
+                    <li>To send you notifications and reminders you are configured to receive, and
+                        announcements from SyncUp (you can turn these off in <strong>Settings →
+                        Notifications → SyncUp updates</strong>).</li>
+                    <li>To maintain security (e.g., the optional app-lock, limits on sign-in attempts) and to
+                        operate and support the app, using counts and device details — not the contents of
+                        your browsing.</li>
+                </ul>
+                <p class="callout">We do <strong>not</strong> sell your personal information and do <strong>not</strong> use
+                   it for advertising.</p>
+            </section>
+
+            <section id="sharing-and-third-parties">
+                <h2><span class="num">4.</span> Sharing and third parties</h2>
+                <ul class="list">
+                    <li><strong>Google Firebase</strong> (Cloud Messaging and Remote Config) delivers push
+                        notifications and configuration —
+                        <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+                    <li><strong>Partner services</strong> you have enabled receive only what they need to
+                        reach you (for example, whether a verification prompt was answered). They never
+                        receive your synced browser data.</li>
+                    <li><strong>Websites your administrator switched on</strong> (SyncUp links and
+                        shortcuts) receive a random code for you, different for each website, so that website
+                        can send you notifications through SyncUp. It does not include your name, email or
+                        phone number.</li>
+                    <li><strong>Web content you open in the app</strong> may be operated by us or third
+                        parties; any camera/microphone/location/file access you grant goes to the page you
+                        opened, under that page's own terms.</li>
+                    <li>We may disclose information if required by law.</li>
+                </ul>
+            </section>
+
+            <section id="data-security">
+                <h2><span class="num">5.</span> Data security</h2>
+                <ul class="list">
+                    <li>Communication between the app and SyncUp's servers uses HTTPS (encrypted in
+                        transit). Web pages you choose to open may use plain HTTP, like in any browser.</li>
+                    <li>Session tokens and the app-lock PIN are held in Android's encrypted storage.</li>
+                    <li>Sign-in tokens expire automatically and can be revoked; you or an administrator can
+                        sign a device out.</li>
+                </ul>
+            </section>
+
+            <section id="data-retention-and-deletion">
+                <h2><span class="num">6.</span> Data retention and deletion</h2>
+                <ul class="list">
+                    <li>Account data is retained while your account is active. Synced history older than 90
+                        days is removed automatically.</li>
+                    <li><strong>Delete your synced data:</strong> <strong>Settings → Sync → Delete synced
+                        data</strong> erases it from our servers (each device keeps its own copy until you
+                        clear it there).</li>
+                    <li><strong>Delete your account in the app:</strong> open <strong>Settings → Delete
+                        account</strong>. Your account is deleted permanently, straight away, and cannot be
+                        restored: we erase your profile (name, email, phone, password), everything synced to it
+                        (bookmarks, history, open tabs, settings, to-dos, shopping lists and wellbeing data),
+                        your links, reminders, support chat, partner connections, page tokens and the
+                        notifications sent to you. You are signed out on every device. Data already on your
+                        phones stays there until you clear it or uninstall the app.</li>
+                    <li>Installs nobody has signed in on are removed from our records after 6 months without
+                        use.</li>
+                    <li>You may also request deletion by contacting us at the address below.</li>
+                    <li>Uninstalling the app removes locally stored data (browsing data, session token, PIN,
+                        cached reminders) from your device.</li>
+                </ul>
+            </section>
+
+            <section id="children">
+                <h2><span class="num">7.</span> Children</h2>
+                <p>SyncUp is intended for business use and is not directed to children under 13 (or the
+                   minimum age in your jurisdiction).</p>
+            </section>
+
+            <section id="permissions-summary">
+                <h2><span class="num">8.</span> Permissions summary</h2>
+                <ul class="defs">
+                    <li><strong>Camera</strong><span class="sr-only"> — </span><span class="def">the Sensors tools that use the camera, and in-app pages
+                        that ask. Never sent to us.</span></li>
+                    <li><strong>Microphone</strong><span class="sr-only"> — </span><span class="def">Walkie Talkie (to the nearby phones you chose) and the
+                        Sensors sound meter, and in-app pages that ask. Never sent to us or recorded.</span></li>
+                    <li><strong>Location</strong><span class="sr-only"> — </span><span class="def">the Sensors GPS tools, finding nearby phones on older
+                        Android versions, and in-app pages that ask. Used on your phone; not collected by
+                        us.</span></li>
+                    <li><strong>Nearby devices (Bluetooth, Wi-Fi)</strong><span class="sr-only"> — </span><span class="def">SyncUp Share, SyncUp Group, Party
+                        and Walkie Talkie, to connect to phones near you.</span></li>
+                    <li><strong>Physical activity</strong><span class="sr-only"> — </span><span class="def">Steps in Wellbeing.</span></li>
+                    <li><strong>Music and audio</strong><span class="sr-only"> — </span><span class="def">only when you open Music, to list and play the songs
+                        on your phone. Your songs stay on your device; we never upload or collect them.</span></li>
+                    <li><strong>Photos and videos</strong><span class="sr-only"> — </span><span class="def">no permission: you pick them with Android's own
+                        picker. On Android 9 and older, storage permission is asked only to save downloads and
+                        photos.</span></li>
+                    <li><strong>Notifications</strong><span class="sr-only"> — </span><span class="def">to show push notifications and reminders.</span></li>
+                    <li><strong>Fingerprint / face</strong><span class="sr-only"> — </span><span class="def">only if you turn on the app lock with
+                        biometrics.</span></li>
+                    <li><strong>Running in the background</strong><span class="sr-only"> — </span><span class="def">to keep music, transfers, downloads and
+                        Walkie Talkie going while the screen is off; a notification shows while they do.</span></li>
+                    <li><strong>Run after reboot</strong><span class="sr-only"> — </span><span class="def">to restore your scheduled reminders after a restart.</span></li>
+                </ul>
+            </section>
+
+            <section id="changes-to-this-policy">
+                <h2><span class="num">9.</span> Changes to this policy</h2>
+                <p>We may update this policy; the effective date above reflects the latest version.</p>
+            </section>
+
+            <section id="contact">
+                <h2><span class="num">10.</span> Contact</h2>
+                <p class="contact">{{ company_name }} — <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+            </section>
+        </article>
+    </div>
+</main>
+
+<a class="to-top" id="toTop" href="#top" aria-label="Back to top" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></a>
+
+<script>
+(function () {
+    var toc = document.getElementById("toc");
+    var wide = window.matchMedia("(min-width: 900px)");
+    var links = [].slice.call(toc.querySelectorAll("a"));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute("href")); });
+    var toTop = document.getElementById("toTop");
+
+    function fit() { toc.open = wide.matches; }
+    fit();
+    if (wide.addEventListener) wide.addEventListener("change", fit);
+    else if (wide.addListener) wide.addListener(fit);
+    // On a phone, choosing a section folds the list away again.
+    links.forEach(function (a) { a.addEventListener("click", function () { if (!wide.matches) toc.open = false; }); });
+
+    var queued = false;
+    function update() {
+        queued = false;
+        var doc = document.documentElement, y = window.pageYOffset || doc.scrollTop;
+        var current = 0;
+        sections.forEach(function (s, i) { if (s.getBoundingClientRect().top <= window.innerHeight * .3) current = i; });
+        if (y + window.innerHeight >= doc.scrollHeight - 4) current = sections.length - 1;
+        links.forEach(function (a, i) {
+            if (i === current) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current");
+        });
+        toTop.hidden = y < 600;
+    }
+    window.addEventListener("scroll", function () {
+        if (!queued) { queued = true; window.requestAnimationFrame(update); }
+    }, { passive: true });
+    window.addEventListener("resize", update);
+    update();
+})();
+</script>
 </body>
 </html>

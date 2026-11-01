@@ -21,9 +21,8 @@ urlpatterns = [
     # Legacy path kept for existing callers; now needs the partner API key (Authorization: Bearer).
     path('api/telegram/send', partner_api.telegram_send_compat, name='send_telegram_message_api'),
 
-    # Services (Media menu) — Click Send / Cloudinary / TV station, superuser-only
+    # Services (Media menu) — Click Send / Cloudinary, superuser-only
     path('services/clicksend', media.clicksend, name='clicksend'),
-    path('services/tv-station', media.tv_station, name='tv_station'),
     path('services/cloudinary', media.cloudinary, name='cloudinary'),
     path('services/cloud-sign', media.cloud_sign, name='cloud_sign'),
 ]

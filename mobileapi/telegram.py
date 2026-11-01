@@ -163,29 +163,6 @@ def get_bot_status(chat_id, token=None):
     return "unknown"
 
 
-def set_webhook(url, secret_token, allowed_updates=None, token=None):
-    """Point Telegram at our hook. Returns (ok, error_string)."""
-    payload = {"url": url, "secret_token": secret_token, "drop_pending_updates": False}
-    if allowed_updates:
-        payload["allowed_updates"] = allowed_updates
-    data = _call("setWebhook", payload, token=token, timeout=10.0)
-    if data is None:
-        return False, "Telegram unreachable"
-    if not data.get("ok"):
-        return False, (data.get("description") or "Telegram error")[:200]
-    return True, ""
-
-
-def delete_webhook(token=None):
-    """Stop live delivery, so getUpdates works again. Returns (ok, error_string)."""
-    data = _call("deleteWebhook", {"drop_pending_updates": False}, token=token, timeout=10.0)
-    if data is None:
-        return False, "Telegram unreachable"
-    if not data.get("ok"):
-        return False, (data.get("description") or "Telegram error")[:200]
-    return True, ""
-
-
 def get_webhook_info(token=None):
     """Webhook state. A webhook and getUpdates are mutually exclusive — if one is set, scanning
     for chats returns a 409 from Telegram, so the page needs to say so."""

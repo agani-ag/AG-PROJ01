@@ -351,9 +351,6 @@ class TelegramChat(models.Model):
     last_activity_at = models.DateTimeField(null=True, blank=True)   # last update seen from this chat
     last_checked_at = models.DateTimeField(null=True, blank=True)    # last getChat refresh
     last_error = models.CharField(max_length=200, blank=True, default="")
-    # Conversation state for the inbox.
-    last_message_at = models.DateTimeField(null=True, blank=True)
-    last_read_at = models.DateTimeField(null=True, blank=True)        # when an admin last opened it
 
     class Meta:
         ordering = ["-last_activity_at", "title", "chat_id"]
@@ -375,65 +372,6 @@ class TelegramChat(models.Model):
     def __str__(self):
         return f"{self.display_name} ({self.chat_id})"
 
-
-# =============== One Telegram message, in or out ===============
-class TelegramMessage(models.Model):
-    """A message our bot received or sent, kept so the console can show a conversation.
-
-    A bot cannot fetch history — the Bot API has no such call — so a message exists here only if
-    it was captured as it arrived (webhook, or the cron's getUpdates). Two trim rules keep this
-    from growing: at most `telegram_keep_per_chat` messages per chat, and nothing older than the
-    chat retention window (see cleanup.py). `reply_to_text` holds a snippet of what was replied
-    to, so a reply still reads correctly after its parent has been trimmed away.
-    """
-
-    DIRECTION = [("in", "Received"), ("out", "Sent")]
-    # Labels for the kinds of attachment we recognise (detection order lives in telegram_chats.py).
-    MEDIA_LABELS = {
-        "photo": "Photo", "video": "Video", "document": "Document", "voice": "Voice message",
-        "audio": "Audio", "sticker": "Sticker", "animation": "GIF", "video_note": "Video note",
-        "location": "Location", "contact": "Contact", "poll": "Poll",
-    }
-
-    chat = models.ForeignKey(TelegramChat, on_delete=models.CASCADE, related_name="messages")
-    message_id = models.BigIntegerField(null=True, blank=True)  # Telegram's id within the chat
-    direction = models.CharField(max_length=3, choices=DIRECTION)
-    from_name = models.CharField(max_length=120, blank=True, default="")   # who wrote it (incoming)
-    from_user_id = models.CharField(max_length=32, blank=True, default="")
-    text = models.TextField(blank=True, default="")
-    media_type = models.CharField(max_length=20, blank=True, default="")   # photo, document, voice…
-    reply_to_message_id = models.BigIntegerField(null=True, blank=True)
-    reply_to_text = models.CharField(max_length=200, blank=True, default="")
-    sent_at = models.DateTimeField()                                        # Telegram's timestamp
-    created_at = models.DateTimeField(auto_now_add=True)
-    # Which admin sent it from the console (outgoing only).
-    sent_by = models.ForeignKey(
-        "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
-    )
-
-    class Meta:
-        ordering = ["sent_at", "id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["chat", "message_id"],
-                condition=models.Q(message_id__isnull=False),
-                name="uniq_telegram_chat_message",
-            ),
-        ]
-        indexes = [models.Index(fields=["chat", "-sent_at"])]
-
-    @property
-    def media_label(self):
-        if not self.media_type:
-            return ""
-        return self.MEDIA_LABELS.get(self.media_type, self.media_type.replace("_", " ").capitalize())
-
-    @property
-    def preview(self):
-        return self.text or self.media_label
-
-    def __str__(self):
-        return f"{self.direction} {self.chat_id}: {self.text[:40]}"
 
 
 # =============== Partner connection (a partner's access key on an account) ===============
@@ -789,15 +727,6 @@ class AppConfig(models.Model):
     # getUpdates is a queue: each call confirms everything before this id, so the next scan only
     # returns what's new. Telegram drops unconfirmed updates after ~24h, hence the cron scan.
     telegram_updates_offset = models.BigIntegerField(default=0)
-    # Live mode: Telegram posts each message to /telegram/hook/<secret> instead of us polling.
-    # Blank secret = polling (the push cron reads getUpdates).
-    telegram_webhook_secret = models.CharField(max_length=64, blank=True, default="")
-    # Rolling window: how many messages to keep per chat (0 = no cap — the age window still applies).
-    telegram_keep_per_chat = models.PositiveIntegerField(
-        default=50,
-        help_text="Messages kept per Telegram chat. Older ones are trimmed. 0 = keep all "
-                  "(the retention window below still applies).",
-    )
 
     # ---- Live radio (AudioSync broadcasters register their public stream URL here; the ingest
     # endpoint is open — see mobileapi/radio.py) ----
@@ -1400,3 +1329,63 @@ class AppSsoCode(models.Model):
 
     def __str__(self):
         return f"{self.host} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
+# =============== Channels: the admin's own checked list (channel_lists.py, channels_admin.py) ===============
+class ChannelSource(models.Model):
+    """A playlist link the admin read into Channels, and how the last read went."""
+
+    url = models.CharField(max_length=1000, unique=True)
+    found = models.PositiveIntegerField(default=0)
+    added = models.PositiveIntegerField(default=0)
+    left_out_sports = models.PositiveIntegerField(default=0)
+    left_out_headers = models.PositiveIntegerField(default=0)
+    last_read_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.url
+
+
+class LiveChannel(models.Model):
+    """One stream, once: `url_hash` keeps a link read twice from adding it twice. Only the admin changes
+    `status`, by testing it by hand; a Removed row stays so reading its link again doesn't bring it back."""
+
+    NEW = "new"
+    OK = "ok"
+    REMOVED = "removed"
+    STATUS = [(NEW, "Not checked"), (OK, "Working"), (REMOVED, "Removed")]
+
+    url_hash = models.CharField(max_length=64, unique=True)
+    url = models.TextField()
+    name = models.CharField(max_length=200)
+    group = models.CharField(max_length=80, blank=True, default="", db_index=True)
+    language = models.CharField(max_length=40, blank=True, default="", db_index=True)
+    tvg_id = models.CharField(max_length=120, blank=True, default="")
+    logo = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=10, choices=STATUS, default=NEW, db_index=True)
+    source = models.ForeignKey(ChannelSource, null=True, blank=True, on_delete=models.SET_NULL, related_name="channels")
+    checked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class ChannelLink(models.Model):
+    """The one private link to the Working channels. One row, made on first use."""
+
+    token = models.CharField(max_length=40, unique=True)
+    name = models.CharField(max_length=60, default="SyncUp Channels")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @classmethod
+    def load(cls):
+        import secrets
+        return cls.objects.first() or cls.objects.create(token=secrets.token_urlsafe(16))
+
+    def __str__(self):
+        return self.name

@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+{% block title %}Channels{% endblock %}
+{% block page_class %}page-wide{% endblock %}
+
+{% block head %}
+<!-- HLS (.m3u8) playback for the test player -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<style>
+  .ch-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 14px 0 16px; overflow-x: auto; }
+  .ch-tab { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; font: inherit; font-weight: 550; white-space: nowrap; }
+  .ch-tab .icon { width: 16px; height: 16px; }
+  .ch-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  button.stat[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .ch-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .ch-tools .grow { flex: 1 1 200px; min-width: 0; }
+  .ch-tools select { flex: 0 1 170px; min-width: 0; }
+  .ch-name { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+  .ch-name b { display: block; font-weight: 550; overflow-wrap: anywhere; }
+  .ch-logo { width: 34px; height: 34px; flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 9px; background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; font-weight: 700; }
+  .ch-logo img { width: 100%; height: 100%; object-fit: contain; background: var(--surface); }
+  .ch-acts { display: flex; justify-content: flex-end; gap: 2px; }
+  tr.ch-now td { background: var(--accent-soft); }
+  .ch-tag { display: inline-block; padding: 0 6px; border-radius: 5px; font: 11px/18px var(--mono); background: var(--surface-2); color: var(--muted); }
+  .ch-tag.warn { background: var(--warning-soft); color: var(--warning); }
+  .ch-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  .ch-foot .grow { flex: 1 1 auto; }
+
+  /* The player surface is a media preview, so it stays black in both themes. */
+  .ch-tester { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); overflow: hidden; margin-bottom: 16px; }
+  .ch-screen { position: relative; aspect-ratio: 16 / 9; background: #000; color: #e6eaf2; display: grid; place-items: center; }
+  .ch-screen video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; }
+  .ch-say { position: relative; max-width: 46ch; padding: 16px; text-align: center; }
+  .ch-say b { display: block; font-size: 17px; font-weight: 600; }
+  .ch-say span { display: block; margin-top: 6px; color: #b4bdcc; font-size: 13px; }
+  .ch-side { display: flex; flex-direction: column; gap: 12px; padding: 18px; min-width: 0; }
+  .ch-side h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+  .ch-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ch-row .btn { flex: 1 1 100px; }
+  .ch-url { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; background: var(--surface-2); border-radius: var(--radius-sm); padding: 6px 8px; }
+  .btn-working { background: var(--success); border-color: var(--success); color: var(--surface); }
+  .btn-working:hover { opacity: .9; background: var(--success); }
+  kbd.ch-key { font: 11px var(--mono); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; opacity: .75; }
+
+  .ch-send { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .ch-form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border-left: 1px solid var(--border); }
+  .ch-what { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+  .ch-pick { display: flex; align-items: center; gap: 8px; }
+  .ch-warn { display: flex; gap: 6px; align-items: flex-start; color: var(--warning); background: var(--warning-soft); border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12.5px; }
+  .ch-warn .icon { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+  .ch-link-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ch-link-row .ch-url { flex: 1 1 280px; min-width: 0; font-size: 12.5px; padding: 7px 10px; }
+  .ch-result { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; background: var(--surface-2); }
+  .ch-result div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .ch-result b { font-variant-numeric: tabular-nums; }
+  dialog.ch-add .modal-body { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+  .ch-check { display: flex; gap: 8px; align-items: flex-start; }
+  .ch-add-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+  @media (max-width: 900px) {
+    .ch-tester, .ch-send { grid-template-columns: minmax(0, 1fr); }
+    .ch-form { border-left: 0; border-top: 1px solid var(--border); }
+    .ch-hide-sm { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>Channels</h1>
+        <p class="page-sub">Your own checked list. It isn't public: a user only gets it when you send them its link. You can send any other link too.</p>
+    </div>
+    <button class="btn btn-primary" type="button" id="add-open">{% icon "plus" %}Add link</button>
+</div>
+
+<div class="ch-tabs" role="tablist">
+    <button class="ch-tab" type="button" role="tab" aria-selected="true" data-tab="channels">{% icon "tv" %}Channels</button>
+    <button class="ch-tab" type="button" role="tab" aria-selected="false" data-tab="links">{% icon "link" %}Links</button>
+    <button class="ch-tab" type="button" role="tab" aria-selected="false" data-tab="send">{% icon "send" %}Send</button>
+</div>
+
+<!-- CHANNELS -->
+<section data-pane="channels">
+    <div class="stats cols-3" style="margin-bottom:16px">
+        <button class="stat card" type="button" data-status="new" aria-pressed="true"><span class="stat-label">Not checked</span><span class="stat-value" id="n-new">0</span><span class="stat-meta">Not in your list yet</span></button>
+        <button class="stat card" type="button" data-status="ok" aria-pressed="false"><span class="stat-label">Working</span><span class="stat-value" id="n-ok">0</span><span class="stat-meta">This is what your link gives</span></button>
+        <button class="stat card" type="button" data-status="removed" aria-pressed="false"><span class="stat-label">Removed</span><span class="stat-value" id="n-removed">0</span><span class="stat-meta">Stay out if you add the link again</span></button>
+    </div>
+
+    <div class="card ch-tester" id="tester" hidden>
+        <div class="ch-screen">
+            <video id="video" controls playsinline hidden></video>
+            <div class="ch-say" id="say"></div>
+        </div>
+        <div class="ch-side">
+            <div>
+                <div class="small muted" id="t-progress"></div>
+                <h2 id="t-name"></h2>
+                <div class="small muted" id="t-meta"></div>
+            </div>
+            <div class="ch-row">
+                <button class="btn btn-working" type="button" id="t-ok">{% icon "check" %}Working <kbd class="ch-key">W</kbd></button>
+                <button class="btn btn-danger" type="button" id="t-remove">{% icon "trash" %}Remove <kbd class="ch-key">R</kbd></button>
+                <button class="btn" type="button" id="t-skip">{% icon "skip-forward" %}Skip <kbd class="ch-key">S</kbd></button>
+            </div>
+            <div class="ch-url" id="t-url"></div>
+            <div class="ch-row">
+                <button class="btn btn-sm" type="button" id="t-copy">{% icon "copy" %}Copy link</button>
+                <button class="btn btn-sm btn-ghost" type="button" id="t-close">{% icon "x" %}Stop testing</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="ch-tools">
+            <input class="input grow" id="q" type="search" placeholder="Search channels" aria-label="Search channels">
+            <select class="input" id="f-group" aria-label="Group"></select>
+            <select class="input" id="f-language" aria-label="Language"></select>
+            <button class="btn btn-primary" type="button" id="test-start">{% icon "play" %}Test these</button>
+        </div>
+        <div class="ch-tools" id="bulk" hidden>
+            <span id="bulk-n"></span>
+            <button class="btn btn-sm btn-ghost" type="button" id="bulk-all" hidden></button>
+            <button class="btn btn-sm" type="button" id="bulk-ok">{% icon "check" %}Mark working</button>
+            <button class="btn btn-sm btn-danger" type="button" id="bulk-remove">{% icon "trash" %}Remove</button>
+            <button class="btn btn-sm" type="button" id="bulk-back">{% icon "refresh-cw" %}Put back</button>
+        </div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th style="width:34px"><input type="checkbox" id="all" aria-label="Select this page"></th><th>Channel</th><th class="ch-hide-sm">Link</th><th>Status</th><th></th></tr></thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+        <div class="ch-foot">
+            <span class="grow" id="foot"></span>
+            <button class="btn btn-sm" type="button" id="prev">Previous</button>
+            <button class="btn btn-sm" type="button" id="next">Next</button>
+        </div>
+    </div>
+</section>
+
+<!-- LINKS -->
+<section data-pane="links" hidden>
+    <div class="card">
+        <div class="card-head">{% icon "link" %}<h2>Links you've added</h2></div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>Link</th><th>Last read</th><th>Found</th><th>Added</th><th>Left out</th><th></th></tr></thead>
+                <tbody id="sources"></tbody>
+            </table>
+        </div>
+        <div class="ch-foot">Reading a link again only adds what's new. A channel you've already checked or removed stays as you left it. The same stream never appears twice.</div>
+    </div>
+</section>
+
+<!-- SEND -->
+<section data-pane="send" hidden>
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-head">{% icon "link" %}<h2>Your list link</h2></div>
+        <div class="card-body ch-link-row">
+            <div class="ch-url" id="list-url"></div>
+            <button class="btn btn-sm" type="button" id="link-copy">{% icon "copy" %}Copy</button>
+            <button class="btn btn-sm btn-ghost" type="button" id="link-new">{% icon "refresh-cw" %}New link</button>
+        </div>
+        <div class="ch-foot">It always gives your Working channels, so a saved list stays up to date. Anyone with this link can open it. New link stops the old one for everyone who saved it, until you send them the new one.</div>
+    </div>
+    <div class="card">
+        <div class="card-head">{% icon "send" %}<h2>Send by push</h2></div>
+        <div class="ch-send">
+            <div>
+                <div class="ch-tools"><input class="input grow" id="send-q" type="search" placeholder="Search accounts" aria-label="Search accounts"></div>
+                <div class="table-wrap"><table class="table"><tbody id="send-rows"></tbody></table></div>
+            </div>
+            <div class="ch-form">
+                <div class="ch-what">
+                    <span class="label">What to send</span>
+                    <label class="ch-pick"><input type="radio" name="what" value="list" checked>My list</label>
+                    <label class="ch-pick"><input type="radio" name="what" value="any">Any link</label>
+                    <input class="input" id="send-any" type="url" placeholder="https://iptv-org.github.io/iptv/index.m3u" aria-label="Link to send" hidden>
+                    <div class="ch-warn" id="send-any-note" hidden>{% icon "info" %}<span>This link goes to the user as it is: nothing in it is checked, and Sports isn't left out.</span></div>
+                </div>
+                <div class="field"><label class="label" for="send-title">Title</label><input class="input" id="send-title" maxlength="200" value="Your channel list is ready"></div>
+                <div class="field"><label class="label" for="send-body">Message</label><input class="input" id="send-body" value="Tap to add it to Channels."></div>
+                <div class="field"><label class="label" for="send-name">Name in Channels</label><input class="input" id="send-name" maxlength="60"></div>
+                <button class="btn btn-primary" type="button" id="send-go" disabled>{% icon "send" %}<span id="send-label">Pick who gets it</span></button>
+                <p class="help">Needs SyncUp 8 or later on the phone. An older app opens the link in a browser tab instead.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ADD LINK -->
+<dialog class="modal ch-add" id="add-dialog" aria-labelledby="add-title">
+    <div class="card-head"><h2 id="add-title">Add link</h2><button class="btn btn-ghost btn-icon btn-sm" type="button" id="add-close" aria-label="Close">{% icon "x" %}</button></div>
+    <div class="modal-body">
+        <input class="input" id="add-url" type="url" placeholder="https://iptv-org.github.io/iptv/index.m3u" aria-label="Link">
+        <label class="ch-check"><input type="checkbox" id="add-sports" checked><span>Leave out Sports</span></label>
+        <label class="ch-check"><input type="checkbox" id="add-headers" checked><span>Leave out channels that need special headers (the app can't play them)</span></label>
+        <div class="ch-result" id="add-result" hidden></div>
+    </div>
+    <div class="ch-add-foot">
+        <button class="btn" type="button" id="add-cancel">Close</button>
+        <button class="btn btn-primary" type="button" id="add-go">Read link</button>
+    </div>
+</dialog>
+{% csrf_token %}
+{{ state|json_script:"channels-state" }}
+{% endblock %}
+
+{% block script %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    var URLS = {
+        rows: "{% url 'mobile_channels_rows' %}", mark: "{% url 'mobile_channels_mark' %}", read: "{% url 'mobile_channels_read' %}",
+        newLink: "{% url 'mobile_channels_new_link' %}", accounts: "{% url 'mobile_channels_accounts' %}", send: "{% url 'mobile_channels_send' %}",
+    };
+    var PAGE_SIZE = {{ page_size }};
+    var state = JSON.parse(document.getElementById("channels-state").textContent);
+    function $(id) { return document.getElementById(id); }
+    function esc(text) { var d = document.createElement("div"); d.textContent = text == null ? "" : text; return d.innerHTML; }
+    function fmt(n) { return Number(n).toLocaleString("en-US"); }
+    function plural(n, word) { return fmt(n) + " " + word + (n === 1 ? "" : "s"); }
+    function fail(e) { App.toast(e.message || "Something went wrong.", "danger"); }
+    function copy(text, done) {
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { App.toast(done); }, function () { window.prompt("Copy this:", text); });
+        else window.prompt("Copy this:", text);
+    }
+
+    // ---------------------------------------------------------------- tabs
+    function setTab(name) {
+        document.querySelectorAll(".ch-tab").forEach(function (t) { t.setAttribute("aria-selected", String(t.dataset.tab === name)); });
+        document.querySelectorAll("[data-pane]").forEach(function (p) { p.hidden = p.dataset.pane !== name; });
+        if (name === "send" && !accountsLoaded) loadAccounts();
+    }
+    document.querySelector(".ch-tabs").addEventListener("click", function (e) {
+        var t = e.target.closest(".ch-tab");
+        if (t) setTab(t.dataset.tab);
+    });
+
+    // ---------------------------------------------------------------- the table
+    var filters = { status: "new", q: "", group: "", language: "" };
+    var page = 1, total = 0, pages = 1, rows = [], selected = new Set(), allMatching = false, loading = 0;
+
+    function drawCounts(counts) {
+        ["new", "ok", "removed"].forEach(function (s) {
+            $("n-" + s).textContent = fmt(counts[s] || 0);
+            document.querySelector('.stat[data-status="' + s + '"]').setAttribute("aria-pressed", String(s === filters.status));
+        });
+    }
+    function drawFacets() {
+        [["f-group", "All groups", state.groups, "group"], ["f-language", "All languages", state.languages, "language"]].forEach(function (f) {
+            var box = $(f[0]);
+            box.innerHTML = '<option value="">' + f[1] + "</option>" + f[2].map(function (v) { return "<option>" + esc(v) + "</option>"; }).join("");
+            box.value = filters[f[3]];
+            box.hidden = !f[2].length;
+        });
+    }
+    function badge(s) {
+        if (s === "ok") return '<span class="badge badge-success"><span class="dot"></span>Working</span>';
+        if (s === "removed") return '<span class="badge badge-danger"><span class="dot"></span>Removed</span>';
+        return '<span class="badge"><span class="dot"></span>Not checked</span>';
+    }
+    function logoCell(c) {
+        var letters = esc(c.name.split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join("").toUpperCase());
+        // A logo that won't load leaves the letters.
+        return '<div class="ch-logo" data-letters="' + letters + '">' + (c.logo ? '<img loading="lazy" referrerpolicy="no-referrer" alt="" src="' + esc(c.logo) + '">' : letters) + "</div>";
+    }
+    function drawRows() {
+        var now = !$("tester").hidden && queue[at] ? queue[at].id : null;
+        $("rows").innerHTML = rows.map(function (c) {
+            var acts = c.status === "removed"
+                ? '<button class="btn btn-ghost btn-sm" type="button" data-do="new" data-id="' + c.id + '">' + App.icon("refresh-cw") + "Put back</button>"
+                : '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Test" aria-label="Test ' + esc(c.name) + '" data-do="test" data-id="' + c.id + '">' + App.icon("play") + "</button>" +
+                  (c.status === "new" ? '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Working" aria-label="Mark ' + esc(c.name) + ' working" data-do="ok" data-id="' + c.id + '">' + App.icon("check") + "</button>" : "") +
+                  '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Remove" aria-label="Remove ' + esc(c.name) + '" data-do="removed" data-id="' + c.id + '">' + App.icon("trash") + "</button>";
+            return '<tr' + (c.id === now ? ' class="ch-now"' : "") + '><td><input type="checkbox" aria-label="Select ' + esc(c.name) + '" data-sel="' + c.id + '"' + (selected.has(c.id) ? " checked" : "") + "></td>" +
+                '<td><div class="ch-name">' + logoCell(c) + "<div><b>" + esc(c.name) + '</b><span class="small muted">' + esc([c.group, c.language].filter(Boolean).join(" · ")) + "</span></div></div></td>" +
+                '<td class="ch-hide-sm">' + (c.http ? '<span class="ch-tag warn" title="This https page can\'t play it. Phones can.">http</span>' : '<span class="ch-tag">https</span>') + "</td>" +
+                "<td>" + badge(c.status) + '</td><td><div class="ch-acts">' + acts + "</div></td></tr>";
+        }).join("") || '<tr><td colspan="5"><div class="empty">' + App.icon("tv") + "<b>" + (total === 0 && !filters.q && !filters.group && !filters.language && filters.status === "new" ? "Nothing to check" : "Nothing here") + "</b><span>" + (filters.status === "new" ? "Add a link to bring channels in." : "Nothing here with these filters.") + "</span></div></td></tr>";
+        $("rows").querySelectorAll(".ch-logo img").forEach(function (img) {
+            img.addEventListener("error", function () { img.parentNode.textContent = img.parentNode.dataset.letters; });
+        });
+        var first = total ? (page - 1) * PAGE_SIZE + 1 : 0;
+        $("foot").textContent = total ? fmt(first) + "–" + fmt(Math.min(page * PAGE_SIZE, total)) + " of " + fmt(total) : "";
+        $("prev").disabled = page <= 1;
+        $("next").disabled = page >= pages;
+        $("test-start").hidden = filters.status === "removed" || !rows.length;
+        drawBulk();
+    }
+    function drawBulk() {
+        var n = allMatching ? total : selected.size;
+        $("bulk").hidden = !n;
+        $("bulk-n").textContent = plural(n, "channel") + " selected";
+        var pageAll = rows.length > 0 && rows.every(function (c) { return selected.has(c.id); });
+        $("all").checked = pageAll;
+        $("bulk-all").hidden = allMatching || !pageAll || total <= rows.length;
+        $("bulk-all").textContent = "Select all " + fmt(total);
+        $("bulk-ok").hidden = filters.status !== "new";
+        $("bulk-remove").hidden = filters.status === "removed";
+        $("bulk-back").hidden = filters.status !== "removed";
+    }
+    function query(number) {
+        var p = new URLSearchParams({ status: filters.status, page: number });
+        ["q", "group", "language"].forEach(function (k) { if (filters[k]) p.set(k, filters[k]); });
+        return URLS.rows + "?" + p;
+    }
+    function load() {
+        var mine = ++loading;
+        return App.fetchJSON(query(page)).then(function (d) {
+            if (mine !== loading) return;
+            rows = d.rows; total = d.total; pages = d.pages; page = d.page;
+            drawCounts(d.counts);
+            drawRows();
+        }).catch(fail);
+    }
+    function clearPick() { selected = new Set(); allMatching = false; }
+    function refilter() { page = 1; clearPick(); load(); }
+
+    document.querySelector(".stats").addEventListener("click", function (e) {
+        var b = e.target.closest(".stat");
+        if (!b) return;
+        filters.status = b.dataset.status;
+        refilter();
+    });
+    var typing;
+    $("q").addEventListener("input", function () {
+        clearTimeout(typing);
+        typing = setTimeout(function () { filters.q = $("q").value.trim(); refilter(); }, 250);
+    });
+    $("f-group").addEventListener("change", function () { filters.group = this.value; refilter(); });
+    $("f-language").addEventListener("change", function () { filters.language = this.value; refilter(); });
+    $("prev").addEventListener("click", function () { page--; clearPick(); load(); });
+    $("next").addEventListener("click", function () { page++; clearPick(); load(); });
+    $("all").addEventListener("change", function () {
+        allMatching = false;
+        rows.forEach(function (c) { if ($("all").checked) selected.add(c.id); else selected.delete(c.id); });
+        drawRows();
+    });
+    $("bulk-all").addEventListener("click", function () { allMatching = true; drawBulk(); });
+    $("rows").addEventListener("change", function (e) {
+        var id = e.target.dataset.sel;
+        if (id === undefined) return;
+        allMatching = false;
+        if (e.target.checked) selected.add(+id); else selected.delete(+id);
+        drawBulk();
+    });
+    $("rows").addEventListener("click", function (e) {
+        var b = e.target.closest("[data-do]");
+        if (!b) return;
+        var id = +b.dataset.id, c = rows.filter(function (r) { return r.id === id; })[0];
+        if (b.dataset.do === "test") { startTest([c]); return; }
+        mark(b.dataset.do, [id]).then(function () {
+            App.toast(c.name + (b.dataset.do === "ok" ? ": added to the list" : b.dataset.do === "removed" ? ": removed" : ": back in Not checked"));
+            load();
+        }).catch(fail);
+    });
+    function mark(status, ids) {
+        return App.fetchJSON(URLS.mark, { method: "POST", body: { status: status, ids: ids } }).then(function (d) { drawCounts(d.counts); return d; });
+    }
+    function bulk(status, word) {
+        function run() {
+            var body = allMatching
+                ? { status: status, all: true, filters: { status: filters.status, q: filters.q, group: filters.group, language: filters.language } }
+                : { status: status, ids: Array.from(selected) };
+            App.fetchJSON(URLS.mark, { method: "POST", body: body }).then(function (d) {
+                App.toast(plural(d.changed, "channel") + " " + word);
+                clearPick();
+                page = 1;
+                load();
+            }).catch(fail);
+        }
+        // Everything a filter matches can be thousands: worth one question first.
+        if (!allMatching) return run();
+        App.confirm({ title: "Change " + plural(total, "channel") + "?", text: "This changes every channel these filters show, not only this page.", confirmText: "Yes, " + word, danger: status === "removed" }).then(function (ok) { if (ok) run(); });
+    }
+    $("bulk-ok").addEventListener("click", function () { bulk("ok", "marked working"); });
+    $("bulk-remove").addEventListener("click", function () { bulk("removed", "removed"); });
+    $("bulk-back").addEventListener("click", function () { bulk("new", "put back"); });
+
+    // ---------------------------------------------------------------- testing by hand
+    var queue = [], at = 0, seen = new Set(), hls = null, stallTimer = null, keepGoing = false, nextPage = 1;
+    var video = $("video");
+
+    function say(title, text) {
+        $("say").hidden = !title;
+        $("say").innerHTML = title ? "<b>" + esc(title) + "</b><span>" + esc(text || "") + "</span>" : "";
+    }
+    function stopVideo() {
+        clearTimeout(stallTimer);
+        if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+        video.onerror = null;
+        video.onplaying = null;
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        video.hidden = true;
+    }
+    function cantPlay() {
+        stopVideo();
+        say("Couldn't play it here", "It may be dead, or it may only refuse browsers and still work on phones. Copy the link to check it in VLC or on a phone.");
+    }
+    function play(c) {
+        stopVideo();
+        if (location.protocol === "https:" && c.http) {
+            say("This browser can't play it", "It's an http stream and this page is https, so the browser blocks it. It may work fine on phones. Copy the link to try it in VLC, or check it on a phone.");
+            return;
+        }
+        video.hidden = false;
+        say("Connecting…", "");
+        video.onplaying = function () { clearTimeout(stallTimer); say(""); };
+        stallTimer = setTimeout(function () { say("Nothing yet after 20 seconds", "It may be slow or dead. Decide, or wait a little longer."); }, 20000);
+        if (window.Hls && Hls.isSupported() && !/\.(mp4|webm|ogv|mp3|aac)($|[?#])/i.test(c.url)) {
+            hls = new Hls();
+            hls.on(Hls.Events.ERROR, function (_, d) { if (d.fatal) cantPlay(); });
+            hls.loadSource(c.url);
+            hls.attachMedia(video);
+        } else {
+            video.onerror = cantPlay;
+            video.src = c.url;
+        }
+        video.play().catch(function () {});
+    }
+    function show() {
+        var c = queue[at];
+        if (!c) return endOfQueue();
+        $("tester").hidden = false;
+        $("t-progress").textContent = "Testing " + fmt(seen.size + 1) + (keepGoing ? " of " + fmt(testTotal) : "");
+        $("t-name").textContent = c.name;
+        $("t-meta").textContent = [c.group, c.language].filter(Boolean).join(" · ");
+        $("t-url").textContent = c.url;
+        play(c);
+        drawRows();
+    }
+    var testTotal = 0;
+    function startTest(list) {
+        keepGoing = list.length > 1;
+        testTotal = total;
+        queue = list;
+        at = 0;
+        seen = new Set();
+        nextPage = page + 1;
+        show();
+        window.scrollTo({ top: $("tester").offsetTop - 80, behavior: "smooth" });
+    }
+    function stopTest() {
+        stopVideo();
+        $("tester").hidden = true;
+        queue = [];
+        load();
+    }
+    // Working and Removed leave a "Not checked" table, so the next ones are fetched by what hasn't been seen.
+    function endOfQueue() {
+        if (!keepGoing) return stopTest();
+        App.fetchJSON(query(1)).then(function (d) {
+            var fresh = d.rows.filter(function (r) { return !seen.has(r.id); });
+            if (fresh.length) { queue = fresh; at = 0; return show(); }
+            if (nextPage <= d.pages) {
+                return App.fetchJSON(query(nextPage++)).then(function (more) {
+                    var next = more.rows.filter(function (r) { return !seen.has(r.id); });
+                    if (next.length) { queue = next; at = 0; show(); } else { App.toast("That's all of them."); stopTest(); }
+                });
+            }
+            App.toast("That's all of them.");
+            stopTest();
+        }).catch(function (e) { fail(e); stopTest(); });
+    }
+    function decide(status) {
+        var c = queue[at];
+        if (!c) return;
+        seen.add(c.id);
+        at++;
+        if (status) {
+            mark(status, [c.id]).then(function () {
+                App.toast(c.name + (status === "ok" ? ": added to the list" : ": removed"));
+                if (!$("tester").hidden && !keepGoing) return;
+                load();
+            }).catch(fail);
+        }
+        show();
+    }
+    $("test-start").addEventListener("click", function () { startTest(rows.slice()); });
+    $("t-ok").addEventListener("click", function () { decide("ok"); });
+    $("t-remove").addEventListener("click", function () { decide("removed"); });
+    $("t-skip").addEventListener("click", function () { decide(null); });
+    $("t-close").addEventListener("click", stopTest);
+    $("t-copy").addEventListener("click", function () { copy($("t-url").textContent, "Link copied"); });
+    document.addEventListener("keydown", function (e) {
+        if ($("tester").hidden || document.querySelector("dialog[open]") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+        var k = e.key.toLowerCase();
+        if (k === "w") decide("ok");
+        else if (k === "r") decide("removed");
+        else if (k === "s") decide(null);
+    });
+
+    // ---------------------------------------------------------------- links
+    function drawSources() {
+        $("sources").innerHTML = state.sources.map(function (s) {
+            var out = [];
+            if (s.sports) out.push(fmt(s.sports) + " Sports");
+            if (s.headers) out.push(fmt(s.headers) + " special headers");
+            return '<tr><td class="break"><span class="mono">' + esc(s.url) + '</span></td><td class="nowrap small">' + esc(s.read) + "</td><td>" + fmt(s.found) + "</td><td>" + fmt(s.added) + '</td><td class="small">' + (esc(out.join(", ")) || "—") + "</td>" +
+                '<td class="nowrap"><button class="btn btn-sm" type="button" data-url="' + esc(s.url) + '">' + App.icon("refresh-cw") + "Read again</button></td></tr>";
+        }).join("") || '<tr><td colspan="6"><div class="empty">' + App.icon("link") + "<b>No links yet</b><span>Add a link to bring channels in.</span></div></td></tr>";
+    }
+    function openAdd(url) {
+        $("add-url").value = url || "";
+        $("add-result").hidden = true;
+        $("add-dialog").showModal();
+        $("add-url").focus();
+    }
+    $("add-open").addEventListener("click", function () { openAdd(""); });
+    $("sources").addEventListener("click", function (e) {
+        var b = e.target.closest("[data-url]");
+        if (b) openAdd(b.dataset.url);
+    });
+    $("add-close").addEventListener("click", function () { $("add-dialog").close(); });
+    $("add-cancel").addEventListener("click", function () { $("add-dialog").close(); });
+    $("add-go").addEventListener("click", function () {
+        var go = $("add-go");
+        go.disabled = true;
+        go.textContent = "Reading…";
+        App.fetchJSON(URLS.read, {
+            method: "POST",
+            body: { url: $("add-url").value.trim(), leave_out_sports: $("add-sports").checked, leave_out_headers: $("add-headers").checked },
+        }).then(function (d) {
+            var r = d.result;
+            $("add-result").innerHTML =
+                "<div><span>Found in the link</span><b>" + fmt(r.found) + "</b></div>" +
+                "<div><span>New, added as Not checked</span><b>" + fmt(r.added) + "</b></div>" +
+                "<div><span>Already here, left as they are</span><b>" + fmt(r.already) + "</b></div>" +
+                (r.sports ? "<div><span>Sports, left out</span><b>" + fmt(r.sports) + "</b></div>" : "") +
+                (r.headers ? "<div><span>Special headers, left out</span><b>" + fmt(r.headers) + "</b></div>" : "");
+            $("add-result").hidden = false;
+            state = d.state;
+            drawFacets();
+            drawSources();
+            load();
+        }).catch(fail).finally(function () {
+            go.disabled = false;
+            go.textContent = "Read link";
+        });
+    });
+
+    // ---------------------------------------------------------------- send
+    var picked = new Map(), mode = "list", nameEdited = false, accountsLoaded = false, listName = state.name;
+    function hostOf(url) { try { return new URL(url).hostname; } catch (e) { return ""; } }
+    function drawSend() {
+        $("list-url").textContent = state.link;
+        $("send-any").hidden = mode !== "any";
+        $("send-any-note").hidden = mode !== "any";
+        if (!nameEdited) $("send-name").value = mode === "any" ? hostOf($("send-any").value.trim()) : listName;
+        var n = picked.size;
+        $("send-label").textContent = n ? "Send to " + plural(n, "account") : "Pick who gets it";
+        $("send-go").disabled = !n;
+    }
+    function loadAccounts() {
+        accountsLoaded = true;
+        App.fetchJSON(URLS.accounts + "?" + new URLSearchParams({ q: $("send-q").value.trim() })).then(function (d) {
+            $("send-rows").innerHTML = d.accounts.map(function (a) {
+                return '<tr><td style="width:34px"><input type="checkbox" aria-label="Send to ' + esc(a.name) + '" data-acc="' + a.id + '" data-name="' + esc(a.name) + '"' + (picked.has(a.id) ? " checked" : "") + "></td>" +
+                    '<td><div class="ch-name"><div class="ch-logo">' + esc(a.name.charAt(0).toUpperCase()) + "</div><div><b>" + esc(a.name) + '</b><span class="small muted">' + esc(a.detail) + "</span></div></div></td></tr>";
+            }).join("") || '<tr><td><div class="empty"><b>No accounts found</b></div></td></tr>';
+        }).catch(fail);
+    }
+    var accountTyping;
+    $("send-q").addEventListener("input", function () {
+        clearTimeout(accountTyping);
+        accountTyping = setTimeout(loadAccounts, 250);
+    });
+    $("send-rows").addEventListener("change", function (e) {
+        var id = e.target.dataset.acc;
+        if (id === undefined) return;
+        if (e.target.checked) picked.set(+id, e.target.dataset.name); else picked.delete(+id);
+        drawSend();
+    });
+    document.querySelectorAll('input[name="what"]').forEach(function (r) {
+        r.addEventListener("change", function () { mode = this.value; nameEdited = false; drawSend(); });
+    });
+    $("send-any").addEventListener("input", function () { nameEdited = false; drawSend(); });
+    $("send-name").addEventListener("input", function () { nameEdited = true; });
+    $("send-go").addEventListener("click", function () {
+        var go = this;
+        go.disabled = true;
+        App.fetchJSON(URLS.send, {
+            method: "POST",
+            body: {
+                mode: mode, link: $("send-any").value.trim(), name: $("send-name").value.trim(),
+                title: $("send-title").value.trim(), body: $("send-body").value.trim(), accounts: Array.from(picked.keys()),
+            },
+        }).then(function (d) {
+            var text = "Sent to " + plural(d.delivered, "phone") + ".";
+            if (d.failed) text += " " + fmt(d.failed) + " failed.";
+            if (d.without_device.length) text += " No phone signed in: " + d.without_device.join(", ") + ".";
+            App.toast(text, d.delivered ? "success" : "warning");
+            picked.clear();
+            loadAccounts();
+            drawSend();
+        }).catch(function (e) { fail(e); drawSend(); });
+    });
+    $("link-copy").addEventListener("click", function () { copy(state.link, "List link copied"); });
+    $("link-new").addEventListener("click", function () {
+        App.confirm({ title: "Make a new link?", text: "The old link stops at once for everyone who saved it, until you send them the new one.", confirmText: "Make a new link", danger: true }).then(function (ok) {
+            if (!ok) return;
+            App.fetchJSON(URLS.newLink, { method: "POST", body: {} }).then(function (d) {
+                state.link = d.link;
+                drawSend();
+                App.toast("New link made. The old one has stopped working.");
+            }).catch(fail);
+        });
+    });
+
+    drawCounts(state.counts);
+    drawFacets();
+    drawSources();
+    drawSend();
+    load();
+});
+</script>
+{% endblock %}

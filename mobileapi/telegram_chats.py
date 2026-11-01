@@ -18,8 +18,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from . import telegram as tg
-from .models import (AppConfig, AppTelegramLog, PartnerTelegramChat, TelegramChat,
-                     TelegramMessage)
+from .models import AppConfig, AppTelegramLog, PartnerTelegramChat, TelegramChat
 
 logger = logging.getLogger(__name__)
 
@@ -75,123 +74,24 @@ def _person(user):
     return f"{name} (@{handle})" if name and handle else (name or (f"@{handle}" if handle else ""))
 
 
-# What a message carries besides text, in the order we check for it.
-MEDIA_KINDS = [
-    ("photo", "Photo"), ("video", "Video"), ("document", "Document"), ("voice", "Voice message"),
-    ("audio", "Audio"), ("sticker", "Sticker"), ("animation", "GIF"), ("video_note", "Video note"),
-    ("location", "Location"), ("contact", "Contact"), ("poll", "Poll"),
-]
-
-
-def _media_type(msg):
-    for key, _label in MEDIA_KINDS:
-        if msg.get(key):
-            return key
-    return ""
-
-
-def _message_text(msg):
-    """Text, or a caption, or a short stand-in for something we can't show."""
-    text = msg.get("text") or msg.get("caption") or ""
-    if text:
-        return text
-    if msg.get("location"):
-        loc = msg["location"]
-        return f"\U0001F4CD {loc.get('latitude')}, {loc.get('longitude')}"
-    if msg.get("contact"):
-        c = msg["contact"]
-        return " ".join(p for p in [c.get("first_name"), c.get("phone_number")] if p)
-    if msg.get("poll"):
-        return (msg["poll"].get("question") or "")[:200]
-    return ""
-
-
 def ingest(update):
-    """Fold one Telegram update into the registry (and store the message, if it is one).
-
-    Shared by the webhook and the cron scan, so both paths behave identically.
-    Returns {"chat": row|None, "created": bool, "message": TelegramMessage|None}.
-    """
+    """Fold one Telegram update into the registry. Returns {"chat": row|None, "created": bool}."""
     member = update.get("my_chat_member")
-    msg = update.get("message") or update.get("channel_post") or update.get("edited_message")
+    msg = update.get("message") or update.get("channel_post")
     obj = member or msg or update.get("chat_member") or {}
     chat = obj.get("chat") or {}
     if not chat:
-        return {"chat": None, "created": False, "message": None}
+        return {"chat": None, "created": False}
 
-    now = timezone.now()
+    # When it happened, not when we read it: the push cron can be 15 minutes behind.
+    activity = datetime.fromtimestamp(int(obj["date"]), tz=dt_timezone.utc) if obj.get("date") else timezone.now()
     status = added_by = None
     if member:
         # The bot's own membership changed — "added to"/"removed from" a group.
         status = ((member.get("new_chat_member") or {}).get("status") or "")[:20] or None
         added_by = _person(member.get("from"))
-    row, created = _upsert(chat, activity=now, status=status, added_by=added_by)
-    if row is None:
-        return {"chat": None, "created": False, "message": None}
-
-    stored = _store_incoming(row, msg) if msg else None
-    return {"chat": row, "created": created, "message": stored}
-
-
-def _store_incoming(row, msg):
-    """Save a received message. Ignores duplicates (a webhook retry delivers the same update)."""
-    sent_at = timezone.now()
-    if msg.get("date"):
-        sent_at = datetime.fromtimestamp(int(msg["date"]), tz=dt_timezone.utc)
-    reply = msg.get("reply_to_message") or {}
-    stored, created = TelegramMessage.objects.get_or_create(
-        chat=row, message_id=msg.get("message_id"),
-        defaults={
-            "direction": "in",
-            "from_name": _person(msg.get("from"))[:120],
-            "from_user_id": str((msg.get("from") or {}).get("id") or "")[:32],
-            "text": _message_text(msg),
-            "media_type": _media_type(msg),
-            "reply_to_message_id": reply.get("message_id"),
-            "reply_to_text": (_message_text(reply) or _media_type(reply))[:200],
-            "sent_at": sent_at,
-        },
-    )
-    if not created:
-        return stored
-    TelegramChat.objects.filter(pk=row.pk).update(last_message_at=sent_at, last_activity_at=sent_at)
-    trim(row)
-    return stored
-
-
-def store_outgoing(row, text, message_id=None, sent_by=None, reply_to=None):
-    """Record a message the console sent, so it shows in the thread."""
-    reply = reply_to or {}
-    stored = TelegramMessage.objects.create(
-        chat=row, message_id=message_id, direction="out", text=text,
-        reply_to_message_id=reply.get("message_id"),
-        reply_to_text=(reply.get("text") or "")[:200],
-        sent_at=timezone.now(), sent_by=sent_by,
-    )
-    TelegramChat.objects.filter(pk=row.pk).update(
-        last_message_at=stored.sent_at, last_activity_at=stored.sent_at, last_read_at=stored.sent_at,
-    )
-    trim(row)
-    return stored
-
-
-def trim(row, keep=None):
-    """Rolling window: keep only the newest N messages in this chat (0 = keep all).
-
-    The age-based window lives in cleanup.py and runs on the retention job; this one runs on every
-    new message so a busy group can never balloon between cleanups.
-    """
-    if keep is None:
-        keep = AppConfig.load().telegram_keep_per_chat
-    if not keep:
-        return 0
-    ids = list(
-        TelegramMessage.objects.filter(chat=row).order_by("-sent_at", "-id")
-        .values_list("id", flat=True)[keep:keep + 500]
-    )
-    if not ids:
-        return 0
-    return TelegramMessage.objects.filter(id__in=ids).delete()[0]
+    row, created = _upsert(chat, activity=activity, status=status, added_by=added_by)
+    return {"chat": row, "created": created}
 
 
 def scan():
@@ -201,27 +101,26 @@ def scan():
     heard of, `seen` chats we already knew.
     """
     if not tg.is_configured():
-        return {"new": 0, "seen": 0, "messages": 0, "updates": 0, "error": "Telegram bot is not configured"}
+        return {"new": 0, "seen": 0, "updates": 0, "error": "Telegram bot is not configured"}
 
     cfg = AppConfig.load()
     updates, error = tg.get_updates(offset=cfg.telegram_updates_offset)
     if error:
-        return {"new": 0, "seen": 0, "messages": 0, "updates": 0, "error": error}
+        return {"new": 0, "seen": 0, "updates": 0, "error": error}
 
-    new = seen = messages = 0
+    new = seen = 0
     highest = cfg.telegram_updates_offset
     for upd in updates:
         highest = max(highest, int(upd.get("update_id") or 0))
         result = ingest(upd)
         new += 1 if result["created"] else 0
         seen += 0 if result["created"] else 1
-        messages += 1 if result["message"] else 0
 
     if highest and highest >= cfg.telegram_updates_offset:
         # +1 confirms everything up to and including the last update we just read.
         cfg.telegram_updates_offset = highest + 1
         cfg.save(update_fields=["telegram_updates_offset"])
-    return {"new": new, "seen": seen, "messages": messages, "updates": len(updates), "error": ""}
+    return {"new": new, "seen": seen, "updates": len(updates), "error": ""}
 
 
 def seed():

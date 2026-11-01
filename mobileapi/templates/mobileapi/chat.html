@@ -176,12 +176,18 @@
         }
 
         function poll() {
-            var stick = atBottom(), firstLoad = lastId === 0;
-            fetch(MESSAGES_URL + "?since=" + lastId, { credentials: "same-origin" })
+            var since = lastId, stick = atBottom(), firstLoad = lastId === 0;
+            fetch(MESSAGES_URL + "?since=" + since, { credentials: "same-origin" })
                 .then(function (r) { if (!r.ok) throw 0; return r.json(); })
                 .then(function (d) {
+                    // Messages we are showing no longer exist (the admin cleared the chat): empty the screen.
+                    if (d.latest_id < since) {
+                        document.getElementById("messages").innerHTML = '<div class="empty" id="empty"></div>';
+                        lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+                    }
                     var added = 0;
                     (d.messages || []).forEach(function (m) { if (!seen[m.id]) added++; render(m); });
+                    var noneYet = document.getElementById("empty"); if (noneYet) noneYet.textContent = "No messages yet";
                     readUptoId = d.read_upto_id || readUptoId;
                     updateReceipts();
                     // Admin presence + typing

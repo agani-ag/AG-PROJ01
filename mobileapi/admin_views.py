@@ -13,7 +13,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
-from django.db import connection
 from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import Lower
 from django.http import JsonResponse
@@ -31,10 +30,10 @@ from . import fcm
 from . import remoteconfig as rc
 from . import telegram as tg
 from . import telegram_chats as tg_chats
-from . import telegram_hook
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from . import site_tokens
+from .channel_lists import is_channel_link
 from .radio import station_page, station_public_id
 from .models import (
     AppAuthToken,
@@ -49,7 +48,6 @@ from .models import (
     AppSiteToken,
     PartnerTelegramChat,
     TelegramChat,
-    TelegramMessage,
     AppReminder,
     AppTelegramLog,
     CronLock,
@@ -461,7 +459,6 @@ def telegram_page(request):
         "bot_link": bot_link,
         "logs": logs,
         "chats": chats,
-        "live": telegram_hook.is_live(),
         "chats_live": sum(1 for c in chats if c.in_chat),
         "chats_gone": sum(1 for c in chats if not c.in_chat and c.status != "unknown"),
     })
@@ -679,122 +676,6 @@ def telegram_test(request):
         messages.success(request, f"Sent to {chat_id} (message id {info}).")
     else:
         messages.error(request, f"Failed: {info}")
-    return redirect("mobile_telegram")
-
-
-# ------------------------------------------------------------------ Telegram inbox
-def _chat_row(chat, unread):
-    return {
-        "id": chat.id,
-        "chat_id": chat.chat_id,
-        "name": chat.display_name,
-        "type": chat.chat_type,
-        "status": chat.status,
-        "in_chat": chat.in_chat,
-        "members": chat.member_count,
-        "unread": unread,
-        "last_at": chat.last_message_at.isoformat() if chat.last_message_at else "",
-        "last_text": "",
-    }
-
-
-def _message_row(m):
-    return {
-        "id": m.id,
-        "message_id": m.message_id,
-        "dir": m.direction,
-        "from": m.from_name,
-        "text": m.text,
-        "media": m.media_label,
-        "reply_to": m.reply_to_text,
-        "at": m.sent_at.isoformat(),
-        "by": m.sent_by.get_username() if m.sent_by_id else "",
-    }
-
-
-@superuser_required
-def telegram_inbox(request):
-    """Conversations with every group and person the bot talks to."""
-    return render(request, "mobileapi/telegram_inbox.html", {
-        "live": telegram_hook.is_live(),
-        "keep_per_chat": AppConfig.load().telegram_keep_per_chat,
-    })
-
-
-@superuser_required
-def telegram_inbox_list(request):
-    """JSON: the conversation list, newest activity first."""
-    chats = list(TelegramChat.objects.all().order_by("-last_message_at", "-last_activity_at"))
-    last = {
-        m.chat_id: m for m in TelegramMessage.objects.filter(chat__in=chats).order_by("chat_id", "-sent_at", "-id")
-        .distinct("chat_id")
-    } if connection.features.can_distinct_on_fields else {}
-    rows = []
-    for chat in chats:
-        unread = chat.messages.filter(direction="in", sent_at__gt=chat.last_read_at).count() if chat.last_read_at \
-            else chat.messages.filter(direction="in").count()
-        row = _chat_row(chat, unread)
-        newest = last.get(chat.id) or chat.messages.order_by("-sent_at", "-id").first()
-        if newest:
-            row["last_text"] = ("You: " if newest.direction == "out" else "") + (newest.preview or "")
-        rows.append(row)
-    return JsonResponse({"ok": True, "chats": rows, "live": telegram_hook.is_live()})
-
-
-@superuser_required
-def telegram_inbox_thread(request, chat_pk):
-    """JSON: one conversation. `?since=<id>` returns only what is newer (used while polling)."""
-    chat = get_object_or_404(TelegramChat, id=chat_pk)
-    qs = chat.messages.select_related("sent_by").all()
-    since = request.GET.get("since")
-    if since and since.isdigit():
-        qs = qs.filter(id__gt=int(since))
-    messages_out = [_message_row(m) for m in qs]
-    # Opening (or polling) a thread marks it read.
-    TelegramChat.objects.filter(pk=chat.pk).update(last_read_at=timezone.now())
-    return JsonResponse({
-        "ok": True,
-        "chat": _chat_row(chat, 0),
-        "messages": messages_out,
-        "kept": AppConfig.load().telegram_keep_per_chat,
-    })
-
-
-@superuser_required
-@require_POST
-def telegram_inbox_send(request, chat_pk):
-    """Send a message to this chat and add it to the thread."""
-    chat = get_object_or_404(TelegramChat, id=chat_pk)
-    try:
-        payload = json.loads(request.body or b"{}")
-    except (ValueError, TypeError):
-        payload = {}
-    text = (payload.get("text") or "").strip()
-    if not text:
-        return JsonResponse({"ok": False, "error": "Type a message first."}, status=400)
-
-    ok, info = tg.send(chat.chat_id, text)
-    AppTelegramLog.objects.create(
-        partner=None, chat_id=chat.chat_id[:64], text=text,
-        status="sent" if ok else "failed", message_id=info if ok else "", error="" if ok else info,
-    )
-    if not ok:
-        return JsonResponse({"ok": False, "error": info}, status=502)
-    stored = tg_chats.store_outgoing(
-        chat, text, message_id=int(info) if str(info).isdigit() else None, sent_by=request.user,
-    )
-    return JsonResponse({"ok": True, "message": _message_row(stored)})
-
-
-@superuser_required
-@require_POST
-def telegram_live_toggle(request):
-    """Turn live delivery (webhook) on or off."""
-    if telegram_hook.is_live():
-        ok, message = telegram_hook.disable()
-    else:
-        ok, message = telegram_hook.enable(request)
-    messages.success(request, message) if ok else messages.error(request, message)
     return redirect("mobile_telegram")
 
 
@@ -1059,6 +940,10 @@ def push(request):
                 # hidden). Signed-out phones always open it in a Normal tab. v5 ignores both.
                 data["open_in"] = form.cleaned_data["open_in"]
                 if data["open_in"] == "syncup":
+                    data["link_title"] = (form.cleaned_data.get("link_title") or "").strip() or title
+                # A channel list: the phone opens Channels with this name and link filled in, to save.
+                if is_channel_link(link_url):
+                    data["open_in"] = "channels"
                     data["link_title"] = (form.cleaned_data.get("link_title") or "").strip() or title
 
             # Advanced FCM (AndroidConfig) options, optionally persisted as master defaults.
@@ -1437,6 +1322,17 @@ def chat_thread_json(request, account_id):
         "read_upto_id": read_upto,
         "user_typing": account.is_typing(),
     })
+
+
+@superuser_required
+@require_POST
+def chat_clear_json(request, account_id):
+    """Delete every message in this chat, straight away and for the user too. There is no undo."""
+    account = get_object_or_404(AppAccount, id=account_id)
+    account.chat_messages.all().delete()
+    # The push log keeps the start of each reply as the notification's text: the same words.
+    AppNotificationLog.objects.filter(source="chat", account=account).delete()
+    return JsonResponse({"ok": True})
 
 
 @superuser_required

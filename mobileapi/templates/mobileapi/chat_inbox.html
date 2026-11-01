@@ -238,10 +238,16 @@
         }
         function loadThread() {
             if (!current || threadView.classList.contains("hidden")) return;
-            var stick = atBottom(), firstLoad = lastId === 0;
-            fetch(threadUrl(current) + "?since=" + lastId, { credentials: "same-origin" })
+            var id = current, since = lastId, stick = atBottom(), firstLoad = lastId === 0;
+            fetch(threadUrl(id) + "?since=" + since, { credentials: "same-origin" })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
+                    if (id !== current) return;  // switched conversation while this was loading
+                    // Messages we are showing no longer exist (the admin cleared the chat): empty the screen.
+                    if (d.latest_id < since) {
+                        messages.innerHTML = "";
+                        lastId = 0; seen = {}; readUptoId = 0; lastDay = null; lastSender = null; newCount = 0;
+                    }
                     if (d.account) setPresence(d.account, d.user_typing);
                     var added = 0;
                     (d.messages || []).forEach(function (m) { if (!seen[m.id]) added++; renderMessage(m); });

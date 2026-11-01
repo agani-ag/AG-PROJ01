@@ -29,7 +29,6 @@ from django.views.decorators.http import require_http_methods
 from . import fcm
 from . import telegram
 from . import telegram_chats
-from . import telegram_hook
 from .cleanup import run_cleanup
 from .models import AppDevice, AppReminder, CronLock
 from .serializers import reminder_tap_target
@@ -156,11 +155,6 @@ def _telegram_tick():
     """
     if not telegram.is_configured():
         return {"skipped": "not configured"}
-    if telegram_hook.is_live():
-        # Live delivery owns the update queue; getUpdates would just return a 409 conflict.
-        # Chat details still need refreshing, so do only that.
-        refreshed = telegram_chats.refresh(limit=TELEGRAM_REFRESH_PER_RUN)
-        return {"mode": "webhook", "checked": refreshed["checked"], "gone": refreshed["gone"]}
     started = time.monotonic()
     try:
         # Pure DB, no network: picks up chat ids we already hold (send log, partner allow-lists,

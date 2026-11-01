@@ -329,14 +329,16 @@
         if (signedOut) radios[0].checked = true;
         else if (audienceChanged && !openPicked) (audience.value === "account" ? syncupRadio : radios[0]).checked = true;
         var hasLink = linkUrl.value.trim() !== "";
-        openField.hidden = !hasLink;
-        titleField.hidden = !hasLink || openValue() !== "syncup";
+        // A channel list opens in the app's Channels, ready to save, whichever tab is picked.
+        var channelLink = /\.m3u8?($|[?#])/i.test(linkUrl.value.trim());
+        openField.hidden = !hasLink || channelLink;
+        titleField.hidden = !hasLink || (openValue() !== "syncup" && !channelLink);
         openHelp.textContent = signedOut ? "Signed-out installs open links in a Normal tab."
             : openValue() === "syncup" && audience.value !== "account" ? "Signed-in phones open it in a SyncUp tab; signed-out ones in a Normal tab."
             : "";
         var pvRow = document.getElementById("pv-open-row");
         pvRow.hidden = !hasLink;
-        document.getElementById("pv-open").textContent = openValue() === "syncup" ? "a SyncUp tab" : "a Normal tab";
+        document.getElementById("pv-open").textContent = channelLink ? "Channels, ready to save" : openValue() === "syncup" ? "a SyncUp tab" : "a Normal tab";
     }
     linkUrl.addEventListener("input", function () { syncOpenIn(false); });
     document.getElementById("push-url-pick").addEventListener("change", function () { syncOpenIn(false); });

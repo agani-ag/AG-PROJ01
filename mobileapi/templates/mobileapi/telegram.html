@@ -71,27 +71,6 @@
             <button type="button" id="btn-verify" class="btn btn-sm">{% icon "circle-check" %}Verify connection</button>
             <span id="verify-out" class="small" role="status"></span>
         </div>
-        <hr class="divider">
-        <div class="row-between">
-            <div>
-                <b>Incoming messages</b>
-                <p class="help">
-                    {% if live %}Live: Telegram sends each message here the moment it is posted.
-                    {% else %}Your push cron reads new messages every 15 minutes. Turn on live updates for instant delivery.{% endif %}
-                    Replies and group chatter show up in the inbox.
-                </p>
-            </div>
-            <span class="row gap-sm">
-                {% if live %}<span class="badge badge-success"><span class="dot"></span>Live</span>
-                {% else %}<span class="badge">Every 15 min</span>{% endif %}
-                <form method="post" action="{% url 'mobile_telegram_live' %}"
-                      {% if not live %}data-confirm="Turn on live updates?" data-confirm-text="Telegram will post every message to this server as it happens. The 15-minute cron scan stops while this is on." data-confirm-button="Turn on"{% endif %}>
-                    {% csrf_token %}
-                    <button class="btn btn-sm" type="submit">{% if live %}{% icon "zap" %}Turn off live{% else %}{% icon "zap" %}Turn on live{% endif %}</button>
-                </form>
-                <a class="btn btn-sm btn-primary" href="{% url 'mobile_telegram_inbox' %}">{% icon "messages-square" %}Open inbox</a>
-            </span>
-        </div>
         {% endif %}
     </div>
 </div>

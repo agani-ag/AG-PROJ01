@@ -7,7 +7,7 @@ One request does both directions (a single short request, fine on PythonAnywhere
   {
     "device_id": "...",
     "since": "<cursor from the last response, or empty for a full download>",
-    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|water|steps|habit|habitlog|sleep|mood|shoplist|shopitem",
+    "changes": [ {"kind": "bookmark|history|shortcut|setting|task|tasklist|water|steps|habit|habitlog|sleep|mood|shoplist|shopitem|chanlist",
                   "key": "<stable id>", "data": {...}, "updated_ms": 1727..., "deleted": false}, ... ],
     "kinds": ["task", "tasklist"],   # optional: only these kinds come back (each app feature keeps
                                      # its own cursor — Calendar, Wellbeing and Shopping sync on their own)
@@ -24,7 +24,8 @@ sends Normal data), and the admin sees counts only.
 Tools → Calendar sends its to-dos (`task`) and lists (`tasklist`). Tools → Wellbeing: drinks
 (`water`), step totals per day and phone (`steps`), habits and their days (`habit`, `habitlog`),
 nights (`sleep`) and mood check-ins (`mood`) — each tool's settings ride in its own kind under the
-key "settings". Tools → Shopping: lists (`shoplist`) and the things on them (`shopitem`). When a phone
+key "settings". Tools → Shopping: lists (`shoplist`) and the things on them (`shopitem`). Tools → Channels:
+the channel lists the person saved (`chanlist`), so they come back after signing out and in. When a phone
 changes to-dos, wellbeing items (not steps) or shopping lists, the account's other phones get a silent
 "sync" push, so their reminders, Home rows and open lists follow at once.
 
@@ -54,11 +55,12 @@ MAX_CHANGES_PER_CALL = 1000
 OTHER_DEVICE_DAYS = 30
 WELLBEING_KINDS = {"water", "steps", "habit", "habitlog", "sleep", "mood"}
 SHOPPING_KINDS = {"shoplist", "shopitem"}
-CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist"} | WELLBEING_KINDS | SHOPPING_KINDS
+CHANNEL_KINDS = {"chanlist"}
+CLIENT_KINDS = {"bookmark", "history", "shortcut", "setting", "task", "tasklist"} | WELLBEING_KINDS | SHOPPING_KINDS | CHANNEL_KINDS
 # Live items per account, so one runaway phone can't fill the database.
 MAX_LIVE = {"task": 5000, "tasklist": 100,
             "water": 20000, "steps": 3000, "habit": 200, "habitlog": 20000, "sleep": 3000, "mood": 10000,
-            "shoplist": 200, "shopitem": 5000}
+            "shoplist": 200, "shopitem": 5000, "chanlist": 200}
 # Drinks and step totals older than this are dropped (habits, nights and moods are kept).
 WELLBEING_DAYS = 400
 # Changes to these kinds ping the account's other phones (their reminders must follow), with the
