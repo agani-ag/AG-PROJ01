@@ -6,19 +6,22 @@ no key, no sign-in (see the Radio page). Every reply carries the heartbeat caden
 A station may also advertise a `ws_url` (its own WebSocket, through the same tunnel as its audio).
 We only store it and hand it to the app: the server never connects to it — PythonAnywhere runs
 WSGI, so there is no process here that could hold a socket open.
+One public address can offer the radio, shared files or both. Phones only hear about a station's
+files once the admin has switched that station on (RadioFilesStation).
 The app reads the live channel list from `channels` (no sign-in: live stations are for everyone). Liveness is heartbeat-driven and
 evaluated at READ time — no cron: a channel is on air only while `is_live` AND its last heartbeat is
 within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily whenever the list is read.
 """
 import json
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-from .models import AppConfig, RadioChannel
+from .models import AppConfig, RadioChannel, RadioFilesStation
 
 
 def _err(msg, status=400):
@@ -42,12 +45,66 @@ def _ws_url(data):
     return url[:500], None
 
 
-def _cadence(cfg):
+def _same_host(url, stream_url):
+    """An address the station advertises, kept only on the same host as its audio: anyone can
+    register a station, so its details must not be able to send phones to some other server."""
+    url = url.strip() if isinstance(url, str) else ""
+    if not url.lower().startswith(("http://", "https://")):
+        return ""
+    try:
+        return url[:500] if urlsplit(url).hostname == urlsplit(stream_url).hostname else ""
+    except ValueError:
+        return ""
+
+
+def _offers(data, stream_url):
+    """What the station's address offers now, from the fields it sent: an older AudioSync sends none."""
+    out = {
+        key: data[key] for key in ("radio_on_air", "files_enabled", "files_protected")
+        if isinstance(data.get(key), bool)
+    }
+    for key in ("files_url", "info_url"):
+        if key in data:
+            out[key] = _same_host(data[key], stream_url)
+    if out.get("files_enabled") is False:
+        out["files_url"] = ""
+    return out
+
+
+def _cadence(cfg, bid=""):
     return {
         "heartbeat_interval": cfg.radio_heartbeat_interval_seconds,
         "stale_after": cfg.radio_stale_after_seconds,
+        # AudioSync reports a files-only station only after hearing true, so this is per station.
+        "files_supported": bool(bid) and RadioFilesStation.objects.filter(broadcaster_id=bid).exists(),
     }
 
+
+def _channel(c):
+    """A station as apps up to 7.1 read it."""
+    return {
+        "id": str(c.id),
+        "name": c.name,
+        "stream_url": c.stream_url,
+        # Live channel for now-playing/listener updates, straight to the station. "" = poll instead.
+        "ws_url": c.ws_url,
+        "now_playing": c.now_playing,
+        "listeners": c.listeners,
+        "since": c.created_at.isoformat(),
+    }
+
+
+def _station(c, files_on):
+    """The same, plus what else the address offers. Files only if the admin switched the station on."""
+    files = files_on and c.files_enabled
+    return {
+        **_channel(c),
+        "radio_on_air": c.radio_on_air,
+        "files_enabled": files,
+        "files_protected": files and c.files_protected,
+        "files_url": c.files_url if files else "",
+        "info_url": c.info_url if files else "",
+    }
 
 
 @csrf_exempt
@@ -66,13 +123,16 @@ def ingest(request):
         return _err("Invalid payload")
 
     event = (data.get("event") or "").strip()
-    cadence = _cadence(cfg)
+    bid = (data.get("broadcaster_id") or "").strip()
+    cadence = _cadence(cfg, bid)
+    # On the old address: AudioSync saves this and moves itself. Goes with the old route.
+    if request.path == "/radio/ingest":
+        cadence["moved_to"] = request.build_absolute_uri("/station/presence")
 
     # A connectivity test from the AudioSync settings dialog — validate the key, change nothing.
     if event == "test":
         return JsonResponse({"success": True, "message": "ok", **cadence})
 
-    bid = (data.get("broadcaster_id") or "").strip()
     sid = (data.get("session_id") or "").strip()
     if not bid:
         return _err("broadcaster_id is required")
@@ -96,6 +156,13 @@ def ingest(request):
                 "now_playing": (data.get("now_playing") or "").strip()[:300],
                 "listeners": _int(data.get("listeners")),
                 "last_heartbeat_at": timezone.now(),
+                # A fresh go-live replaces these too. With none sent, it's a plain radio.
+                "radio_on_air": True,
+                "files_enabled": False,
+                "files_protected": False,
+                "files_url": "",
+                "info_url": "",
+                **_offers(data, stream_url),
             },
         )
         return JsonResponse({"success": True, "channel_id": str(ch.id), **cadence})
@@ -116,10 +183,13 @@ def ingest(request):
                 if ws_error:
                     return _err(ws_error)
                 ch.ws_url = ws_url
+            offers = _offers(data, ch.stream_url)
+            for key, value in offers.items():
+                setattr(ch, key, value)
             ch.last_heartbeat_at = timezone.now()
             ch.save(update_fields=[
                 "session_id", "is_live", "now_playing", "listeners", "stream_url", "ws_url",
-                "last_heartbeat_at", "updated_at",
+                "last_heartbeat_at", "updated_at", *offers,
             ])
         return JsonResponse({"success": True, **cadence})
 
@@ -142,17 +212,15 @@ def channels(request):
         return JsonResponse({"enabled": False, "channels": []})
 
     cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
-    live = RadioChannel.objects.filter(is_live=True, last_heartbeat_at__gte=cutoff).order_by("name")
-    out = [{
-        "id": str(c.id),
-        "name": c.name,
-        "stream_url": c.stream_url,
-        # Live channel for now-playing/listener updates, straight to the station. "" = poll instead.
-        "ws_url": c.ws_url,
-        "now_playing": c.now_playing,
-        "listeners": c.listeners,
-        "since": c.created_at.isoformat(),
-    } for c in live]
+    live = list(RadioChannel.objects.filter(is_live=True, last_heartbeat_at__gte=cutoff).order_by("name"))
+    allowed = set(RadioFilesStation.objects.values_list("broadcaster_id", flat=True))
+    stations = [_station(c, c.broadcaster_id in allowed) for c in live]
     # No cron: prune channels that are flagged live but have gone stale, on read.
     RadioChannel.objects.filter(is_live=True, last_heartbeat_at__lt=cutoff).delete()
-    return JsonResponse({"enabled": True, "channels": out})
+    return JsonResponse({
+        "enabled": True,
+        # Radios only: apps up to 7.1 show every row here as a playing station.
+        "channels": [_channel(c) for c in live if c.radio_on_air],
+        # Everything on offer now, for newer apps.
+        "stations": [s for s in stations if s["radio_on_air"] or s["files_enabled"]],
+    })

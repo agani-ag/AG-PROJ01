@@ -968,6 +968,12 @@ class RadioChannel(models.Model):
     now_playing = models.CharField(max_length=300, blank=True, default="")
     listeners = models.PositiveIntegerField(default=0)
     last_heartbeat_at = models.DateTimeField(default=timezone.now)
+    # What the station's address offers: the radio, shared files or both. Same pass-through as ws_url.
+    radio_on_air = models.BooleanField(default=True)
+    files_enabled = models.BooleanField(default=False)
+    files_protected = models.BooleanField(default=False)
+    files_url = models.CharField(max_length=500, blank=True, default="")
+    info_url = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -982,6 +988,18 @@ class RadioChannel(models.Model):
 
     def __str__(self):
         return f"{self.name} ({'live' if self.is_live else 'off'})"
+
+
+class RadioFilesStation(models.Model):
+    """A station the admin switched on for Files. Separate from RadioChannel, whose row is deleted
+    whenever the station goes off air. Nothing here = phones never hear about that station's files."""
+
+    broadcaster_id = models.CharField(max_length=64, unique=True)
+    name = models.CharField(max_length=120, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name or self.broadcaster_id
 
 
 

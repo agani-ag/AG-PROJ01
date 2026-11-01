@@ -69,7 +69,7 @@
     </div>
     <div class="table-wrap">
         <table class="table table-stack">
-            <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th>Files</th><th></th></tr></thead>
             <tbody>
                 {% for r in rows %}
                 <tr>
@@ -82,8 +82,19 @@
                     <td>{{ r.c.listeners }}</td>
                     <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, g:i:s A" }}</td>
                     <td>
-                        {% if r.fresh %}<span class="badge badge-success"><span class="dot"></span>On air</span>
-                        {% else %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>{% endif %}
+                        {% if not r.fresh %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>
+                        {% elif r.c.radio_on_air %}<span class="badge badge-success"><span class="dot"></span>On air</span>
+                        {% else %}<span class="badge">Files only</span>{% endif %}
+                    </td>
+                    <td class="nowrap">
+                        <div>
+                            <form method="POST" action="{% url 'mobile_radio_channel_files' r.c.id %}"
+                                  {% if not r.files_on %}data-confirm="Turn on Files for {{ r.c.name }}?" data-confirm-text="Anyone using SyncUp can then find this station's shared files." data-confirm-button="Turn on"{% endif %}>
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm">{% if r.files_on %}Turn off{% else %}Turn on{% endif %}</button>
+                            </form>
+                            {% if r.c.files_enabled %}<div class="small muted">Shared · {% if r.c.files_protected %}PIN{% else %}No PIN{% endif %}</div>{% endif %}
+                        </div>
                     </td>
                     <td>
                         <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}"
@@ -94,7 +105,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="6"><div class="empty">{% icon "radio" %}<b>No stations on air</b><span>A station appears here once AudioSync registers it.</span></div></td></tr>
+                <tr><td colspan="7"><div class="empty">{% icon "radio" %}<b>No stations on air</b><span>A station appears here once AudioSync registers it.</span></div></td></tr>
                 {% endfor %}
             </tbody>
         </table>
