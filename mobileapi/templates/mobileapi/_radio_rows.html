@@ -4,6 +4,7 @@
         <b>{{ r.c.name }}</b>
         <div class="small muted break">{{ r.c.stream_url }}</div>
         {% if r.c.ws_url %}<div class="small muted break" title="Live channel the app connects to directly">{% icon "zap" "icon-sm" %}{{ r.c.ws_url }}</div>{% endif %}
+        {% if r.c.lan_url %}<div class="small muted break" title="The station's PC on its own Wi-Fi">{% icon "wifi" "icon-sm" %}{{ r.lan_address }}</div>{% endif %}
     </td>
     <td>{{ r.c.now_playing|default:"—" }}</td>
     <td>{{ r.c.listeners }}</td>
@@ -15,6 +16,7 @@
     </td>
     <td class="nowrap small">{% if r.c.files_enabled %}Shared · {% if r.c.files_protected %}PIN{% else %}No PIN{% endif %}{% else %}—{% endif %}</td>
     <td class="nowrap">
+        {% if r.c.lan_url %}<a href="{{ r.c.lan_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-ghost" data-wifi-link data-station-id="{{ r.station_id }}" title="Open the station's PC by its Wi-Fi address ({{ r.lan_address }}). Works only on the same network." aria-label="Open {{ r.c.name }} on its Wi-Fi">{% icon "wifi" %}</a>{% endif %}
         {% if r.page %}<a href="{{ r.page }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-ghost" title="Open the station's page" aria-label="Open {{ r.c.name }}'s page">{% icon "external-link" %}</a>{% endif %}
         <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}" style="display:inline-block"
               data-confirm="Remove {{ r.c.name }}?" data-confirm-text="It comes back on the station's next heartbeat if AudioSync is still broadcasting." data-confirm-button="Remove" data-danger>

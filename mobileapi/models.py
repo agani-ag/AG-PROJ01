@@ -974,6 +974,8 @@ class RadioChannel(models.Model):
     files_protected = models.BooleanField(default=False)
     files_url = models.CharField(max_length=500, blank=True, default="")
     info_url = models.CharField(max_length=500, blank=True, default="")
+    # The station on its own Wi-Fi (http://192.168.x.x:port/), for phones on that Wi-Fi.
+    lan_url = models.CharField(max_length=60, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

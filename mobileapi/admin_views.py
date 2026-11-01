@@ -14,7 +14,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.db import connection
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, Exists, Max, OuterRef, Q, Sum
 from django.db.models.functions import Lower
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -35,7 +35,7 @@ from . import telegram_hook
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from . import site_tokens
-from .radio import station_page
+from .radio import station_page, station_public_id
 from .models import (
     AppAuthToken,
     AppAccount,
@@ -57,6 +57,9 @@ from .models import (
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
 )
+
+# People listed at once when the admin starts a chat; searching reaches the rest.
+CHAT_PEOPLE_LIMIT = 50
 
 # Chats re-checked per request while the Telegram page loops through them all. Each one costs
 # up to three Telegram round-trips, so keep the batch small enough that a request stays quick.
@@ -799,8 +802,12 @@ def telegram_live_toggle(request):
 def _radio_rows(cfg):
     from datetime import timedelta
     cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
-    return [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff, "page": station_page(c.stream_url)}
-            for c in RadioChannel.objects.all()]
+    return [{
+        "c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff, "page": station_page(c.stream_url),
+        "station_id": station_public_id(c.broadcaster_id),
+        # "192.168.1.7:8000", for reading; the link itself is lan_url.
+        "lan_address": c.lan_url.removeprefix("http://").rstrip("/"),
+    } for c in RadioChannel.objects.all()]
 
 
 @superuser_required
@@ -1373,6 +1380,33 @@ def chat_list_json(request):
             "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
         })
     return JsonResponse({"conversations": data})
+
+
+@superuser_required
+def chat_people_json(request):
+    """Who the admin can start a chat with: anyone signed in to the app (a token that still works),
+    A-Z, `q` to search. Support agents are left out: their app Chat opens the inbox, which hides
+    their own thread, so they'd never see the message."""
+    signed_in = AppAuthToken.objects.filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
+        account=OuterRef("pk"), revoked=False,
+    )
+    people = AppAccount.objects.filter(Exists(signed_in), is_active=True, admin_chat_mode=False)
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        people = people.filter(
+            Q(name__icontains=q) | Q(email__icontains=q) | Q(phone__icontains=q) | Q(username__icontains=q)
+        )
+    return JsonResponse({
+        "total": people.count(),
+        "people": [{
+            "id": a.id,
+            "name": a.name,
+            "email": a.login_label,
+            "online": a.is_active_on_chat(30),
+            "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
+        } for a in people.order_by(Lower("name"))[:CHAT_PEOPLE_LIMIT]],
+    })
 
 
 @superuser_required

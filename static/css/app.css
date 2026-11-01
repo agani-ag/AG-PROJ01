@@ -366,7 +366,9 @@ dialog.palette::backdrop { background: rgba(8, 12, 20, .45); }
 .auth-card .seg { align-self: stretch; }
 .auth-card .seg button { flex: 1; justify-content: center; }
 .pin { display: flex; justify-content: center; gap: 10px; }
-.pin .input { width: 48px; height: 54px; padding: 0; text-align: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
+.pin .input { width: 48px; height: 54px; padding: 6px 0 0; text-align: center; font-size: 22px; font-weight: 600; text-transform: uppercase; }
+/* The boxes hold "*", never the PIN itself (see auth/login.html). An asterisk's ink sits high in
+   the line box, so the padding above drops it onto the centre of the box. */
 @media (max-width: 400px) { .pin { gap: 6px; } .pin .input { width: 44px; } .auth-card { padding: 22px 18px; } }
 
 /* ---------- More layout helpers ---------- */

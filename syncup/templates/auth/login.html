@@ -56,6 +56,7 @@
 {% block script %}
 <script>
 (function () {
+    var MASK = "*";
     var panels = document.querySelectorAll("[data-method-panel]");
     var pins = Array.prototype.slice.call(document.querySelectorAll("#pinBoxes input"));
     var status = document.getElementById("pinStatus");
@@ -68,13 +69,13 @@
     });
 
     function reset(msg) {
-        pins.forEach(function (p) { p.value = ""; p.disabled = false; });
+        pins.forEach(function (p) { p.value = ""; p.dataset.real = ""; p.disabled = false; });
         status.textContent = msg; status.className = "error center";
         pins[0].focus(); busy = false;
     }
 
     function submitPin() {
-        var pin = pins.map(function (p) { return p.value; }).join("").toUpperCase();
+        var pin = pins.map(function (p) { return p.dataset.real || ""; }).join("");
         if (busy || !/^[A-Z0-9]{5}$/.test(pin)) return;
         busy = true;
         pins.forEach(function (p) { p.disabled = true; });
@@ -87,8 +88,11 @@
 
     pins.forEach(function (input, i) {
         input.addEventListener("input", function () {
-            input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-1);
-            if (input.value && pins[i + 1]) pins[i + 1].focus();
+            // Keep the real character to ourselves and show MASK in its place.
+            var typed = input.value.replace(MASK, "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(-1);
+            input.dataset.real = typed;
+            input.value = typed ? MASK : "";
+            if (typed && pins[i + 1]) pins[i + 1].focus();
             submitPin();
         });
         input.addEventListener("keydown", function (e) {
@@ -98,7 +102,7 @@
             var text = (e.clipboardData || window.clipboardData).getData("text").toUpperCase().replace(/[^A-Z0-9]/g, "");
             if (text.length !== 5) return;
             e.preventDefault();
-            pins.forEach(function (p, j) { p.value = text[j]; });
+            pins.forEach(function (p, j) { p.dataset.real = text[j]; p.value = MASK; });
             submitPin();
         });
     });

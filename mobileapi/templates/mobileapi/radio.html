@@ -82,11 +82,43 @@ document.addEventListener("DOMContentLoaded", function () {
     // Channels stay live. Not while the tab is hidden, or while a confirm dialog is open: that would replace the form being confirmed.
     var rows = document.getElementById("radio-rows");
     function busy() { return document.querySelector("dialog[open]"); }
+
+    // Is this browser on a station's own Wi-Fi? Only the browser can tell: the server can't see that network. When the
+    // PC there answers with the station's ID, its Wi-Fi button turns green. The button works either way, because a
+    // browser may ask first (local network access) or not allow the check from an https page at all.
+    var wifi = {};
+    function showWifi() {
+        rows.querySelectorAll("[data-wifi-link]").forEach(function (a) {
+            var seen = wifi[a.getAttribute("href") + a.dataset.stationId];
+            a.style.color = seen && seen.found ? "var(--success)" : "";
+        });
+    }
+    function checkWifi() {
+        rows.querySelectorAll("[data-wifi-link]").forEach(function (a) {
+            var url = a.getAttribute("href"), id = a.dataset.stationId, key = url + id;
+            if (wifi[key] && Date.now() - wifi[key].at < 15000) return;
+            var entry = wifi[key] = { at: Date.now(), found: !!(wifi[key] && wifi[key].found) };
+            var stop = new AbortController();
+            setTimeout(function () { stop.abort(); }, 8000);
+            fetch(url + "api/info", { signal: stop.signal, cache: "no-store", credentials: "omit", targetAddressSpace: "local" })
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (info) { entry.found = !!info && info.station_id === id; })
+                .catch(function () { entry.found = false; })
+                .then(showWifi);
+        });
+    }
+    checkWifi();
+
     setInterval(function () {
         if (document.hidden || busy()) return;
         fetch("{% url 'mobile_radio_rows' %}", { credentials: "same-origin" })
             .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
-            .then(function (html) { if (html !== null && !busy()) rows.innerHTML = html; })
+            .then(function (html) {
+                if (html === null || busy()) return;
+                rows.innerHTML = html;
+                showWifi();
+                checkWifi();
+            })
             .catch(function () {});
     }, 5000);
 });

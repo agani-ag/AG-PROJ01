@@ -14,6 +14,7 @@ within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily wheneve
 """
 import hashlib
 import hmac
+import ipaddress
 import json
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -72,6 +73,29 @@ def station_page(stream_url):
     return f"{parts.scheme}://{parts.netloc}/"
 
 
+_WIFI_NETWORKS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
+
+
+def _lan_url(data):
+    """The station's address on its own Wi-Fi, for phones on that Wi-Fi. "" when it sent none (the PC is off the
+    network, or an older AudioSync). Anyone can register a station, so only plain http to a private IPv4 address
+    and port is kept: it can't send phones to a server on the internet, or to this phone itself."""
+    url = data.get("lan_url")
+    if not isinstance(url, str):
+        return ""
+    try:
+        parts = urlsplit(url.strip())
+        ip = ipaddress.IPv4Address(parts.hostname or "")
+        port = parts.port
+    except ValueError:
+        return ""
+    if parts.scheme != "http" or not port or parts.username or parts.password:
+        return ""
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
+        return ""
+    return f"http://{ip}:{port}/" if any(ip in net for net in _WIFI_NETWORKS) else ""
+
+
 def _offers(data, stream_url):
     """What the station's address offers now, from the fields it sent: an older AudioSync sends none."""
     out = {
@@ -116,6 +140,12 @@ def station_key(broadcaster_id):
     return hmac.new(secret, f"station:{broadcaster_id}".encode(), hashlib.sha256).hexdigest()[:24]
 
 
+def station_public_id(broadcaster_id):
+    """The ID AudioSync answers with at its own /api/info (its config.station_id), so a phone can tell it's found
+    that station on the Wi-Fi. Worked out here, not taken from presence, which anyone can send."""
+    return hashlib.sha256(f"audiosync-station:{broadcaster_id}".encode()).hexdigest()[:16]
+
+
 def _station(c):
     """The same, plus what else the address offers, as the station reports it."""
     return {
@@ -126,6 +156,8 @@ def _station(c):
         "files_protected": c.files_protected,
         "files_url": c.files_url,
         "info_url": c.info_url,
+        "station_id": station_public_id(c.broadcaster_id),
+        "lan_url": c.lan_url,
     }
 
 
@@ -181,6 +213,7 @@ def ingest(request):
                 "files_protected": False,
                 "files_url": "",
                 "info_url": "",
+                "lan_url": _lan_url(data),
                 **_offers(data, stream_url),
             },
         )
@@ -206,9 +239,11 @@ def ingest(request):
             offers = _offers(data, ch.stream_url)
             for key, value in offers.items():
                 setattr(ch, key, value)
+            # Left out when the PC has no network: the old address goes too.
+            ch.lan_url = _lan_url(data)
             ch.last_heartbeat_at = timezone.now()
             ch.save(update_fields=[
-                "session_id", "is_live", "now_playing", "listeners", "stream_url", "ws_url",
+                "session_id", "is_live", "now_playing", "listeners", "stream_url", "ws_url", "lan_url",
                 "last_heartbeat_at", "updated_at", *offers,
             ])
         return JsonResponse({"success": True, **cadence})

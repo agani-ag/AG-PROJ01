@@ -1,5 +1,6 @@
 """Live stations for everyone (GET /app/v1/radio/channels, no sign-in) and AudioSync's presence events.
 Run: python manage.py test mobileapi.tests_radio"""
+import hashlib
 import json
 
 from django.contrib.auth import get_user_model
@@ -7,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from .models import AppConfig, RadioChannel
-from .radio import station_page
+from .radio import station_page, station_public_id
 
 
 class RadioChannelsTests(TestCase):
@@ -82,6 +83,63 @@ class StationPresenceTests(TestCase):
         station = self.listed()["stations"][0]
         self.assertTrue(station["radio_on_air"] and station["files_enabled"] and station["files_protected"])
         self.assertEqual((station["files_url"], station["info_url"]), (self.FILES, self.INFO))
+
+    def test_phones_get_the_wifi_address_and_the_id_audiosync_answers_with(self):
+        self.post(**self.files_fields(lan_url="http://192.168.1.7:8000/"))
+        station = self.listed()["stations"][0]
+        self.assertEqual(station["lan_url"], "http://192.168.1.7:8000/")
+        # The same sum as AudioSync's config.station_id, and never the private broadcaster_id.
+        self.assertEqual(station["station_id"], hashlib.sha256(b"audiosync-station:b1").hexdigest()[:16])
+        self.assertNotIn("broadcaster_id", station)
+
+    def test_a_station_cannot_choose_its_own_id(self):
+        self.post(**self.files_fields(station_id="0000000000000000"))
+        self.assertNotEqual(self.listed()["stations"][0]["station_id"], "0000000000000000")
+
+    def test_older_apps_never_see_the_wifi_address(self):
+        self.post(**self.files_fields(lan_url="http://192.168.1.7:8000/"))
+        self.assertNotIn("lan_url", self.listed()["channels"][0])
+
+    def test_only_a_private_ipv4_address_with_a_port_is_kept(self):
+        for bad in (
+            "https://192.168.1.7:8000/",  # AudioSync's Wi-Fi address is plain http
+            "http://8.8.8.8:8000/",  # on the internet
+            "http://example.com:8000/",  # a name can point anywhere
+            "http://127.0.0.1:8000/",  # the phone itself
+            "http://169.254.169.254:80/",  # link-local
+            "http://100.64.0.1:8000/",  # a carrier's network
+            "http://[fd00::1]:8000/",
+            "http://192.168.1.7/",  # no port
+            "http://192.168.1.7:0/",
+            "http://192.168.1.7:99999/",
+            "http://user:pw@192.168.1.7:8000/",
+            "http://192.168.1.7:8000/other",
+            "http://192.168.1.7:8000/?x=1",
+            "ftp://192.168.1.7:8000/",
+            "not a url",
+            "",
+            123,
+            None,
+        ):
+            with self.subTest(bad=bad):
+                self.post(**self.files_fields(lan_url=bad))
+                self.assertEqual(self.listed()["stations"][0]["lan_url"], "")
+        for good in ("http://10.0.0.5:8000/", "http://172.16.0.9:8000/", "http://172.31.255.1:80", "http://192.168.0.2:65535/"):
+            with self.subTest(good=good):
+                self.post(**self.files_fields(lan_url=good))
+                self.assertEqual(self.listed()["stations"][0]["lan_url"], good.rstrip("/") + "/")
+
+    def test_the_wifi_address_follows_the_heartbeat_and_goes_when_the_pc_has_no_network(self):
+        self.post(**self.files_fields(lan_url="http://192.168.1.7:8000/"))
+        self.post("heartbeat", **self.files_fields(lan_url="http://192.168.1.9:8000/"))
+        self.assertEqual(self.listed()["stations"][0]["lan_url"], "http://192.168.1.9:8000/")
+        self.post("heartbeat", **self.files_fields())
+        self.assertEqual(self.listed()["stations"][0]["lan_url"], "")
+
+    def test_a_new_go_live_replaces_the_wifi_address(self):
+        self.post(**self.files_fields(lan_url="http://192.168.1.7:8000/"))
+        self.post(**self.files_fields())
+        self.assertEqual(self.listed()["stations"][0]["lan_url"], "")
 
     def test_open_share_is_passed_on_as_open(self):
         self.post(**self.files_fields(files_protected=False))
@@ -183,6 +241,24 @@ class StationPresenceTests(TestCase):
         rows = self.client.get("/mobile/radio/rows")
         self.assertContains(rows, 'href="https://abc.trycloudflare.com/"')
         self.assertContains(rows, 'rel="noopener noreferrer"')
+
+    def test_a_station_on_wifi_gets_its_own_button_for_the_page_to_check(self):
+        self.post(**self.files_fields(lan_url="http://192.168.1.7:8000/"))
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+        rows = self.client.get("/mobile/radio/rows")
+        self.assertContains(rows, 'href="http://192.168.1.7:8000/"')
+        self.assertContains(rows, f'data-station-id="{station_public_id("b1")}"')
+        self.assertContains(rows, "192.168.1.7:8000", count=3)  # the link, its title and the line under the name
+        self.assertContains(rows, 'href="https://abc.trycloudflare.com/"')  # the public one stays, separately
+        self.assertContains(self.client.get("/mobile/radio"), "targetAddressSpace")
+
+    def test_a_station_without_a_wifi_address_gets_no_such_button(self):
+        for sent in ({}, {"lan_url": "http://8.8.8.8:8000/"}):
+            with self.subTest(sent=sent):
+                self.post(**self.files_fields(**sent))
+                self.client.force_login(get_user_model().objects.get_or_create(
+                    username="boss", defaults={"email": "boss@example.org", "is_superuser": True, "is_staff": True})[0])
+                self.assertNotContains(self.client.get("/mobile/radio/rows"), "data-wifi-link")
 
     def test_a_row_with_an_unsafe_address_gets_no_link(self):
         for bad in ("javascript:alert(1)", "file:///etc/passwd", "https://", "http://[bad"):

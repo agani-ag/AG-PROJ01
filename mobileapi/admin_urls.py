@@ -99,6 +99,7 @@ urlpatterns = [
     # Chats (user ↔ admin)
     path("chats", v.chats, name="mobile_chats"),
     path("chats/list.json", v.chat_list_json, name="mobile_chat_list_json"),
+    path("chats/people.json", v.chat_people_json, name="mobile_chat_people_json"),
     path("chats/<int:account_id>/messages.json", v.chat_thread_json, name="mobile_chat_thread_json"),
     path("chats/<int:account_id>/reply", v.chat_reply_json, name="mobile_chat_reply_json"),
     path("chats/<int:account_id>/typing", v.chat_typing_admin, name="mobile_chat_typing"),

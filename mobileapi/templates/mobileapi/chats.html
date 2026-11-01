@@ -12,11 +12,11 @@
         border: 0; border-radius: 0; box-shadow: none; }
 
     /* ---- Conversation list ---- */
-    .chat-list { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+    .chat-list { position: relative; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
     .chat-search { padding: 10px 12px; border-bottom: 1px solid var(--border); }
     .chat-search .input { min-height: 36px; padding-top: 6px; padding-bottom: 6px; }
     .chat-count { margin-top: 7px; font-size: 12.5px; color: var(--muted); }
-    .conv-list { flex: 1; min-height: 0; overflow-y: auto; }
+    .conv-list { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 76px; }  /* room to scroll the last chat clear of the + */
     .conv-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px 10px 9px; border: 0; border-left: 3px solid transparent; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
     .conv-item:hover { background: var(--surface-2); }
     .conv-item.active { background: var(--accent-soft); border-left-color: var(--accent); }
@@ -30,10 +30,17 @@
     .conv-unread { flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center; background: var(--danger); color: var(--surface); font-size: 11px; font-weight: 700; }
 
     /* ---- Avatars + presence ---- */
-    .chat-inbox .avatar-wrap { position: relative; flex: 0 0 auto; }
-    .chat-inbox .avatar { width: 42px; height: 42px; font-size: 16px; }
+    .chat-inbox .avatar-wrap, .people-list .avatar-wrap { position: relative; flex: 0 0 auto; }
+    .chat-inbox .avatar, .people-list .avatar { width: 42px; height: 42px; font-size: 16px; }
     .presence-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--surface); background: var(--faint); }
     .presence-dot.online { background: var(--success); }
+
+    /* ---- Start a chat: the + bubble and its people picker ---- */
+    .new-chat { position: absolute; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 5; width: 52px; height: 52px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-lg); cursor: pointer; }
+    .new-chat:hover { background: var(--accent-hover); }
+    .new-chat .icon { width: 24px; height: 24px; }
+    .people-search { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .people-list { height: min(52vh, 420px); overflow-y: auto; }
 
     /* ---- Thread ---- */
     .chat-thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -127,6 +134,7 @@
         <div id="convList" class="conv-list">
             <div class="empty"><span class="spinner"></span></div>
         </div>
+        <button id="newChatBtn" class="new-chat" type="button" aria-label="New message" title="New message">{% icon "plus" %}</button>
     </section>
 
     <!-- Thread -->
@@ -151,7 +159,7 @@
                 <div class="empty">
                     {% icon "messages-square" %}
                     <b>Select a conversation to start</b>
-                    <span class="small">New messages from app users appear on the left.</span>
+                    <span class="small">New messages from app users appear on the left. Use + to message someone.</span>
                 </div>
             </div>
             <button id="jumpLatest" class="jump-latest" type="button" aria-label="Jump to latest message">
@@ -160,13 +168,31 @@
         </div>
         <div id="composer" class="composer" hidden>
             <form id="replyForm" data-no-busy>
-                <textarea id="replyInput" class="input" rows="1" placeholder="Type a reply…" aria-label="Reply"></textarea>
-                <button type="submit" class="btn btn-primary btn-send" aria-label="Send reply" title="Send (Enter)">{% icon "send-horizontal" %}</button>
+                <textarea id="replyInput" class="input" rows="1" placeholder="Type a message…" aria-label="Message"></textarea>
+                <button type="submit" class="btn btn-primary btn-send" aria-label="Send message" title="Send (Enter)">{% icon "send-horizontal" %}</button>
             </form>
             <p class="help"><span class="kbd-hint">Enter to send, Shift+Enter for a new line. </span>Delivered to the user's devices as a notification (skipped while they're active here).</p>
         </div>
     </section>
 </div>
+
+<!-- Start a chat with anyone signed in to the app -->
+<dialog class="modal" id="newChat" aria-labelledby="newChatTitle">
+    <div class="modal-head">
+        {% icon "messages-square" %}
+        <h2 id="newChatTitle">New message</h2>
+        <button class="btn btn-ghost btn-icon" type="button" data-close-dialog aria-label="Close">{% icon "x" %}</button>
+    </div>
+    <div class="people-search">
+        <label class="input-icon">
+            <span class="sr-only">Search people</span>
+            {% icon "search" %}
+            <input id="peopleSearch" class="input" type="search" placeholder="Search name, email or phone" autocomplete="off">
+        </label>
+        <p class="chat-count" id="peopleStatus">People signed in to the app</p>
+    </div>
+    <div id="peopleList" class="people-list"></div>
+</dialog>
 {% endblock %}
 
 {% block script %}
@@ -177,6 +203,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var URL_THREAD = "{% url 'mobile_chat_thread_json' 0 %}";
     var URL_REPLY = "{% url 'mobile_chat_reply_json' 0 %}";
     var URL_TYPING = "{% url 'mobile_chat_typing' 0 %}";
+    var URL_PEOPLE = "{% url 'mobile_chat_people_json' %}";
     var lastTypingPing = 0;
 
     var page = document.querySelector("main.page");
@@ -240,7 +267,7 @@ document.addEventListener("DOMContentLoaded", function () {
             return !q || (c.name || "").toLowerCase().indexOf(q) >= 0 || (c.email || "").toLowerCase().indexOf(q) >= 0;
         });
         if (!items.length) {
-            convList.innerHTML = '<div class="empty">' + App.icon(q ? "search" : "messages-square") + "<b>" + (q ? "No matches" : "No chats yet") + "</b></div>";
+            convList.innerHTML = '<div class="empty">' + App.icon(q ? "search" : "messages-square") + "<b>" + (q ? "No matches" : "No chats yet") + "</b>" + (q ? "" : '<span class="small">Use + to message someone.</span>') + "</div>";
             return;
         }
         convList.innerHTML = items.map(function (c) {
@@ -304,6 +331,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function renderMessage(m) {
         if (seen[m.id]) return; seen[m.id] = true;
+        var hint = document.getElementById("threadHint"); if (hint) hint.remove();
         if (m.id > lastId) lastId = m.id;
         var box = tm(); if (!box) return;
         var day = new Date(m.created_at_ms).toDateString();
@@ -387,6 +415,11 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
                 var added = 0;
                 (d.messages || []).forEach(function (m) { if (!seen[m.id]) added++; renderMessage(m); });
+                // A chat the admin is starting: nothing here until the first message goes out.
+                if (!lastId && !document.getElementById("threadHint")) {
+                    threadBody.insertAdjacentHTML("afterbegin", '<div id="threadHint" class="empty">' + App.icon("messages-square") +
+                        "<b>No messages yet</b><span class=\"small\">Your first message shows in " + esc(d.account.name) + "'s app Chat.</span></div>");
+                }
                 readUptoId = d.read_upto_id || readUptoId;
                 updateReadReceipts();
                 var tr = document.getElementById("typingRow");
@@ -410,7 +443,7 @@ document.addEventListener("DOMContentLoaded", function () {
             })
             .catch(function (err) {
                 if (id === current && !replyInput.value) replyInput.value = body;  // keep the draft
-                App.toast("Couldn't send the reply: " + err.message, "error");
+                App.toast("Couldn't send the message: " + err.message, "error");
             });
     }
 
@@ -428,6 +461,73 @@ document.addEventListener("DOMContentLoaded", function () {
     threadBody.addEventListener("scroll", updateJump);
     jump.addEventListener("click", function () { scrollBottom(); updateJump(); });
     document.getElementById("threadBack").addEventListener("click", closeConversation);
+
+    /* ---------- Start a new chat ---------- */
+    var newChat = document.getElementById("newChat");
+    var peopleSearch = document.getElementById("peopleSearch");
+    var peopleList = document.getElementById("peopleList");
+    var peopleStatus = document.getElementById("peopleStatus");
+    var people = [], peopleTimer = null, peopleSeq = 0;
+
+    function renderPeople(total, q) {
+        peopleStatus.textContent = total > people.length
+            ? "Showing " + people.length + " of " + total + ". Search to find the others."
+            : total + (total === 1 ? " person" : " people") + (q ? " found" : " signed in to the app");
+        if (!people.length) {
+            peopleList.innerHTML = '<div class="empty">' + App.icon(q ? "search" : "users") + "<b>" + (q ? "No matches" : "No one is signed in") + "</b></div>";
+            return;
+        }
+        peopleList.innerHTML = people.map(function (p, i) {
+            var presTitle = p.online ? "Active now" : (p.last_seen_ms ? "Last seen " + relTime(p.last_seen_ms) : "Offline");
+            return '' +
+              '<button type="button" class="conv-item" data-i="' + i + '">' +
+                '<span class="avatar-wrap">' +
+                  '<span class="avatar" style="background:' + colorFor(p.id) + '">' + esc(initials(p.name)) + '</span>' +
+                  '<span class="presence-dot' + (p.online ? " online" : "") + '" title="' + presTitle + '"></span>' +
+                '</span>' +
+                '<span class="conv-main">' +
+                  '<span class="conv-line"><span class="conv-name">' + esc(p.name) + '</span></span>' +
+                  '<span class="conv-line"><span class="conv-preview">' + esc(p.email) + '</span></span>' +
+                '</span>' +
+              '</button>';
+        }).join("");
+    }
+
+    function loadPeople() {
+        var seq = ++peopleSeq, q = peopleSearch.value.trim();
+        App.fetchJSON(URL_PEOPLE + (q ? "?q=" + encodeURIComponent(q) : ""))
+            .then(function (d) {
+                if (seq !== peopleSeq) return;  // an older search finishing late
+                people = d.people || [];
+                renderPeople(d.total || 0, q);
+            })
+            .catch(function (err) {
+                if (seq !== peopleSeq) return;
+                people = [];
+                peopleStatus.textContent = "";
+                peopleList.innerHTML = '<div class="empty">' + App.icon("circle-alert") + "<b>Couldn't load people</b><span class=\"small\">" + esc(err.message) + "</span></div>";
+            });
+    }
+
+    document.getElementById("newChatBtn").addEventListener("click", function () {
+        peopleSearch.value = "";
+        peopleList.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+        loadPeople();
+        newChat.showModal();
+        peopleSearch.focus();
+    });
+    peopleSearch.addEventListener("input", function () {
+        clearTimeout(peopleTimer);
+        peopleTimer = setTimeout(loadPeople, 200);
+    });
+    peopleList.addEventListener("click", function (e) {
+        var row = e.target.closest(".conv-item"); if (!row) return;
+        var p = people[parseInt(row.dataset.i, 10)];
+        newChat.close();
+        openConversation(p.id, p.name, p.email, p.online, p.last_seen_ms);
+        replyInput.focus();
+    });
+    newChat.addEventListener("click", function (e) { if (e.target === newChat) newChat.close(); });  // the backdrop
 
     loadList();
     setInterval(loadList, 10000);
