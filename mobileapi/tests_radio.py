@@ -89,6 +89,28 @@ class StationPresenceTests(TestCase):
         self.assertTrue(station["files_enabled"])
         self.assertFalse(station["files_protected"])
 
+    def test_a_station_keeps_its_key_across_sessions_and_new_addresses(self):
+        self.post(**self.files_fields())
+        first = self.listed()["stations"][0]["key"]
+        self.post("public_url_inactive")
+        self.client.post(self.NEW, json.dumps({
+            "event": "public_url_active", "broadcaster_id": "b1", "session_id": "s2", "name": "Studio",
+            "stream_url": "https://other.trycloudflare.com/stream", "files_enabled": True,
+        }), content_type="application/json")
+        again = self.listed()["stations"][0]
+        self.assertEqual(again["key"], first)
+        self.assertNotIn("b1", again["key"])
+        self.assertEqual(len(first), 24)
+
+    def test_different_stations_get_different_keys(self):
+        self.post(**self.files_fields())
+        self.client.post(self.NEW, json.dumps({
+            "event": "public_url_active", "broadcaster_id": "b2", "session_id": "x", "name": "Other",
+            "stream_url": "https://zzz.trycloudflare.com/stream", "files_enabled": True,
+        }), content_type="application/json")
+        keys = {s["key"] for s in self.listed()["stations"]}
+        self.assertEqual(len(keys), 2)
+
     def test_station_offering_nothing_is_not_listed(self):
         self.post(radio_on_air=False, files_enabled=False)
         data = self.listed()

@@ -12,10 +12,13 @@ The app reads the live channel list from `channels` (no sign-in: live stations a
 evaluated at READ time — no cron: a channel is on air only while `is_live` AND its last heartbeat is
 within AppConfig.radio_stale_after_seconds. Stale rows are pruned lazily whenever the list is read.
 """
+import hashlib
+import hmac
 import json
 from datetime import timedelta
 from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -106,10 +109,18 @@ def _channel(c):
     }
 
 
+def station_key(broadcaster_id):
+    """A station's fixed public name: the same after AudioSync restarts or gets a new address, so phones
+    can carry on a download or song. Made from its private broadcaster_id, which it doesn't reveal."""
+    secret = settings.SECRET_KEY.encode()
+    return hmac.new(secret, f"station:{broadcaster_id}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
 def _station(c):
     """The same, plus what else the address offers, as the station reports it."""
     return {
         **_channel(c),
+        "key": station_key(c.broadcaster_id),
         "radio_on_air": c.radio_on_air,
         "files_enabled": c.files_enabled,
         "files_protected": c.files_protected,
