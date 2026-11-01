@@ -1,0 +1,27 @@
+{% for r in rows %}
+<tr>
+    <td class="t-primary">
+        <b>{{ r.c.name }}</b>
+        <div class="small muted break">{{ r.c.stream_url }}</div>
+        {% if r.c.ws_url %}<div class="small muted break" title="Live channel the app connects to directly">{% icon "zap" "icon-sm" %}{{ r.c.ws_url }}</div>{% endif %}
+    </td>
+    <td>{{ r.c.now_playing|default:"—" }}</td>
+    <td>{{ r.c.listeners }}</td>
+    <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, g:i:s A" }}</td>
+    <td>
+        {% if not r.fresh %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>
+        {% elif r.c.radio_on_air %}<span class="badge badge-success"><span class="dot"></span>On air</span>
+        {% else %}<span class="badge">Files only</span>{% endif %}
+    </td>
+    <td class="nowrap small">{% if r.c.files_enabled %}Shared · {% if r.c.files_protected %}PIN{% else %}No PIN{% endif %}{% else %}—{% endif %}</td>
+    <td>
+        <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}"
+              data-confirm="Remove {{ r.c.name }}?" data-confirm-text="It comes back on the station's next heartbeat if AudioSync is still broadcasting." data-confirm-button="Remove" data-danger>
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-ghost" title="Remove">{% icon "trash" %}</button>
+        </form>
+    </td>
+</tr>
+{% empty %}
+<tr><td colspan="7"><div class="empty">{% icon "radio" %}<b>No stations on air</b><span>A station appears here once AudioSync registers it.</span></div></td></tr>
+{% endfor %}

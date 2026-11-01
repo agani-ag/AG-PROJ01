@@ -1,4 +1,4 @@
-"""Live stations for everyone (GET /app/v1/radio/channels, no sign-in).
+"""Live stations for everyone (GET /app/v1/radio/channels, no sign-in) and AudioSync's presence events.
 Run: python manage.py test mobileapi.tests_radio"""
 import json
 
@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
-from .models import AppConfig, RadioChannel, RadioFilesStation
+from .models import AppConfig, RadioChannel
 
 
 class RadioChannelsTests(TestCase):
@@ -32,9 +32,8 @@ class RadioChannelsTests(TestCase):
 
 
 class StationPresenceTests(TestCase):
-    """AudioSync's presence events: the address, what a station offers, and who hears about its files."""
+    """AudioSync's presence events: the address, and what a station offers."""
     NEW = "/station/presence"
-    OLD = "/radio/ingest"
     STREAM = "https://abc.trycloudflare.com/stream"
     FILES = "https://abc.trycloudflare.com/api/files/"
     INFO = "https://abc.trycloudflare.com/api/info"
@@ -54,17 +53,14 @@ class StationPresenceTests(TestCase):
     def listed(self):
         return self.client.get("/app/v1/radio/channels").json()
 
-    def test_new_address_registers_a_station_and_only_the_old_one_points_there(self):
-        r = self.post()
-        self.assertEqual(r.status_code, 200)
-        self.assertNotIn("moved_to", r.json())
+    def test_new_address_registers_a_station(self):
+        self.assertEqual(self.post().status_code, 200)
         self.assertEqual(self.client.get(self.NEW).status_code, 405)
-        self.assertEqual(self.post("heartbeat", url=self.OLD).json()["moved_to"], "http://testserver/station/presence")
         self.assertEqual([c["name"] for c in self.listed()["channels"]], ["Studio"])
 
-    def test_old_address_still_registers_a_station(self):
-        self.assertEqual(self.post(url=self.OLD).status_code, 200)
-        self.assertTrue(RadioChannel.objects.filter(broadcaster_id="b1").exists())
+    def test_old_address_is_gone(self):
+        self.assertEqual(self.post(url="/radio/ingest").status_code, 404)
+        self.assertFalse(RadioChannel.objects.exists())
 
     def test_channels_keep_the_exact_shape_apps_up_to_7_1_read(self):
         self.post(**self.files_fields())
@@ -74,37 +70,34 @@ class StationPresenceTests(TestCase):
         )
 
     def test_files_only_station_is_never_a_channel_for_older_apps(self):
-        RadioFilesStation.objects.create(broadcaster_id="b1")
         self.post(**self.files_fields(radio_on_air=False))
         data = self.listed()
         self.assertEqual(data["channels"], [])
         self.assertEqual([s["files_url"] for s in data["stations"]], [self.FILES])
         self.assertFalse(data["stations"][0]["radio_on_air"])
 
-    def test_phones_hear_nothing_about_files_until_the_admin_switches_the_station_on(self):
+    def test_phones_get_what_the_station_reports(self):
         self.post(**self.files_fields())
         station = self.listed()["stations"][0]
-        self.assertFalse(station["files_enabled"])
-        self.assertFalse(station["files_protected"])
-        self.assertEqual((station["files_url"], station["info_url"]), ("", ""))
-        RadioFilesStation.objects.create(broadcaster_id="b1")
-        station = self.listed()["stations"][0]
-        self.assertTrue(station["files_enabled"])
-        self.assertTrue(station["files_protected"])
+        self.assertTrue(station["radio_on_air"] and station["files_enabled"] and station["files_protected"])
         self.assertEqual((station["files_url"], station["info_url"]), (self.FILES, self.INFO))
 
-    def test_files_only_station_not_switched_on_is_not_listed_at_all(self):
-        self.post(**self.files_fields(radio_on_air=False))
+    def test_open_share_is_passed_on_as_open(self):
+        self.post(**self.files_fields(files_protected=False))
+        station = self.listed()["stations"][0]
+        self.assertTrue(station["files_enabled"])
+        self.assertFalse(station["files_protected"])
+
+    def test_station_offering_nothing_is_not_listed(self):
+        self.post(radio_on_air=False, files_enabled=False)
         data = self.listed()
         self.assertEqual((data["channels"], data["stations"]), ([], []))
 
-    def test_files_supported_is_true_only_for_a_station_switched_on(self):
-        self.assertIs(self.post("test").json()["files_supported"], False)
-        self.assertIs(self.post().json()["files_supported"], False)
-        RadioFilesStation.objects.create(broadcaster_id="b1")
+    def test_files_supported_is_in_every_reply(self):
         self.assertIs(self.post("test").json()["files_supported"], True)
         self.assertIs(self.post().json()["files_supported"], True)
         self.assertIs(self.post("heartbeat").json()["files_supported"], True)
+        self.assertIs(self.post("public_url_inactive").json()["files_supported"], True)
 
     def test_heartbeat_from_an_older_audiosync_keeps_what_the_station_offers(self):
         self.post(**self.files_fields())
@@ -140,21 +133,26 @@ class StationPresenceTests(TestCase):
         self.assertTrue(row.radio_on_air)
         self.assertFalse(row.files_enabled)
 
-    def test_admin_page_shows_the_new_address_and_turns_files_on_and_off(self):
-        self.post()
-        channel = RadioChannel.objects.get(broadcaster_id="b1")
+    def test_admin_page_shows_the_new_address_and_the_share_state_with_no_switch(self):
+        self.post(**self.files_fields())
         self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
-        self.assertContains(self.client.get("/mobile/radio"), "/station/presence")
-        self.client.post(f"/mobile/radio/channels/{channel.id}/files")
-        self.assertEqual(RadioFilesStation.objects.get().broadcaster_id, "b1")
-        channel.delete()
-        self.post()
-        self.assertTrue(RadioFilesStation.objects.filter(broadcaster_id="b1").exists())
-        self.client.post(f"/mobile/radio/channels/{RadioChannel.objects.get().id}/files")
-        self.assertFalse(RadioFilesStation.objects.exists())
+        page = self.client.get("/mobile/radio")
+        self.assertContains(page, "/station/presence")
+        self.assertContains(page, "Shared · PIN")
+        self.assertNotContains(page, "Turn on")
 
-    def test_only_a_superuser_can_turn_files_on(self):
-        self.post()
-        channel = RadioChannel.objects.get(broadcaster_id="b1")
-        self.client.post(f"/mobile/radio/channels/{channel.id}/files")
-        self.assertFalse(RadioFilesStation.objects.exists())
+    def test_live_rows_follow_the_station(self):
+        self.post(**self.files_fields(now_playing="First.mp3"))
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+        rows = self.client.get("/mobile/radio/rows")
+        self.assertContains(rows, "First.mp3")
+        self.assertContains(rows, "csrfmiddlewaretoken")  # Remove still works in rows fetched later
+        self.assertNotContains(rows, "<html")
+        self.post("heartbeat", now_playing="Second.mp3", radio_on_air=False, files_protected=False)
+        rows = self.client.get("/mobile/radio/rows")
+        self.assertContains(rows, "Second.mp3")
+        self.assertContains(rows, "Files only")
+        self.assertContains(rows, "Shared · No PIN")
+
+    def test_live_rows_are_for_a_superuser_only(self):
+        self.assertEqual(self.client.get("/mobile/radio/rows").status_code, 302)

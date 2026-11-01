@@ -53,7 +53,6 @@ from .models import (
     AppTelegramLog,
     CronLock,
     RadioChannel,
-    RadioFilesStation,
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
 )
@@ -796,19 +795,26 @@ def telegram_live_toggle(request):
 
 
 # ------------------------------------------------------------------ Radio (live channels)
+def _radio_rows(cfg):
+    from datetime import timedelta
+    cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
+    return [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff} for c in RadioChannel.objects.all()]
+
+
 @superuser_required
 def radio_page(request):
     """Master radio switch, the open ingest URL for AudioSync, and the live channel registry."""
-    from datetime import timedelta
     cfg = AppConfig.load()
-    cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
-    allowed = set(RadioFilesStation.objects.values_list("broadcaster_id", flat=True))
-    rows = [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff, "files_on": c.broadcaster_id in allowed}
-            for c in RadioChannel.objects.all()]
     return render(request, "mobileapi/radio.html", {
-        "cfg": cfg, "rows": rows,
+        "cfg": cfg, "rows": _radio_rows(cfg),
         "ingest_url": request.build_absolute_uri("/station/presence"),
     })
+
+
+@superuser_required
+def radio_rows(request):
+    """The Channels rows alone: the Radio page fetches these to stay live."""
+    return render(request, "mobileapi/_radio_rows.html", {"rows": _radio_rows(AppConfig.load())})
 
 
 @superuser_required
@@ -834,21 +840,6 @@ def radio_save(request):
 def radio_channel_remove(request, channel_id):
     RadioChannel.objects.filter(id=channel_id).delete()
     messages.success(request, "Channel removed.")
-    return redirect("mobile_radio")
-
-
-@superuser_required
-@require_POST
-def radio_channel_files(request, channel_id):
-    """Files on or off for one station, kept by its broadcaster_id so it lasts when the station goes off air."""
-    channel = get_object_or_404(RadioChannel, id=channel_id)
-    found = RadioFilesStation.objects.filter(broadcaster_id=channel.broadcaster_id)
-    if found.exists():
-        found.delete()
-        messages.success(request, f"Files off for {channel.name}.")
-    else:
-        RadioFilesStation.objects.create(broadcaster_id=channel.broadcaster_id, name=channel.name)
-        messages.success(request, f"Files on for {channel.name}.")
     return redirect("mobile_radio")
 
 

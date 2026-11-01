@@ -990,18 +990,6 @@ class RadioChannel(models.Model):
         return f"{self.name} ({'live' if self.is_live else 'off'})"
 
 
-class RadioFilesStation(models.Model):
-    """A station the admin switched on for Files. Separate from RadioChannel, whose row is deleted
-    whenever the station goes off air. Nothing here = phones never hear about that station's files."""
-
-    broadcaster_id = models.CharField(max_length=64, unique=True)
-    name = models.CharField(max_length=120, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.name or self.broadcaster_id
-
-
 
 # =============== Scheduled reminders (server-authored, device-fired) ===============
 REMINDER_RECURRENCE_CHOICES = [

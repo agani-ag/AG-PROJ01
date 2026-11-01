@@ -64,51 +64,31 @@
 <!-- Live channels -->
 <div class="card">
     <div class="card-head">
-        {% icon "signal" %}<h2>Channels</h2>
-        <a href="{% url 'mobile_radio' %}" class="btn btn-sm btn-ghost">{% icon "refresh-cw" %}Refresh</a>
+        {% icon "signal" %}<h2 style="flex:1 1 auto">Channels</h2>
+        <span class="badge badge-success"><span class="dot"></span>Live</span>
     </div>
     <div class="table-wrap">
         <table class="table table-stack">
             <thead><tr><th>Station</th><th>Now playing</th><th>Listeners</th><th>Last heartbeat</th><th>Status</th><th>Files</th><th></th></tr></thead>
-            <tbody>
-                {% for r in rows %}
-                <tr>
-                    <td class="t-primary">
-                        <b>{{ r.c.name }}</b>
-                        <div class="small muted break">{{ r.c.stream_url }}</div>
-                        {% if r.c.ws_url %}<div class="small muted break" title="Live channel the app connects to directly">{% icon "zap" "icon-sm" %}{{ r.c.ws_url }}</div>{% endif %}
-                    </td>
-                    <td>{{ r.c.now_playing|default:"—" }}</td>
-                    <td>{{ r.c.listeners }}</td>
-                    <td class="nowrap small">{{ r.c.last_heartbeat_at|date:"d M, g:i:s A" }}</td>
-                    <td>
-                        {% if not r.fresh %}<span class="badge badge-danger"><span class="dot"></span>Stale</span>
-                        {% elif r.c.radio_on_air %}<span class="badge badge-success"><span class="dot"></span>On air</span>
-                        {% else %}<span class="badge">Files only</span>{% endif %}
-                    </td>
-                    <td class="nowrap">
-                        <div>
-                            <form method="POST" action="{% url 'mobile_radio_channel_files' r.c.id %}"
-                                  {% if not r.files_on %}data-confirm="Turn on Files for {{ r.c.name }}?" data-confirm-text="Anyone using SyncUp can then find this station's shared files." data-confirm-button="Turn on"{% endif %}>
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm">{% if r.files_on %}Turn off{% else %}Turn on{% endif %}</button>
-                            </form>
-                            {% if r.c.files_enabled %}<div class="small muted">Shared · {% if r.c.files_protected %}PIN{% else %}No PIN{% endif %}</div>{% endif %}
-                        </div>
-                    </td>
-                    <td>
-                        <form method="POST" action="{% url 'mobile_radio_channel_remove' r.c.id %}"
-                              data-confirm="Remove {{ r.c.name }}?" data-confirm-text="It comes back on the station's next heartbeat if AudioSync is still broadcasting." data-confirm-button="Remove" data-danger>
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-ghost" title="Remove">{% icon "trash" %}</button>
-                        </form>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="7"><div class="empty">{% icon "radio" %}<b>No stations on air</b><span>A station appears here once AudioSync registers it.</span></div></td></tr>
-                {% endfor %}
-            </tbody>
+            <tbody id="radio-rows">{% include "mobileapi/_radio_rows.html" %}</tbody>
         </table>
     </div>
 </div>
+{% endblock %}
+
+{% block script %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Channels stay live. Not while the tab is hidden, or while a confirm dialog is open: that would replace the form being confirmed.
+    var rows = document.getElementById("radio-rows");
+    function busy() { return document.querySelector("dialog[open]"); }
+    setInterval(function () {
+        if (document.hidden || busy()) return;
+        fetch("{% url 'mobile_radio_rows' %}", { credentials: "same-origin" })
+            .then(function (r) { return r.ok && !r.redirected ? r.text() : null; })
+            .then(function (html) { if (html !== null && !busy()) rows.innerHTML = html; })
+            .catch(function () {});
+    }, 5000);
+});
+</script>
 {% endblock %}

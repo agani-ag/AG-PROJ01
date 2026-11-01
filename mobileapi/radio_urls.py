@@ -8,6 +8,4 @@ from . import radio
 
 urlpatterns = [
     path("station/presence", radio.ingest, name="station_presence"),
-    # The old address, until AudioSync has moved to the new one. Then delete this line.
-    path("radio/ingest", radio.ingest, name="radio_ingest"),
 ]

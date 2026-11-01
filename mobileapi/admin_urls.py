@@ -76,7 +76,7 @@ urlpatterns = [
     path("radio", v.radio_page, name="mobile_radio"),
     path("radio/save", v.radio_save, name="mobile_radio_save"),
     path("radio/channels/<int:channel_id>/remove", v.radio_channel_remove, name="mobile_radio_channel_remove"),
-    path("radio/channels/<int:channel_id>/files", v.radio_channel_files, name="mobile_radio_channel_files"),
+    path("radio/rows", v.radio_rows, name="mobile_radio_rows"),
 
     # Devices
     path("devices", v.devices, name="mobile_devices"),
