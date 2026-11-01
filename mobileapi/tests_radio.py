@@ -7,6 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from .models import AppConfig, RadioChannel
+from .radio import station_page
 
 
 class RadioChannelsTests(TestCase):
@@ -153,6 +154,27 @@ class StationPresenceTests(TestCase):
         self.assertContains(rows, "Second.mp3")
         self.assertContains(rows, "Files only")
         self.assertContains(rows, "Shared · No PIN")
+
+    def test_each_row_links_to_the_stations_page(self):
+        self.post()
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+        rows = self.client.get("/mobile/radio/rows")
+        self.assertContains(rows, 'href="https://abc.trycloudflare.com/"')
+        self.assertContains(rows, 'rel="noopener noreferrer"')
+
+    def test_a_row_with_an_unsafe_address_gets_no_link(self):
+        for bad in ("javascript:alert(1)", "file:///etc/passwd", "https://", "http://[bad"):
+            self.assertEqual(station_page(bad), "", bad)
+        RadioChannel.objects.create(broadcaster_id="b2", name="Odd", stream_url="javascript:alert(1)")
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+        self.assertNotContains(self.client.get("/mobile/radio/rows"), "href=\"javascript")
+
+    def test_heartbeat_ignores_an_audio_address_that_is_not_a_web_address(self):
+        self.post()
+        self.post("heartbeat", stream_url="javascript:alert(1)")
+        self.assertEqual(RadioChannel.objects.get(broadcaster_id="b1").stream_url, self.STREAM)
+        self.post("heartbeat", stream_url="https://new.trycloudflare.com/stream")
+        self.assertEqual(RadioChannel.objects.get(broadcaster_id="b1").stream_url, "https://new.trycloudflare.com/stream")
 
     def test_live_rows_are_for_a_superuser_only(self):
         self.assertEqual(self.client.get("/mobile/radio/rows").status_code, 302)

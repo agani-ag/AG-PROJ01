@@ -57,6 +57,18 @@ def _same_host(url, stream_url):
         return ""
 
 
+def station_page(stream_url):
+    """The station's own page, from its audio address. "" unless it's a plain web address: anyone can
+    register a station, and the admin page turns this into a link."""
+    try:
+        parts = urlsplit(stream_url or "")
+    except ValueError:
+        return ""
+    if parts.scheme.lower() not in ("http", "https") or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}/"
+
+
 def _offers(data, stream_url):
     """What the station's address offers now, from the fields it sent: an older AudioSync sends none."""
     out = {
@@ -172,8 +184,9 @@ def ingest(request):
             ch.is_live = True
             ch.now_playing = (data.get("now_playing") or "").strip()[:300]
             ch.listeners = _int(data.get("listeners"))
-            if data.get("stream_url"):
-                ch.stream_url = str(data["stream_url"]).strip()[:500]
+            stream_url = str(data.get("stream_url") or "").strip()
+            if stream_url.lower().startswith(("http://", "https://")):
+                ch.stream_url = stream_url[:500]
             if "ws_url" in data:
                 ws_url, ws_error = _ws_url(data)
                 if ws_error:

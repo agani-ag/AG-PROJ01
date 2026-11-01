@@ -35,6 +35,7 @@ from . import telegram_hook
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import partner_api
 from . import site_tokens
+from .radio import station_page
 from .models import (
     AppAuthToken,
     AppAccount,
@@ -798,7 +799,8 @@ def telegram_live_toggle(request):
 def _radio_rows(cfg):
     from datetime import timedelta
     cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
-    return [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff} for c in RadioChannel.objects.all()]
+    return [{"c": c, "fresh": c.is_live and c.last_heartbeat_at >= cutoff, "page": station_page(c.stream_url)}
+            for c in RadioChannel.objects.all()]
 
 
 @superuser_required
