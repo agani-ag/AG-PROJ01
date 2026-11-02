@@ -5,6 +5,7 @@ from . import views
 from . import radio
 from . import account_views
 from . import browser_sync
+from . import dns_services
 from . import home_shortcuts
 from . import notifications_api
 from . import hub_links
@@ -42,6 +43,7 @@ urlpatterns = [
     path("chat/unread", views.chat_unread, name="app_chat_unread"),
     path("config", views.config, name="app_config"),
     path("shortcuts", home_shortcuts.catalog, name="app_shortcuts"),  # home page catalogue, no sign-in
+    path("dns", dns_services.catalog, name="app_dns"),  # DNS services for browsing, no sign-in
     path("general-links", views.general_links, name="app_general_links"),  # SyncUp links for everyone, no sign-in
     path("hub/links", hub_links.hub_links, name="app_hub_links"),
     # Partner action / verification prompts shown on the phone

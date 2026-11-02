@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}DNS services{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div class="titles">
+        <h1>DNS services</h1>
+        <p class="page-sub">What people can choose for browsing in SyncUp. Each one appears on every phone, turned off, until the person chooses it. SyncUp doesn't record who turns on what. Changes reach phones the next time the app or its DNS page opens. {{ shown }} shown now.</p>
+    </div>
+    <div class="page-actions">
+        <button type="button" class="btn btn-primary" id="dns-add">{% icon "plus" %}Add DNS</button>
+    </div>
+</div>
+
+<div class="card">
+    {% if services %}
+    <div class="table-wrap">
+        <table class="table dns-table">
+            <tbody>
+                {% for s in services %}
+                <tr{% if not s.is_active %} class="off"{% endif %}>
+                    <td class="dns-move">
+                        <form method="POST" action="{% url 'mobile_dns_move' s.id %}">{% csrf_token %}
+                            <button class="btn btn-ghost btn-icon btn-sm" name="to" value="up" title="Move up" aria-label="Move {{ s.name }} up"{% if forloop.first %} disabled{% endif %}>{% icon "chevron-up" "icon-sm" %}</button>
+                            <button class="btn btn-ghost btn-icon btn-sm" name="to" value="down" title="Move down" aria-label="Move {{ s.name }} down"{% if forloop.last %} disabled{% endif %}>{% icon "chevron-down" "icon-sm" %}</button>
+                        </form>
+                    </td>
+                    <td class="dns-main">
+                        <b>{{ s.name }}</b>
+                        {% if s.unencrypted %}<span class="badge badge-warning">Not encrypted</span>{% endif %}
+                        {% if s.description %}<div class="muted">{{ s.description }}</div>{% endif %}
+                        <code class="muted">{{ s.address }}</code>
+                    </td>
+                    <td>
+                        <form method="POST" action="{% url 'mobile_dns_toggle' s.id %}">{% csrf_token %}
+                            <button class="badge-btn" type="submit" title="{% if s.is_active %}Hide from phones{% else %}Show on phones{% endif %}">
+                                {% if s.is_active %}<span class="badge badge-success"><span class="dot"></span>Shown</span>{% else %}<span class="badge">Hidden</span>{% endif %}
+                            </button>
+                        </form>
+                    </td>
+                    <td class="t-right">
+                        <div class="row gap-sm dns-actions">
+                            <button type="button" class="btn btn-sm" data-test="{{ s.address }}" data-name="{{ s.name }}">{% icon "activity" %}Test</button>
+                            <button type="button" class="btn btn-sm" data-edit="{{ s.id }}" data-name="{{ s.name }}" data-address="{{ s.address }}" data-description="{{ s.description }}">{% icon "pencil" %}Edit</button>
+                            <form method="POST" action="{% url 'mobile_dns_delete' s.id %}" data-confirm="Remove “{{ s.name }}”?"
+                                  data-confirm-text="It leaves every phone. Anyone using it moves to the next in their order, or to their phone's DNS." data-confirm-button="Remove" data-danger>{% csrf_token %}
+                                <button class="btn btn-sm btn-icon text-danger" type="submit" title="Remove" aria-label="Remove {{ s.name }}">{% icon "trash" %}</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty">{% icon "server" %}<b>No DNS services yet</b><span class="muted">Phones only offer "Add your own" until you add one here.</span></div>
+    {% endif %}
+</div>
+
+<dialog class="modal" id="dns-dialog" aria-labelledby="dns-title">
+    <form id="dns-form">{% csrf_token %}
+        <div class="modal-head">{% icon "server" %}<h2 id="dns-title">Add DNS</h2>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm" data-close-dialog aria-label="Close">{% icon "x" %}</button></div>
+        <div class="modal-content">
+            <div class="field"><label class="label" for="dns-name">Name</label>
+                <input type="text" id="dns-name" class="input" maxlength="60" placeholder="AdGuard DNS" required></div>
+            <div class="field"><label class="label" for="dns-address">Address</label>
+                <input type="text" id="dns-address" class="input" maxlength="200" placeholder="https://dns.example.com/dns-query" spellcheck="false" autocapitalize="off" required>
+                <span class="muted" style="font-size:12.5px">An https address, a DNS hostname (dns.google) or an IP address (8.8.8.8). An IP address isn't encrypted.</span></div>
+            <div class="field"><label class="label" for="dns-description">What it does (optional)</label>
+                <input type="text" id="dns-description" class="input" maxlength="120" placeholder="Blocks ads and trackers"></div>
+            <div id="dns-say" role="status" style="min-height:20px;font-size:13px"></div>
+        </div>
+        <div class="modal-foot bordered">
+            <button type="button" class="btn" data-close-dialog>Cancel</button>
+            <button type="button" class="btn" id="dns-test">{% icon "activity" %}Test</button>
+            <button type="button" class="btn" id="dns-anyway" hidden>Add anyway</button>
+            <button type="submit" class="btn btn-primary" id="dns-save">{% icon "check" %}<span id="dns-save-word">Add</span></button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+
+{% block head %}
+<style>
+    .dns-table td { vertical-align: middle; }
+    .dns-table tr.off td { opacity: .55; }
+    .dns-move { width: 44px; }
+    .dns-move form { display: flex; flex-direction: column; }
+    .dns-move .btn { height: 22px; min-height: 22px; }
+    .dns-main { min-width: 220px; }
+    .dns-main code { display: block; font-size: 12px; overflow-wrap: anywhere; }
+    .dns-actions { justify-content: flex-end; flex-wrap: nowrap; }
+    .dns-actions form { display: inline; }
+    .badge-btn { border: 0; background: none; padding: 0; cursor: pointer; }
+    @media (max-width: 640px) { .dns-actions { flex-wrap: wrap; } }
+</style>
+{% endblock %}
+
+{% block script %}
+<script>
+(function () {
+    "use strict";
+    var URLS = { save: "{% url 'mobile_dns_save' %}", test: "{% url 'mobile_dns_test' %}" };
+    var dialog = document.getElementById("dns-dialog");
+    function $(id) { return document.getElementById(id); }
+    var editing = null;
+
+    function say(text, tone) {
+        $("dns-say").textContent = text || "";
+        $("dns-say").style.color = tone ? "var(--" + tone + ")" : "";
+    }
+    function open(id, name, address, description) {
+        editing = id || null;
+        $("dns-title").textContent = id ? "Edit DNS" : "Add DNS";
+        $("dns-save-word").textContent = id ? "Save" : "Add";
+        $("dns-name").value = name || "";
+        $("dns-address").value = address || "";
+        $("dns-description").value = description || "";
+        $("dns-anyway").hidden = true;
+        say("");
+        dialog.showModal();
+        $("dns-name").focus();
+    }
+    function send(anyway) {
+        App.fetchJSON(URLS.save, { method: "POST", body: {
+            id: editing, anyway: !!anyway, name: $("dns-name").value, address: $("dns-address").value, description: $("dns-description").value,
+        } }).then(function (d) {
+            if (d.unanswered) {
+                say(d.unanswered + " This server's network may be what blocks it. Test it from a phone, or add it anyway.", "danger");
+                $("dns-anyway").hidden = false;
+                return;
+            }
+            location.reload();
+        }).catch(function (e) { say(e.message || "Couldn't save.", "danger"); });
+    }
+    function test(address) {
+        return App.fetchJSON(URLS.test, { method: "POST", body: { address: address } });
+    }
+
+    $("dns-add").addEventListener("click", function () { open(); });
+    $("dns-form").addEventListener("submit", function (e) { e.preventDefault(); $("dns-anyway").hidden = true; send(false); });
+    $("dns-anyway").addEventListener("click", function () { send(true); });
+    $("dns-address").addEventListener("input", function () { $("dns-anyway").hidden = true; say(""); });
+    $("dns-test").addEventListener("click", function () {
+        say("Testing…");
+        test($("dns-address").value).then(function (d) {
+            if (d.problem) say(d.problem, "danger"); else say("Working: answered a test lookup in " + d.ms + " ms.", "success");
+        }).catch(function () { say("Couldn't run the test.", "danger"); });
+    });
+    document.addEventListener("click", function (e) {
+        var edit = e.target.closest("[data-edit]");
+        if (edit) open(edit.dataset.edit, edit.dataset.name, edit.dataset.address, edit.dataset.description);
+        var t = e.target.closest("[data-test]");
+        if (t) {
+            test(t.dataset.test).then(function (d) {
+                if (d.problem) App.toast(t.dataset.name + ": " + d.problem, "warning");
+                else App.toast(t.dataset.name + ": working, " + d.ms + " ms", "success");
+            }).catch(function () { App.toast("Couldn't run the test.", "warning"); });
+        }
+    });
+})();
+</script>
+{% endblock %}

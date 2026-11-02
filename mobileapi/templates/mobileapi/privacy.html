@@ -175,7 +175,8 @@
                    never shown to administrators at all). Each can be turned off in
                    <strong>Settings → Sync</strong>; signed out, they stay on your phone. Everything else
                    in Tools — Forest, Breaks, Decide, Split bill, Sensors, Music, Videos — stays on your
-                   phone.</p>
+                   phone, apart from the test data the Sensors Network test exchanges with its test server
+                   (see <a href="#sharing-and-third-parties">Sharing and third parties</a>).</p>
 
                 <p class="block"><strong>Device information (automatic, for every install).</strong> A per-installation
                    identifier, a Firebase Cloud Messaging (FCM) push token, the app version, Android version,
@@ -256,6 +257,15 @@
                     <li><strong>Web content you open in the app</strong> may be operated by us or third
                         parties; any camera/microphone/location/file access you grant goes to the page you
                         opened, under that page's own terms.</li>
+                    <li><strong>Cloudflare</strong> runs the test server for the Sensors Network test. Only
+                        when you press Start, your phone exchanges test data with it to measure your
+                        connection, so Cloudflare sees your IP address, as any website does. The test data
+                        says nothing about you, and your results stay on your phone —
+                        <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare Privacy Policy</a>.</li>
+                    <li><strong>A DNS service you turn on</strong> in Settings → Browser → DNS looks up the
+                        names of the sites you open in SyncUp, including in Incognito tabs, so that service can
+                        see those names. All of them are off until you choose one. We don't record which you use,
+                        and a DNS you add yourself stays on your phone.</li>
                     <li>We may disclose information if required by law.</li>
                 </ul>
             </section>

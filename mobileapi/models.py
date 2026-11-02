@@ -1389,3 +1389,21 @@ class ChannelLink(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class DnsService(models.Model):
+    """A DNS service phones can choose for browsing in SyncUp. Listed on every phone, turned off until the
+    person chooses it; the server is never told who uses what. Hidden ones leave the phones' lists."""
+    name = models.CharField(max_length=60)
+    address = models.CharField(max_length=200, unique=True, help_text="https://…/dns-query, a DNS hostname or an IP address")
+    description = models.CharField(max_length=120, blank=True, help_text="What it does, in a few words")
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "name"]
+
+    def __str__(self):
+        return self.name

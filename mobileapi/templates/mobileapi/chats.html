@@ -52,7 +52,7 @@
     .thread-presence .pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
     .thread-presence.online { color: var(--success); font-weight: 600; }
     .thread-presence.online .pdot { background: var(--success); }
-    .th-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; max-width: 45%; }
+    .th-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; max-width: 30%; }
     .th-clear { flex: 0 0 auto; }
 
     .thread-scroll { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -110,7 +110,7 @@
         .thread-back { display: inline-flex; }
         .thread-head { padding: 8px 12px; }
         .th-email { display: none; }
-        .th-clear-text { display: none; }
+        .th-clear { height: 36px; border-color: var(--border-strong); color: var(--text); }
         .msg-col { max-width: 84%; }
         #threadMessages { padding: 12px 12px 8px; }
         #typingRow { padding: 0 12px 12px; }
@@ -155,7 +155,7 @@
                 <span class="small muted truncate th-email" id="thEmail"></span>
                 <span id="thInactive" class="badge badge-danger" hidden><span class="dot"></span>Inactive</span>
             </div>
-            <button id="clearChat" class="btn btn-sm btn-ghost th-clear" type="button" aria-label="Clear chat" title="Clear chat" hidden>{% icon "trash" %}<span class="th-clear-text">Clear chat</span></button>
+            <button id="clearChat" class="btn btn-sm btn-ghost th-clear" type="button" hidden>{% icon "trash" %}Clear chat</button>
         </div>
         <div class="thread-scroll">
             <div id="threadBody" class="thread-body">

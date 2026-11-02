@@ -17,7 +17,7 @@ from django.db.models import Max
 from mobileapi.models import HomeShortcut, ShortcutCategory
 
 CATALOGUE = [
-    # The app shows these before it has fetched the catalogue (ShortcutCatalog.DEFAULTS) — keep in step.
+    # The app has no shortcuts of its own: what's served from here is all it ever shows.
     ("Popular", [
         ("Google", "https://www.google.com"),
         ("YouTube", "https://m.youtube.com"),

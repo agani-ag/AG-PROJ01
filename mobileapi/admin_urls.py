@@ -2,6 +2,7 @@
 from django.urls import path
 
 from . import admin_insights as insights
+from . import admin_dns as dns
 from . import admin_shortcuts as sc
 from . import admin_views as v
 from . import channels_admin as channels
@@ -30,6 +31,13 @@ urlpatterns = [
     path("site-tokens/reset", v.site_tokens_reset, name="mobile_site_tokens_reset"),
 
     # Verification test tool (send OTP / code / number prompts to a user)
+    # DNS services: what phones can choose from for browsing in SyncUp
+    path("dns", dns.page, name="mobile_dns"),
+    path("dns/save", dns.save, name="mobile_dns_save"),
+    path("dns/test", dns.test, name="mobile_dns_test"),
+    path("dns/<int:service_id>/toggle", dns.toggle, name="mobile_dns_toggle"),
+    path("dns/<int:service_id>/move", dns.move, name="mobile_dns_move"),
+    path("dns/<int:service_id>/delete", dns.delete, name="mobile_dns_delete"),
     # Home shortcuts: the app's home page catalogue (for everyone)
     path("home-shortcuts", sc.home_shortcuts, name="mobile_home_shortcuts"),
     path("home-shortcuts/add", sc.shortcut_add, name="mobile_home_shortcut_add"),
