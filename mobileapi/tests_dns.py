@@ -3,15 +3,18 @@ import json
 import socket
 import struct
 import threading
+from io import StringIO
 from unittest import mock
 
 import requests
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from . import dns_services
 from .dns_services import HTTPS, PLAIN, TLS, kind_of, test_lookup
+from .management.commands.seed_dns_services import SERVICES
 from .models import DnsService
 
 
@@ -239,3 +242,44 @@ class AdminTests(TestCase):
         with mock.patch("mobileapi.admin_dns.test_lookup", return_value=(12, None)):
             r = self.client.post(reverse("mobile_dns_test"), json.dumps({"address": "dns.google"}), content_type="application/json")
         self.assertEqual(r.json(), {"ms": 12, "problem": None})
+
+
+class SeedCommandTests(TestCase):
+    def _run(self, *args):
+        out = StringIO()
+        call_command("seed_dns_services", *args, stdout=out)
+        return out.getvalue()
+
+    def test_phones_get_them_all_in_order(self):
+        self._run()
+        services = self.client.get(reverse("app_dns")).json()["services"]
+        self.assertEqual([s["address"] for s in services], [s[1] for s in SERVICES])
+        self.assertEqual([s["description"] for s in services], [s[2] for s in SERVICES])
+
+    def test_every_one_is_encrypted_and_fits_its_fields(self):
+        self._run()
+        for s in DnsService.objects.all():
+            s.full_clean()
+            self.assertEqual(kind_of(s.address), HTTPS, s.name)
+            self.assertTrue(s.description, s.name)
+
+    def test_running_again_changes_nothing(self):
+        self._run()
+        before = list(DnsService.objects.values_list("id", "position", "updated_at"))
+        self.assertIn("nothing changed", self._run())
+        self.assertEqual(list(DnsService.objects.values_list("id", "position", "updated_at")), before)
+
+    def test_the_admins_own_changes_are_kept_and_new_ones_go_last(self):
+        name, address, _ = SERVICES[1]
+        kept = DnsService.objects.create(name="Renamed", address=address.upper(), description="Mine", position=7, is_active=False)
+        self._run()
+        kept.refresh_from_db()
+        self.assertEqual((kept.name, kept.description, kept.position, kept.is_active), ("Renamed", "Mine", 7, False))
+        self.assertEqual(DnsService.objects.count(), len(SERVICES))
+        self.assertEqual(DnsService.objects.first(), kept)
+        self.assertFalse(DnsService.objects.filter(name=name).exists())
+
+    def test_a_dry_run_adds_nothing(self):
+        out = self._run("--dry-run")
+        self.assertIn(f"Would add {len(SERVICES)} DNS services", out)
+        self.assertFalse(DnsService.objects.exists())

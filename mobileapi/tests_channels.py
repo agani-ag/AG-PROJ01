@@ -124,6 +124,78 @@ class LinkTests(TestCase):
             self.assertFalse(is_channel_link(no), no)
 
 
+class SingleChannelTests(TestCase):
+    URL = "https://cdn.example.org/live/one/index.m3u8"
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+
+    def add(self, url=URL, name="Channel One"):
+        body = {"url": url, "name": name}
+        return self.client.post(reverse("mobile_channels_read"), json.dumps(body), content_type="application/json")
+
+    def test_a_link_and_a_name_add_one_channel_as_not_checked(self):
+        self.assertEqual(self.add().status_code, 200)
+        c = LiveChannel.objects.get()
+        self.assertEqual((c.name, c.url, c.status, c.url_hash), ("Channel One", self.URL, LiveChannel.NEW, stream_hash(self.URL)))
+
+    def test_the_server_never_fetches_it_so_a_stream_it_cannot_reach_still_goes_in(self):
+        with patch("mobileapi.channel_lists.requests.get", side_effect=AssertionError("fetched")) as get:
+            self.assertEqual(self.add().status_code, 200)
+        get.assert_not_called()
+
+    def test_it_reaches_the_private_list_only_once_marked_working(self):
+        from .channel_lists import list_text
+        self.add()
+        self.assertNotIn(self.URL, list_text())
+        LiveChannel.objects.update(status=LiveChannel.OK)
+        self.assertIn(f',Channel One\n{self.URL}\n', list_text())
+
+    def test_a_name_cannot_break_the_private_list(self):
+        from .channel_lists import list_text
+        self.add(name='Bad"\nName\n#EXTM3U')
+        LiveChannel.objects.update(status=LiveChannel.OK)
+        self.assertEqual(LiveChannel.objects.get().name, "Bad' Name #EXTM3U")
+        self.assertEqual(len(list_text().splitlines()), 3)
+
+    def test_the_same_link_twice_is_refused_and_says_which_one(self):
+        self.add()
+        r = self.add(self.URL.replace("cdn.example.org", "CDN.example.org"), "Again")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Channel One (Not checked)", r.json()["error"])
+        self.assertEqual(LiveChannel.objects.count(), 1)
+
+    def test_a_removed_channel_stays_removed(self):
+        self.add()
+        LiveChannel.objects.update(status=LiveChannel.REMOVED)
+        self.assertIn("(Removed)", self.add(name="Again").json()["error"])
+        self.assertEqual(LiveChannel.objects.get().status, LiveChannel.REMOVED)
+
+    def test_only_web_links_are_accepted(self):
+        for bad in ("ftp://x.example.org/a.m3u8", "javascript:alert(1)", "", "https://x.example.org/a b.m3u8", "https://x.example.org/a\n#EXTM3U"):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.add(bad).status_code, 400)
+        self.assertFalse(LiveChannel.objects.exists())
+
+    def test_without_a_name_a_single_stream_says_how_to_add_it(self):
+        with reading("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n"):
+            r = self.add(name="")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Type its name", r.json()["error"])
+        self.assertFalse(LiveChannel.objects.exists())
+
+    def test_without_a_name_a_playlist_still_reads_as_before(self):
+        with reading(PLAYLIST), patch("mobileapi.channel_lists._languages", return_value={}):
+            r = self.add("https://list.example.org/all.m3u", "")
+        self.assertEqual(r.status_code, 200)
+        self.assertGreater(r.json()["result"]["added"], 1)
+
+    def test_only_the_admin_can_add_one(self):
+        self.client.logout()
+        self.assertIn(self.add().status_code, (302, 403))
+        self.assertFalse(LiveChannel.objects.exists())
+
+
 class ListLinkTests(TestCase):
     def setUp(self):
         LiveChannel.objects.create(url_hash="a", url="https://s1.example.org/a.m3u8", name="Alpha", group="News", tvg_id="A.in@SD", logo="https://i/a.png", status=LiveChannel.OK)

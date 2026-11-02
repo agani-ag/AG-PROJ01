@@ -30,6 +30,7 @@ USER_AGENT = "SyncUp-Admin/1.0"
 IPTV_API_BASE = "https://iptv-org.github.io/api/"
 _ATTR = re.compile(r'([A-Za-z0-9_-]+)="([^"]*)"')
 _IPTV_ID = re.compile(r"\.[a-zA-Z]{2}(?:@|$)")
+_ONE_CHANNEL = " If it's one channel, type its name to add it without reading it."
 
 
 class ChannelLinkError(Exception):
@@ -99,7 +100,7 @@ def _fetch_playlist(url):
     try:
         with requests.get(url, timeout=READ_TIMEOUT_SECONDS, stream=True, headers={"User-Agent": USER_AGENT}) as resp:
             if resp.status_code != 200:
-                raise ChannelLinkError(f"That link answered {resp.status_code}.")
+                raise ChannelLinkError(f"That link answered {resp.status_code}." + _ONE_CHANNEL)
             body = b""
             for chunk in resp.iter_content(1024 * 256):
                 body += chunk
@@ -107,7 +108,7 @@ def _fetch_playlist(url):
                     raise ChannelLinkError("That link is too big to read.")
     except requests.RequestException:
         logger.info("Couldn't read channel link %s", url, exc_info=True)
-        raise ChannelLinkError("Couldn't reach that link from the server.") from None
+        raise ChannelLinkError("Couldn't reach that link from the server." + _ONE_CHANNEL) from None
     return body.decode("utf-8", "replace")
 
 
@@ -134,9 +135,9 @@ def read_link(url, leave_out_sports=True, leave_out_headers=True):
         raise ChannelLinkError("Enter an http or https link.")
     text = _fetch_playlist(url)
     if "#EXTM3U" not in text[:2048]:
-        raise ChannelLinkError("That link isn't a channel list.")
+        raise ChannelLinkError("That link isn't a channel list." + _ONE_CHANNEL)
     if "#EXT-X-STREAM-INF" in text or "#EXT-X-TARGETDURATION" in text:
-        raise ChannelLinkError("That's one stream, not a list. You can still send it from the Send tab.")
+        raise ChannelLinkError("That's one stream, not a list. Type its name to add it as one channel.")
     found = parse_playlist(text)
     if not found:
         raise ChannelLinkError("That link has no channels in it.")
@@ -175,6 +176,22 @@ def read_link(url, leave_out_sports=True, leave_out_headers=True):
             ) for ch in fresh
         ], batch_size=500)
     return {"found": len(found), "added": len(fresh), "already": already, "sports": sports, "headers": headers}
+
+
+def add_stream(url, name):
+    """Add one channel by its link, as Not checked. It isn't read: the admin tests it by hand like any
+    other, and a stream this server can't reach may still play on a phone."""
+    url = web_link(url)
+    if not url or len(url.split()) != 1:
+        raise ChannelLinkError("Enter an http or https link.")
+    name = _clean(name, 200)
+    if not name:
+        raise ChannelLinkError("Enter the channel's name.")
+    digest = stream_hash(url)
+    here = LiveChannel.objects.filter(url_hash=digest).first()
+    if here:
+        raise ChannelLinkError(f"That link is already here as {here.name} ({here.get_status_display()}).")
+    LiveChannel.objects.create(url_hash=digest, url=url, name=name)
 
 
 def new_token():

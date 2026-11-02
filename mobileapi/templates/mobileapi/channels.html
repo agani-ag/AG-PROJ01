@@ -192,9 +192,16 @@
 <dialog class="modal ch-add" id="add-dialog" aria-labelledby="add-title">
     <div class="card-head"><h2 id="add-title">Add link</h2><button class="btn btn-ghost btn-icon btn-sm" type="button" id="add-close" aria-label="Close">{% icon "x" %}</button></div>
     <div class="modal-body">
-        <input class="input" id="add-url" type="url" placeholder="https://iptv-org.github.io/iptv/index.m3u" aria-label="Link">
-        <label class="ch-check"><input type="checkbox" id="add-sports" checked><span>Leave out Sports</span></label>
-        <label class="ch-check"><input type="checkbox" id="add-headers" checked><span>Leave out channels that need special headers (the app can't play them)</span></label>
+        <div class="field">
+            <label class="label" for="add-url">Playlist or channel link</label>
+            <input class="input" id="add-url" type="url" placeholder="https://iptv-org.github.io/iptv/index.m3u">
+        </div>
+        <div class="field">
+            <label class="label" for="add-name">Channel name <span class="opt">for a single channel link</span></label>
+            <input class="input" id="add-name" maxlength="200" autocomplete="off" placeholder="Leave empty for a playlist">
+        </div>
+        <label class="ch-check" id="add-sports-row"><input type="checkbox" id="add-sports" checked><span>Leave out Sports</span></label>
+        <label class="ch-check" id="add-headers-row"><input type="checkbox" id="add-headers" checked><span>Leave out channels that need special headers (the app can't play them)</span></label>
         <div class="ch-result" id="add-result" hidden></div>
     </div>
     <div class="ch-add-foot">
@@ -502,13 +509,23 @@ document.addEventListener("DOMContentLoaded", function () {
                 '<td class="nowrap"><button class="btn btn-sm" type="button" data-url="' + esc(s.url) + '">' + App.icon("refresh-cw") + "Read again</button></td></tr>";
         }).join("") || '<tr><td colspan="6"><div class="empty">' + App.icon("link") + "<b>No links yet</b><span>Add a link to bring channels in.</span></div></td></tr>";
     }
+    // With a name, the link is one channel: nothing to read, so nothing to leave out.
+    function addMode() {
+        var one = !!$("add-name").value.trim();
+        $("add-sports-row").hidden = one;
+        $("add-headers-row").hidden = one;
+        $("add-go").textContent = one ? "Add channel" : "Read link";
+    }
     function openAdd(url) {
         $("add-url").value = url || "";
+        $("add-name").value = "";
+        addMode();
         $("add-result").hidden = true;
         $("add-dialog").showModal();
         $("add-url").focus();
     }
     $("add-open").addEventListener("click", function () { openAdd(""); });
+    $("add-name").addEventListener("input", addMode);
     $("sources").addEventListener("click", function (e) {
         var b = e.target.closest("[data-url]");
         if (b) openAdd(b.dataset.url);
@@ -516,28 +533,29 @@ document.addEventListener("DOMContentLoaded", function () {
     $("add-close").addEventListener("click", function () { $("add-dialog").close(); });
     $("add-cancel").addEventListener("click", function () { $("add-dialog").close(); });
     $("add-go").addEventListener("click", function () {
-        var go = $("add-go");
+        var go = $("add-go"), one = $("add-name").value.trim();
         go.disabled = true;
-        go.textContent = "Reading…";
+        go.textContent = one ? "Adding…" : "Reading…";
         App.fetchJSON(URLS.read, {
             method: "POST",
-            body: { url: $("add-url").value.trim(), leave_out_sports: $("add-sports").checked, leave_out_headers: $("add-headers").checked },
+            body: { url: $("add-url").value.trim(), name: one, leave_out_sports: $("add-sports").checked, leave_out_headers: $("add-headers").checked },
         }).then(function (d) {
             var r = d.result;
-            $("add-result").innerHTML =
+            $("add-result").innerHTML = one ? "<div><span>Added as Not checked</span><b>" + esc(one) + "</b></div>" :
                 "<div><span>Found in the link</span><b>" + fmt(r.found) + "</b></div>" +
                 "<div><span>New, added as Not checked</span><b>" + fmt(r.added) + "</b></div>" +
                 "<div><span>Already here, left as they are</span><b>" + fmt(r.already) + "</b></div>" +
                 (r.sports ? "<div><span>Sports, left out</span><b>" + fmt(r.sports) + "</b></div>" : "") +
                 (r.headers ? "<div><span>Special headers, left out</span><b>" + fmt(r.headers) + "</b></div>" : "");
             $("add-result").hidden = false;
+            if (one) { $("add-url").value = ""; $("add-name").value = ""; }
             state = d.state;
             drawFacets();
             drawSources();
             load();
         }).catch(fail).finally(function () {
             go.disabled = false;
-            go.textContent = "Read link";
+            addMode();
         });
     });
 

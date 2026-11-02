@@ -16,7 +16,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from . import fcm
 from .admin_views import superuser_required
-from .channel_lists import ChannelLinkError, new_token, read_link, web_link
+from .channel_lists import ChannelLinkError, add_stream, new_token, read_link, web_link
 from .models import AppAccount, AppDevice, ChannelLink, ChannelSource, LiveChannel
 
 PAGE_SIZE = 50
@@ -130,10 +130,15 @@ def mark(request):
 @superuser_required
 @require_POST
 def read(request):
-    """Add a link, or read one again."""
+    """Add a link, or read one again. With a name, the link is one channel."""
     body = _body(request)
+    name = str(body.get("name") or "").strip()
     try:
-        result = read_link(body.get("url"), bool(body.get("leave_out_sports", True)), bool(body.get("leave_out_headers", True)))
+        if name:
+            add_stream(body.get("url"), name)
+            result = None
+        else:
+            result = read_link(body.get("url"), bool(body.get("leave_out_sports", True)), bool(body.get("leave_out_headers", True)))
     except ChannelLinkError as e:
         return _bad(str(e))
     return JsonResponse({"result": result, "state": _state(request)})
