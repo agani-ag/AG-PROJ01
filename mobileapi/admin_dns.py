@@ -12,7 +12,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from .admin_views import superuser_required
-from .dns_services import PLAIN, kind_of, test_lookup
+from .dns_services import HTTP2_ONLY, PLAIN, kind_of, test_lookup
 from .models import DnsService
 
 
@@ -53,7 +53,7 @@ def save(request):
         return JsonResponse({"error": "That address is already on the list."}, status=400)
     if not body.get("anyway") and (service is None or service.address != address):
         _, problem = test_lookup(address)
-        if problem:
+        if problem and problem != HTTP2_ONLY:
             return JsonResponse({"unanswered": problem})
     if service:
         service.name, service.address, service.description = name, address, description
@@ -70,6 +70,8 @@ def save(request):
 @require_POST
 def test(request):
     ms, problem = test_lookup(str(_body(request).get("address") or ""))
+    if problem == HTTP2_ONLY:
+        return JsonResponse({"ms": None, "problem": None, "unknown": problem})
     return JsonResponse({"ms": ms, "problem": problem})
 
 

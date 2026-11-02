@@ -333,6 +333,41 @@ class PushPageTests(TestCase):
         self.assertEqual(self.send("https://example.org/page", open_in="syncup")["open_in"], "syncup")
 
 
+class MissedPushTests(TestCase):
+    """Whoever missed the push still finds it on the Notifications page, with what fills in Channels."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.org", "pw"))
+        self.account = AppAccount.objects.create(name="Priya", email="priya@example.com")
+        self.headers = {"HTTP_AUTHORIZATION": f"Bearer {AppAuthToken.issue(self.account, device_id='d1').key}"}
+
+    def listed(self):
+        self.client.post(reverse("mobile_channels_send"), json.dumps({
+            "mode": "any", "link": "https://lists.example.org/index.m3u", "name": "My List",
+            "title": "Your list", "body": "Tap to add it.", "accounts": [self.account.id],
+        }), content_type="application/json")
+        return self.client.get(reverse("app_notifications"), {"tab": "new"}, **self.headers).json()["items"]
+
+    def assert_fills_in_channels(self, items):
+        self.assertEqual(
+            [(i["title"], i["link_url"], i["link_title"], i["open_in"]) for i in items],
+            [("Your list", "https://lists.example.org/index.m3u", "My List", "channels")],
+        )
+
+    def test_a_delivered_push_is_listed_with_its_link(self):
+        AppDevice.objects.create(device_id="d1", account=self.account, fcm_token="tok-a", is_active=True)
+        with patch("mobileapi.fcm.is_configured", return_value=True), patch("mobileapi.fcm.send", return_value=(1, 0)) as send:
+            items = self.listed()
+        self.assertEqual(send.call_count, 1)
+        self.assert_fills_in_channels(items)
+
+    def test_a_push_that_never_reached_a_phone_is_still_listed(self):
+        with patch("mobileapi.fcm.is_configured", return_value=True), patch("mobileapi.fcm.send") as send:
+            items = self.listed()
+        self.assertEqual(send.call_count, 0)
+        self.assert_fills_in_channels(items)
+
+
 class SavedListSyncTests(TestCase):
     """A person's saved channel lists travel with the account, through browser sync."""
 

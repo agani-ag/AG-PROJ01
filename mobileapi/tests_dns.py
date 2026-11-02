@@ -5,6 +5,7 @@ import struct
 import threading
 from unittest import mock
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -28,6 +29,12 @@ class AddressTests(TestCase):
 
 def _reply(query, rcode=0):
     return query[:2] + struct.pack("!H", 0x8000 | rcode) + query[4:]
+
+
+def _http_reply(status):
+    r = requests.Response()
+    r.status_code = status
+    return r
 
 
 class LookupTests(TestCase):
@@ -76,6 +83,14 @@ class LookupTests(TestCase):
             ms, problem = test_lookup("dns.google")
         self.assertIsNone(ms)
         self.assertIn("didn't answer", problem)
+
+    def test_a_service_that_only_speaks_http2_isnt_called_broken(self):
+        with mock.patch("mobileapi.dns_services.requests.post", return_value=_http_reply(505)):
+            self.assertEqual(test_lookup("https://dns.quad9.net/dns-query"), (None, dns_services.HTTP2_ONLY))
+
+    def test_other_http_errors_are_problems(self):
+        with mock.patch("mobileapi.dns_services.requests.post", return_value=_http_reply(500)):
+            self.assertIn("HTTP 500", test_lookup("https://dns.example.com/dns-query")[1])
 
     def test_not_an_address(self):
         self.assertEqual(test_lookup("nonsense")[1], "That isn't a DNS address.")
@@ -160,6 +175,16 @@ class AdminTests(TestCase):
             self.assertFalse(DnsService.objects.exists())
             self.assertEqual(self._save(name="G", address="dns.google", anyway=True).json(), {"ok": True})
         self.assertTrue(DnsService.objects.exists())
+
+    def test_one_that_only_speaks_http2_adds_straight_away(self):
+        with mock.patch("mobileapi.admin_dns.test_lookup", return_value=(None, dns_services.HTTP2_ONLY)):
+            self.assertEqual(self._save(name="Q", address="https://dns.quad9.net/dns-query").json(), {"ok": True})
+        self.assertTrue(DnsService.objects.filter(name="Q").exists())
+
+    def test_the_test_button_says_when_it_cant_tell(self):
+        with mock.patch("mobileapi.admin_dns.test_lookup", return_value=(None, dns_services.HTTP2_ONLY)):
+            r = self.client.post(reverse("mobile_dns_test"), json.dumps({"address": "https://dns.quad9.net/dns-query"}), content_type="application/json")
+        self.assertEqual(r.json(), {"ms": None, "problem": None, "unknown": dns_services.HTTP2_ONLY})
 
     def test_bad_input_is_refused(self):
         self.assertEqual(self._save(name="", address="dns.google").status_code, 400)

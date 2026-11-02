@@ -146,7 +146,9 @@
     $("dns-test").addEventListener("click", function () {
         say("Testing…");
         test($("dns-address").value).then(function (d) {
-            if (d.problem) say(d.problem, "danger"); else say("Working: answered a test lookup in " + d.ms + " ms.", "success");
+            if (d.unknown) say(d.unknown);
+            else if (d.problem) say(d.problem, "danger");
+            else say("Working: answered a test lookup in " + d.ms + " ms.", "success");
         }).catch(function () { say("Couldn't run the test.", "danger"); });
     });
     document.addEventListener("click", function (e) {
@@ -155,7 +157,8 @@
         var t = e.target.closest("[data-test]");
         if (t) {
             test(t.dataset.test).then(function (d) {
-                if (d.problem) App.toast(t.dataset.name + ": " + d.problem, "warning");
+                if (d.unknown) App.toast(t.dataset.name + ": " + d.unknown);
+                else if (d.problem) App.toast(t.dataset.name + ": " + d.problem, "warning");
                 else App.toast(t.dataset.name + ": working, " + d.ms + " ms", "success");
             }).catch(function () { App.toast("Couldn't run the test.", "warning"); });
         }

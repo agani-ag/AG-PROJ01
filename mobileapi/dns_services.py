@@ -22,6 +22,8 @@ _HTTPS = re.compile(r"^https://[^\s/]+\.[^\s/]+/\S*$", re.I)
 _HOST = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$", re.I)
 _TEST_NAME = "example.com"
 _QUERY_ID = 0x5359
+# Some services (Quad9) refuse the HTTP/1.1 this test speaks, though phones reach them over HTTP/2.
+HTTP2_ONLY = "It replied, but only speaks HTTP/2, which this test can't use. Phones can, so turn it on in the app to check it."
 
 
 def kind_of(address):
@@ -108,6 +110,8 @@ def test_lookup(address, timeout=5):
     try:
         data = _ask(kind, address.strip(), _query(), timeout)
     except requests.HTTPError as e:
+        if e.response.status_code == 505:
+            return None, HTTP2_ONLY
         return None, f"It answered with an error (HTTP {e.response.status_code})."
     except (OSError, ssl.SSLError, ValueError) as e:
         return None, f"It didn't answer ({type(e).__name__})."
