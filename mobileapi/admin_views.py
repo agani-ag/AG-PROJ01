@@ -31,6 +31,7 @@ from . import remoteconfig as rc
 from . import telegram as tg
 from . import telegram_chats as tg_chats
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
+from . import hub_people
 from . import partner_api
 from . import site_tokens
 from .channel_lists import is_channel_link
@@ -311,6 +312,7 @@ def general_links(request):
     return render(request, "mobileapi/general_links.html", {
         "links": links, "links_key": cfg.links_key,
         "hub_count": sum(1 for l in links if l.external_id),
+        "people_count": len(hub_people.copied_accounts()),
     })
 
 
