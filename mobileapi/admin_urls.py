@@ -80,6 +80,7 @@ urlpatterns = [
     path("channels/rows", channels.rows, name="mobile_channels_rows"),
     path("channels/mark", channels.mark, name="mobile_channels_mark"),
     path("channels/read", channels.read, name="mobile_channels_read"),
+    path("channels/delete-link", channels.delete_link, name="mobile_channels_delete_link"),
     path("channels/new-link", channels.new_link, name="mobile_channels_new_link"),
     path("channels/accounts", channels.accounts, name="mobile_channels_accounts"),
     path("channels/send", channels.send, name="mobile_channels_send"),

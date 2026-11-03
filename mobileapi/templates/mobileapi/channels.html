@@ -60,6 +60,20 @@
     .ch-form { border-left: 0; border-top: 1px solid var(--border); }
     .ch-hide-sm { display: none; }
   }
+  /* Phones: the buttons go under the name, in reach without scrolling sideways. The tile above says the status. */
+  @media (max-width: 640px) {
+    .ch-list thead { display: block; }
+    .ch-list thead tr { padding: 0 14px; background: var(--surface-2); }
+    .ch-list th { padding: 9px 0; }
+    .ch-list th.t-hide-sm { display: none; }
+    .ch-list tr { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
+    .ch-list tr.ch-now { background: var(--accent-soft); }
+    .ch-list td:first-child { display: block; grid-row: span 2; padding-top: 10px; text-align: left; }
+    .ch-list td[colspan] { grid-column: 1 / -1; }
+    .ch-acts .btn { height: 36px; border-color: var(--border-strong); color: var(--text); }
+    .ch-acts .btn-icon { width: 36px; }
+    #sources td[colspan] { display: block; }
+  }
 </style>
 {% endblock %}
 
@@ -125,8 +139,8 @@
             <button class="btn btn-sm" type="button" id="bulk-back">{% icon "refresh-cw" %}Put back</button>
         </div>
         <div class="table-wrap">
-            <table class="table">
-                <thead><tr><th style="width:34px"><input type="checkbox" id="all" aria-label="Select this page"></th><th>Channel</th><th class="ch-hide-sm">Link</th><th>Status</th><th></th></tr></thead>
+            <table class="table table-stack ch-list">
+                <thead><tr><th style="width:34px"><input type="checkbox" id="all" aria-label="Select this page"></th><th>Channel</th><th class="ch-hide-sm">Link</th><th class="t-hide-sm">Status</th><th class="t-hide-sm"></th></tr></thead>
                 <tbody id="rows"></tbody>
             </table>
         </div>
@@ -141,14 +155,14 @@
 <!-- LINKS -->
 <section data-pane="links" hidden>
     <div class="card">
-        <div class="card-head">{% icon "link" %}<h2>Links you've added</h2></div>
+        <div class="card-head">{% icon "link" %}<h2>Links you've added</h2><button class="btn btn-sm" type="button" id="read-all" hidden>{% icon "refresh-cw" %}<span id="read-all-label">Read all again</span></button></div>
         <div class="table-wrap">
-            <table class="table">
+            <table class="table table-stack">
                 <thead><tr><th>Link</th><th>Last read</th><th>Found</th><th>Added</th><th>Left out</th><th></th></tr></thead>
                 <tbody id="sources"></tbody>
             </table>
         </div>
-        <div class="ch-foot">Reading a link again only adds what's new. A channel you've already checked or removed stays as you left it. The same stream never appears twice.</div>
+        <div class="ch-foot">Reading a link again only adds what's new. A channel you've already checked or removed stays as you left it. The same stream never appears twice. Deleting a link leaves its channels as they are.</div>
     </div>
 </section>
 
@@ -218,7 +232,7 @@
 document.addEventListener("DOMContentLoaded", function () {
     var URLS = {
         rows: "{% url 'mobile_channels_rows' %}", mark: "{% url 'mobile_channels_mark' %}", read: "{% url 'mobile_channels_read' %}",
-        newLink: "{% url 'mobile_channels_new_link' %}", accounts: "{% url 'mobile_channels_accounts' %}", send: "{% url 'mobile_channels_send' %}",
+        deleteLink: "{% url 'mobile_channels_delete_link' %}", newLink: "{% url 'mobile_channels_new_link' %}", accounts: "{% url 'mobile_channels_accounts' %}", send: "{% url 'mobile_channels_send' %}",
     };
     var PAGE_SIZE = {{ page_size }};
     var state = JSON.parse(document.getElementById("channels-state").textContent);
@@ -274,15 +288,14 @@ document.addEventListener("DOMContentLoaded", function () {
     function drawRows() {
         var now = !$("tester").hidden && queue[at] ? queue[at].id : null;
         $("rows").innerHTML = rows.map(function (c) {
-            var acts = c.status === "removed"
+            var acts = '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Test" aria-label="Test ' + esc(c.name) + '" data-do="test" data-id="' + c.id + '">' + App.icon("play") + "</button>" + (c.status === "removed"
                 ? '<button class="btn btn-ghost btn-sm" type="button" data-do="new" data-id="' + c.id + '">' + App.icon("refresh-cw") + "Put back</button>"
-                : '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Test" aria-label="Test ' + esc(c.name) + '" data-do="test" data-id="' + c.id + '">' + App.icon("play") + "</button>" +
-                  (c.status === "new" ? '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Working" aria-label="Mark ' + esc(c.name) + ' working" data-do="ok" data-id="' + c.id + '">' + App.icon("check") + "</button>" : "") +
-                  '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Remove" aria-label="Remove ' + esc(c.name) + '" data-do="removed" data-id="' + c.id + '">' + App.icon("trash") + "</button>";
+                : (c.status === "new" ? '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Working" aria-label="Mark ' + esc(c.name) + ' working" data-do="ok" data-id="' + c.id + '">' + App.icon("check") + "</button>" : "") +
+                  '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Remove" aria-label="Remove ' + esc(c.name) + '" data-do="removed" data-id="' + c.id + '">' + App.icon("trash") + "</button>");
             return '<tr' + (c.id === now ? ' class="ch-now"' : "") + '><td><input type="checkbox" aria-label="Select ' + esc(c.name) + '" data-sel="' + c.id + '"' + (selected.has(c.id) ? " checked" : "") + "></td>" +
-                '<td><div class="ch-name">' + logoCell(c) + "<div><b>" + esc(c.name) + '</b><span class="small muted">' + esc([c.group, c.language].filter(Boolean).join(" · ")) + "</span></div></div></td>" +
-                '<td class="ch-hide-sm">' + (c.http ? '<span class="ch-tag warn" title="This https page can\'t play it. Phones can.">http</span>' : '<span class="ch-tag">https</span>') + "</td>" +
-                "<td>" + badge(c.status) + '</td><td><div class="ch-acts">' + acts + "</div></td></tr>";
+                '<td class="t-primary"><div class="ch-name">' + logoCell(c) + "<div><b>" + esc(c.name) + '</b><span class="small muted">' + esc([c.group, c.language].filter(Boolean).join(" · ")) + "</span></div></div></td>" +
+                '<td class="ch-hide-sm t-hide-sm">' + (c.http ? '<span class="ch-tag warn" title="This https page can\'t play it. Phones can.">http</span>' : '<span class="ch-tag">https</span>') + "</td>" +
+                '<td class="t-hide-sm">' + badge(c.status) + '</td><td><div class="ch-acts">' + acts + "</div></td></tr>";
         }).join("") || '<tr><td colspan="5"><div class="empty">' + App.icon("tv") + "<b>" + (total === 0 && !filters.q && !filters.group && !filters.language && filters.status === "new" ? "Nothing to check" : "Nothing here") + "</b><span>" + (filters.status === "new" ? "Add a link to bring channels in." : "Nothing here with these filters.") + "</span></div></td></tr>";
         $("rows").querySelectorAll(".ch-logo img").forEach(function (img) {
             img.addEventListener("error", function () { img.parentNode.textContent = img.parentNode.dataset.letters; });
@@ -291,7 +304,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $("foot").textContent = total ? fmt(first) + "–" + fmt(Math.min(page * PAGE_SIZE, total)) + " of " + fmt(total) : "";
         $("prev").disabled = page <= 1;
         $("next").disabled = page >= pages;
-        $("test-start").hidden = filters.status === "removed" || !rows.length;
+        $("test-start").hidden = !rows.length;
         drawBulk();
     }
     function drawBulk() {
@@ -435,6 +448,7 @@ document.addEventListener("DOMContentLoaded", function () {
         $("t-name").textContent = c.name;
         $("t-meta").textContent = [c.group, c.language].filter(Boolean).join(" · ");
         $("t-url").textContent = c.url;
+        $("t-remove").hidden = c.status === "removed";
         play(c);
         drawRows();
     }
@@ -495,20 +509,54 @@ document.addEventListener("DOMContentLoaded", function () {
         if ($("tester").hidden || document.querySelector("dialog[open]") || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
         var k = e.key.toLowerCase();
         if (k === "w") decide("ok");
-        else if (k === "r") decide("removed");
+        else if (k === "r" && !$("t-remove").hidden) decide("removed");
         else if (k === "s") decide(null);
     });
 
     // ---------------------------------------------------------------- links
+    var readingAll = false;
     function drawSources() {
+        var off = readingAll ? " disabled" : "";
         $("sources").innerHTML = state.sources.map(function (s) {
             var out = [];
             if (s.sports) out.push(fmt(s.sports) + " Sports");
             if (s.headers) out.push(fmt(s.headers) + " special headers");
-            return '<tr><td class="break"><span class="mono">' + esc(s.url) + '</span></td><td class="nowrap small">' + esc(s.read) + "</td><td>" + fmt(s.found) + "</td><td>" + fmt(s.added) + '</td><td class="small">' + (esc(out.join(", ")) || "—") + "</td>" +
-                '<td class="nowrap"><button class="btn btn-sm" type="button" data-url="' + esc(s.url) + '">' + App.icon("refresh-cw") + "Read again</button></td></tr>";
+            return '<tr><td class="break t-primary"><span class="mono">' + esc(s.url) + '</span></td><td class="nowrap small" data-label="Last read">' + esc(s.read) + '</td><td data-label="Found">' + fmt(s.found) + '</td><td data-label="Added">' + fmt(s.added) + '</td><td class="small" data-label="Left out">' + (esc(out.join(", ")) || "—") + "</td>" +
+                '<td class="nowrap"><div class="ch-acts"><button class="btn btn-sm" type="button" data-url="' + esc(s.url) + '"' + off + ">" + App.icon("refresh-cw") + "Read again</button>" +
+                '<button class="btn btn-ghost btn-icon btn-sm" type="button" title="Delete link" aria-label="Delete link" data-delete="' + s.id + '"' + off + ">" + App.icon("trash") + "</button></div></td></tr>";
         }).join("") || '<tr><td colspan="6"><div class="empty">' + App.icon("link") + "<b>No links yet</b><span>Add a link to bring channels in.</span></div></td></tr>";
+        $("read-all").hidden = !state.sources.length;
     }
+    // One at a time, each read the way it went last time: what a link left out then, it leaves out now.
+    $("read-all").addEventListener("click", function () {
+        var links = state.sources.slice(), added = 0, bad = 0;
+        readingAll = true;
+        $("read-all").disabled = true;
+        drawSources();
+        function next(i) {
+            if (i === links.length) {
+                readingAll = false;
+                $("read-all").disabled = false;
+                $("read-all-label").textContent = "Read all again";
+                drawSources();
+                load();
+                if (bad < links.length) App.toast("Read " + plural(links.length - bad, "link") + ": " + (added ? plural(added, "new channel") + " in Not checked" : "nothing new"));
+                return;
+            }
+            var s = links[i];
+            $("read-all-label").textContent = "Reading " + (i + 1) + " of " + links.length + "…";
+            App.fetchJSON(URLS.read, { method: "POST", body: { url: s.url, leave_out_sports: s.sports > 0, leave_out_headers: s.headers > 0 } }).then(function (d) {
+                added += d.result.added;
+                state = d.state;
+                drawFacets();
+                drawSources();
+            }).catch(function (e) {
+                bad++;
+                App.toast(s.url + ": " + (e.message || "Something went wrong."), "danger");
+            }).then(function () { next(i + 1); });
+        }
+        next(0);
+    });
     // With a name, the link is one channel: nothing to read, so nothing to leave out.
     function addMode() {
         var one = !!$("add-name").value.trim();
@@ -529,6 +577,17 @@ document.addEventListener("DOMContentLoaded", function () {
     $("sources").addEventListener("click", function (e) {
         var b = e.target.closest("[data-url]");
         if (b) openAdd(b.dataset.url);
+        var del = e.target.closest("[data-delete]");
+        if (!del) return;
+        var id = +del.dataset.delete, s = state.sources.filter(function (r) { return r.id === id; })[0];
+        App.confirm({ title: "Delete this link?", text: s.url + " won't be read again. Its channels stay as they are.", confirmText: "Delete", danger: true }).then(function (ok) {
+            if (!ok) return;
+            App.fetchJSON(URLS.deleteLink, { method: "POST", body: { id: id } }).then(function (d) {
+                state = d.state;
+                drawSources();
+                App.toast("Link deleted");
+            }).catch(fail);
+        });
     });
     $("add-close").addEventListener("click", function () { $("add-dialog").close(); });
     $("add-cancel").addEventListener("click", function () { $("add-dialog").close(); });

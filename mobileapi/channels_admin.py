@@ -146,6 +146,17 @@ def read(request):
 
 @superuser_required
 @require_POST
+def delete_link(request):
+    """Forget a link. Its channels stay exactly as the admin left them, so adding it back undoes nothing."""
+    link_id = _body(request).get("id")
+    if not isinstance(link_id, int):
+        return _bad("Pick a link first.")
+    ChannelSource.objects.filter(id=link_id).delete()
+    return JsonResponse({"state": _state(request)})
+
+
+@superuser_required
+@require_POST
 def new_link(request):
     """The old link stops at once, for everyone who saved it, until they're sent this one."""
     link = ChannelLink.load()

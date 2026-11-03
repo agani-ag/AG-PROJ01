@@ -243,7 +243,7 @@ class AdminPageTests(TestCase):
     def test_only_a_superuser_gets_in(self):
         self.client.logout()
         names = ["mobile_channels", "mobile_channels_rows", "mobile_channels_accounts"]
-        posts = ["mobile_channels_mark", "mobile_channels_read", "mobile_channels_new_link", "mobile_channels_send"]
+        posts = ["mobile_channels_mark", "mobile_channels_read", "mobile_channels_delete_link", "mobile_channels_new_link", "mobile_channels_send"]
         for name in names + posts:
             with self.subTest(name=name):
                 self.assertIn(self.client.post(reverse(name)).status_code if name in posts else self.client.get(reverse(name)).status_code, (302, 403))
@@ -288,6 +288,13 @@ class AdminPageTests(TestCase):
         self.assertEqual(back.status, "new")
         self.assertIsNone(back.checked_at)
 
+    def test_a_removed_channel_can_be_played_and_go_straight_to_working(self):
+        self.post("mobile_channels_mark", {"status": "removed", "ids": self.ids[:1]})
+        row = self.client.get(reverse("mobile_channels_rows"), {"status": "removed"}).json()["rows"][0]
+        self.assertEqual((row["id"], row["url"]), (self.ids[0], "https://s.example.org/0.m3u8"))
+        r = self.post("mobile_channels_mark", {"status": "ok", "ids": self.ids[:1]}).json()
+        self.assertEqual(r["counts"], {"new": 119, "ok": 1, "removed": 0})
+
     def test_all_matching_only_touches_what_the_filters_show(self):
         r = self.post("mobile_channels_mark", {"status": "ok", "all": True, "filters": {"status": "new", "group": "News"}}).json()
         self.assertEqual(r["changed"], 10)
@@ -309,6 +316,31 @@ class AdminPageTests(TestCase):
             bad = self.post("mobile_channels_read", {"url": LINK})
         self.assertEqual(bad.status_code, 400)
         self.assertIn("isn't a channel list", bad.json()["error"])
+
+    def test_deleting_a_link_leaves_its_channels_as_they_are_and_adding_it_back_undoes_nothing(self):
+        with reading(PLAYLIST), patch("mobileapi.channel_lists._languages", return_value={}):
+            self.post("mobile_channels_read", {"url": LINK})
+        source = ChannelSource.objects.get()
+        LiveChannel.objects.filter(name="Five").update(status=LiveChannel.REMOVED)
+        LiveChannel.objects.filter(name="News, One").update(status=LiveChannel.OK)
+        before = LiveChannel.objects.count()
+        self.assertEqual(self.post("mobile_channels_delete_link", {"id": source.id}).json()["state"]["sources"], [])
+        self.assertFalse(ChannelSource.objects.exists())
+        self.assertEqual(LiveChannel.objects.count(), before)
+        self.assertEqual(LiveChannel.objects.get(name="Five").status, LiveChannel.REMOVED)
+        with reading(PLAYLIST), patch("mobileapi.channel_lists._languages", return_value={}):
+            back = self.post("mobile_channels_read", {"url": LINK}).json()
+        self.assertEqual(back["result"]["added"], 0)
+        self.assertEqual(LiveChannel.objects.get(name="Five").status, LiveChannel.REMOVED)
+        self.assertEqual(LiveChannel.objects.get(name="News, One").status, LiveChannel.OK)
+
+    def test_a_bad_delete_changes_nothing(self):
+        source = ChannelSource.objects.create(url=LINK)
+        for bad in ("1", None, [source.id]):
+            with self.subTest(bad=bad):
+                self.assertEqual(self.post("mobile_channels_delete_link", {"id": bad}).status_code, 400)
+        self.assertEqual(self.post("mobile_channels_delete_link", {"id": source.id + 1}).status_code, 200)
+        self.assertTrue(ChannelSource.objects.filter(id=source.id).exists())
 
     def test_new_link_stops_the_old_one(self):
         old = ChannelLink.load().token
