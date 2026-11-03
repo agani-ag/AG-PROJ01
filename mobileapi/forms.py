@@ -1,6 +1,7 @@
 """Forms for the HTML admin screens (styled by static/css/app.css, matching the syncup app)."""
 import json
 import re
+from datetime import datetime
 from datetime import timezone as dt_timezone
 
 from django import forms
@@ -126,6 +127,25 @@ class GeneralLinkForm(forms.ModelForm):
         self.fields["icon"].required = False
 
 
+# The privacy policy's effective date is stored as the text the page shows ("4 November 2026"); it
+# was typed freely before the date picker, so older wordings are read too.
+PRIVACY_DATE_FORMATS = ("%d %B %Y", "%d %b %Y", "%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%d/%m/%Y", "%d-%m-%Y")
+
+
+def parse_privacy_date(text):
+    """The stored effective date as a date, or None when it isn't one."""
+    for fmt in PRIVACY_DATE_FORMATS:
+        try:
+            return datetime.strptime((text or "").strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def privacy_date_text(day):
+    return f"{day.day} {day:%B %Y}"
+
+
 class AppConfigForm(forms.ModelForm):
     class Meta:
         model = AppConfig
@@ -166,7 +186,19 @@ class AppConfigForm(forms.ModelForm):
             label="Minimum app version", coerce=int,
             choices=minimum_choices(self.instance.min_supported_version),
         )
+        # A date picker, saved as the text the privacy page shows. Left empty, the saved text stays,
+        # so an old wording the picker can't read never blocks saving the rest of the page.
+        self.fields["privacy_effective_date"] = forms.DateField(
+            label="Effective date", required=False,
+            widget=forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
+        )
+        if not self.is_bound:
+            self.initial["privacy_effective_date"] = parse_privacy_date(self.instance.privacy_effective_date)
         _style(self.fields)
+
+    def clean_privacy_effective_date(self):
+        day = self.cleaned_data.get("privacy_effective_date")
+        return privacy_date_text(day) if day else self.instance.privacy_effective_date
 
 
 # Advanced FCM (AndroidConfig) options exposed on the Push form. Blank/"—" = leave unset.

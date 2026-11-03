@@ -130,7 +130,7 @@
                     <label class="label" for="{{ form.privacy_effective_date.id_for_label }}">Effective date</label>
                     {{ form.privacy_effective_date }}
                     {% for e in form.privacy_effective_date.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                    <span class="help">Free text, e.g. <code>10 August 2026</code>.</span>
+                    <span class="help">The day this wording took effect. The page shows <code>{{ form.instance.privacy_effective_date }}</code>.</span>
                 </div>
                 <div class="field span-2{% if form.privacy_contact_email.errors %} invalid{% endif %}">
                     <label class="label" for="{{ form.privacy_contact_email.id_for_label }}">Privacy contact email <span class="opt">optional</span></label>
