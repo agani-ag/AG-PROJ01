@@ -32,6 +32,7 @@ from . import telegram as tg
 from . import telegram_chats as tg_chats
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import hub_people
+from .chat_views import clear_chat
 from . import partner_api
 from . import site_tokens
 from .channel_lists import is_channel_link
@@ -1330,10 +1331,7 @@ def chat_thread_json(request, account_id):
 @require_POST
 def chat_clear_json(request, account_id):
     """Delete every message in this chat, straight away and for the user too. There is no undo."""
-    account = get_object_or_404(AppAccount, id=account_id)
-    account.chat_messages.all().delete()
-    # The push log keeps the start of each reply as the notification's text: the same words.
-    AppNotificationLog.objects.filter(source="chat", account=account).delete()
+    clear_chat(get_object_or_404(AppAccount, id=account_id))
     return JsonResponse({"ok": True})
 
 

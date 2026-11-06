@@ -86,6 +86,26 @@
             font-size: 15px; font-family: inherit; background: var(--surface); color: var(--text); max-height: 120px; }
         form.composer button { border: 0; background: var(--me-bg); color: #fff; border-radius: 50%; width: 44px; height: 44px;
             font-size: 18px; flex: 0 0 44px; }
+
+        /* Clear chat: the same as on the admin console, confirmed in a sheet (a WebView can't be
+           relied on to show confirm()). */
+        #thName { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .clear-btn { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 36px;
+            padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text);
+            font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .clear-btn svg { width: 16px; height: 16px; }
+        .sheet-back { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; }
+        .sheet-back[hidden] { display: none; }
+        .sheet { width: 100%; max-width: 480px; background: var(--surface); color: var(--text); border-radius: 18px 18px 0 0;
+            padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); }
+        .sheet h2 { margin: 0 0 6px; font-size: 17px; }
+        .sheet p { margin: 0 0 14px; color: var(--muted); font-size: 14px; line-height: 1.45; }
+        .sheet p.err { color: #dc2626; }
+        .sheet .acts { display: flex; gap: 10px; }
+        .sheet button { flex: 1; height: 46px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+            color: var(--text); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+        .sheet button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+        .sheet button:disabled { opacity: .6; }
     </style>
 </head>
 <body>
@@ -109,10 +129,11 @@
                 <div id="thAvatar" class="avatar"></div>
                 <span id="thDot" class="presence-dot"></span>
             </div>
-            <div class="flex-grow-1" style="min-width:0">
+            <div class="flex-grow-1" style="flex:1;min-width:0">
                 <div class="title" id="thName"></div>
                 <small id="thPresence"></small>
             </div>
+            <button class="clear-btn" id="clearChat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></svg>Clear chat</button>
         </header>
         <div id="thread">
             <div id="messages"></div>
@@ -125,15 +146,28 @@
         </form>
     </div>
 
+    <div class="sheet-back" id="clearSheet" hidden>
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="clearTitle">
+            <h2 id="clearTitle">Clear this chat?</h2>
+            <p id="clearText"></p>
+            <div class="acts">
+                <button type="button" id="clearCancel">Cancel</button>
+                <button type="button" class="danger" id="clearGo">Clear chat</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         var CSRF = document.querySelector('meta[name="csrf"]').content;
         var LIST_URL = "{% url 'chat_inbox_list' %}";
         var THREAD_URL = "{% url 'chat_inbox_thread' 0 %}";
         var REPLY_URL = "{% url 'chat_inbox_reply' 0 %}";
         var TYPING_URL = "{% url 'chat_inbox_typing' 0 %}";
+        var CLEAR_URL = "{% url 'chat_inbox_clear' 0 %}";
         function threadUrl(id) { return THREAD_URL.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
         function replyUrl(id) { return REPLY_URL.replace(/\/0\/reply$/, "/" + id + "/reply"); }
         function typingUrl(id) { return TYPING_URL.replace(/\/0\/typing$/, "/" + id + "/typing"); }
+        function clearUrl(id) { return CLEAR_URL.replace(/\/0\/clear$/, "/" + id + "/clear"); }
 
         var COLORS = ["#2563eb","#0d9488","#7c3aed","#db2777","#ea580c","#059669","#4f46e5","#c026d3"];
         var listView = document.getElementById("listView"), threadView = document.getElementById("threadView");
@@ -268,8 +302,36 @@
                 .catch(function () {});
         }
 
-        document.getElementById("backBtn").addEventListener("click", function () {
+        function closeThread() {
             threadView.classList.add("hidden"); listView.classList.remove("hidden"); current = null; loadList();
+        }
+        document.getElementById("backBtn").addEventListener("click", closeThread);
+
+        /* ---- clear chat ---- */
+        var clearSheet = document.getElementById("clearSheet"), clearText = document.getElementById("clearText");
+        var clearGo = document.getElementById("clearGo"), clearCancel = document.getElementById("clearCancel");
+        var clearing = null;
+        function closeClear() { clearSheet.hidden = true; clearing = null; clearGo.disabled = clearCancel.disabled = false; }
+        document.getElementById("clearChat").addEventListener("click", function () {
+            if (!current) return;
+            clearing = current;
+            clearText.className = "";
+            clearText.textContent = "All messages with " + thName.textContent + " are deleted straight away, here and in their app. This can't be undone.";
+            clearSheet.hidden = false;
+        });
+        clearCancel.addEventListener("click", closeClear);
+        clearSheet.addEventListener("click", function (e) { if (e.target === clearSheet && !clearGo.disabled) closeClear(); });
+        clearGo.addEventListener("click", function () {
+            var id = clearing; if (!id) return;
+            clearGo.disabled = clearCancel.disabled = true;
+            fetch(clearUrl(id), { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": CSRF } })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function () { closeClear(); if (id === current) closeThread(); else loadList(); })
+                .catch(function () {
+                    clearGo.disabled = clearCancel.disabled = false;
+                    clearText.className = "err";
+                    clearText.textContent = "Couldn't clear the chat. Check your connection and try again.";
+                });
         });
         document.getElementById("composer").addEventListener("submit", function (e) { e.preventDefault(); sendReply(); });
         input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply(); } });

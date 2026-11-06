@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from . import fcm
-from .models import AppAccount, AppChatMessage, AppDevice
+from .models import AppAccount, AppChatMessage, AppDevice, AppNotificationLog
 from .serializers import chat_message_dict
 
 CHAT_SALT = "syncup-chat-web"
@@ -279,6 +279,27 @@ def chat_inbox_reply(request, account_id):
     AppAccount.objects.filter(pk=target.pk).update(chat_admin_typing_until=None)
     _notify_admin_reply(target, body)
     return JsonResponse({"ok": True, "message": chat_message_dict(msg)})
+
+
+def clear_chat(account):
+    """Delete every message in this person's chat, straight away and for them too. There is no undo.
+    The admin console and the support inbox both clear with this."""
+    account.chat_messages.all().delete()
+    # The push log keeps the start of each reply as the notification's text: the same words.
+    AppNotificationLog.objects.filter(source="chat", account=account).delete()
+
+
+@require_http_methods(["POST"])
+def chat_inbox_clear(request, account_id):
+    """A support agent clears someone's chat, exactly as Clear chat on /mobile/chats does."""
+    agent = _session_agent(request)
+    if not agent:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+    target = get_object_or_404(AppAccount, id=account_id)
+    if target.pk == agent.pk:
+        return JsonResponse({"error": "forbidden"}, status=403)
+    clear_chat(target)
+    return JsonResponse({"ok": True})
 
 
 @require_http_methods(["POST"])

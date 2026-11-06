@@ -1,5 +1,5 @@
-"""Clear chat on /mobile/chats: every message deleted at once, for the user too, by the admin only.
-Run: python manage.py test mobileapi.tests_chat_clear"""
+"""Clear chat on /mobile/chats and in the app's support inbox: every message deleted at once, for the
+user too, by the admin or a support agent (admin_chat_mode) only. Run: python manage.py test mobileapi.tests_chat_clear"""
 import json
 from unittest import mock
 
@@ -117,7 +117,7 @@ class ClearChatTests(TestCase):
         self.assertEqual(self.clear().status_code, 200)
 
 
-class OnlyTheAdminCanClearTests(TestCase):
+class WhoCanClearOnTheConsoleTests(TestCase):
     def setUp(self):
         self.asha = AppAccount.objects.create(name="Asha", email="a@example.org")
         AppChatMessage.objects.create(account=self.asha, sender="user", body="Hello")
@@ -136,7 +136,7 @@ class OnlyTheAdminCanClearTests(TestCase):
         self.assertEqual(c.post(self.url).status_code, 302)
         self.assertNotCleared()
 
-    def test_the_app_user_and_a_support_agent_cannot(self):
+    def test_the_app_user_and_a_support_agent_cannot_use_the_console_address(self):
         agent = AppAccount.objects.create(name="Agent", email="g@example.org", admin_chat_mode=True)
         for who in (self.asha, agent):
             c = Client()
@@ -150,7 +150,7 @@ class OnlyTheAdminCanClearTests(TestCase):
         self.assertEqual(c.get(self.url).status_code, 405)
         self.assertNotCleared()
 
-    def test_only_the_admin_page_has_the_button(self):
+    def test_the_console_and_the_support_inbox_have_the_button_and_users_do_not(self):
         c = Client()
         c.force_login(get_user_model().objects.create_superuser("root", password="x"))
         self.assertContains(c.get("/mobile/chats"), 'id="clearChat"')
@@ -162,4 +162,75 @@ class OnlyTheAdminCanClearTests(TestCase):
         agent = AppAccount.objects.create(name="Agent", email="g@example.org", admin_chat_mode=True)
         inbox = Client()
         inbox.get("/chat/open", {"t": make_open_token(agent)})
-        self.assertNotContains(inbox.get("/chat/inbox/"), "clearChat")
+        page = inbox.get("/chat/inbox/")
+        self.assertContains(page, 'id="clearChat"')
+        self.assertContains(page, "/chat/inbox/0/clear")
+
+
+class SupportInboxClearTests(TestCase):
+    """A support agent (admin_chat_mode) clears a chat from the app's inbox, as the admin does."""
+
+    def setUp(self):
+        self.asha = AppAccount.objects.create(name="Asha", email="a@example.org")
+        AppChatMessage.objects.create(account=self.asha, sender="user", body="Hello")
+        AppChatMessage.objects.create(account=self.asha, sender="admin", body="Hi Asha", read_by_admin=True)
+        AppNotificationLog.objects.create(source="chat", account=self.asha, title="New message from Admin", body="Hi Asha")
+        AppNotificationLog.objects.create(source="admin", account=self.asha, title="Offer", body="Keep this")
+        self.agent = AppAccount.objects.create(name="Agent", email="g@example.org", admin_chat_mode=True)
+        self.inbox = self.opened(self.agent)
+
+    def opened(self, account, **client_args):
+        c = Client(**client_args)
+        c.get("/chat/open", {"t": make_open_token(account)})
+        return c
+
+    def clear(self, client=None, account=None):
+        return (client or self.inbox).post(f"/chat/inbox/{(account or self.asha).id}/clear")
+
+    def test_an_agent_clears_every_message_and_the_chat_pushes(self):
+        r = self.clear()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json(), {"ok": True})
+        self.assertFalse(AppChatMessage.objects.filter(account=self.asha).exists())
+        self.assertEqual(list(AppNotificationLog.objects.values_list("body", flat=True)), ["Keep this"])
+
+    def test_gone_from_the_users_app_and_the_inbox_list(self):
+        listed = lambda: [c["id"] for c in self.inbox.get("/chat/inbox/list.json").json()["conversations"]]
+        self.assertIn(self.asha.id, listed())
+        self.clear()
+        self.assertNotIn(self.asha.id, listed())
+        self.assertEqual(self.opened(self.asha).get("/chat/messages").json()["messages"], [])
+        self.assertEqual(_chat_unread_count(self.asha), 0)
+
+    def test_the_same_as_clearing_on_the_console(self):
+        ravi = AppAccount.objects.create(name="Ravi", email="r@example.org")
+        AppChatMessage.objects.create(account=ravi, sender="user", body="Mine")
+        self.clear()
+        self.assertEqual(ravi.chat_messages.count(), 1, "other people's chats stay")
+
+    def test_a_plain_user_or_nobody_cannot(self):
+        self.assertEqual(self.clear(client=self.opened(self.asha)).status_code, 401)
+        self.assertEqual(self.clear(client=Client()).status_code, 401)
+        self.assertEqual(self.asha.chat_messages.count(), 2)
+
+    def test_an_agent_cannot_clear_their_own_chat(self):
+        AppChatMessage.objects.create(account=self.agent, sender="user", body="My own")
+        self.assertEqual(self.clear(account=self.agent).status_code, 403)
+        self.assertEqual(self.agent.chat_messages.count(), 1)
+
+    def test_a_plain_link_cannot_clear_it(self):
+        self.assertEqual(self.inbox.get(f"/chat/inbox/{self.asha.id}/clear").status_code, 405)
+        self.assertEqual(self.asha.chat_messages.count(), 2)
+
+    def test_someone_who_does_not_exist(self):
+        self.assertEqual(self.inbox.post("/chat/inbox/999999/clear").status_code, 404)
+
+    def test_it_needs_the_pages_csrf_token(self):
+        strict = self.opened(self.agent, enforce_csrf_checks=True)
+        strict.get("/chat/inbox/")
+        self.assertEqual(self.clear(client=strict).status_code, 403)
+        self.assertEqual(self.asha.chat_messages.count(), 2)
+        token = strict.cookies["csrftoken"].value
+        r = strict.post(f"/chat/inbox/{self.asha.id}/clear", HTTP_X_CSRFTOKEN=token)
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(self.asha.chat_messages.exists())
