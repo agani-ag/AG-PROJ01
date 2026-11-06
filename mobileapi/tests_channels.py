@@ -216,6 +216,13 @@ class ListLinkTests(TestCase):
         self.assertNotIn("Gamma", text)
         self.assertTrue(self.url().endswith(".m3u"))
 
+    def test_every_request_to_the_link_counts_and_nothing_else_does(self):
+        for _ in range(3):
+            self.client.get(self.url())
+        self.client.get(self.url("wrong"))
+        self.client.post(self.url())
+        self.assertEqual(ChannelLink.load().opens, 3)
+
     def test_a_wrong_link_finds_nothing(self):
         self.assertEqual(self.client.get(self.url("wrong")).status_code, 404)
         self.assertEqual(self.client.post(self.url()).status_code, 405)
@@ -347,6 +354,16 @@ class AdminPageTests(TestCase):
         fresh = self.post("mobile_channels_new_link", {}).json()["link"]
         self.assertEqual(self.client.get(reverse("channel_list_m3u", args=[old])).status_code, 404)
         self.assertEqual(self.client.get(fresh.replace("http://testserver", "")).status_code, 200)
+
+    def test_the_page_shows_the_count_and_a_new_link_starts_it_again(self):
+        link = ChannelLink.load()
+        for _ in range(2):
+            self.client.get(reverse("channel_list_m3u", args=[link.token]))
+        self.assertContains(self.client.get(reverse("mobile_channels")), '"opens": 2')
+        self.assertEqual(self.post("mobile_channels_new_link", {}).json()["opens"], 0)
+        self.client.get(reverse("channel_list_m3u", args=[link.token]))
+        self.assertEqual(ChannelLink.load().opens, 0)
+        self.assertContains(self.client.get(reverse("mobile_channels")), '"opens": 0')
 
     def test_accounts_can_be_searched(self):
         AppAccount.objects.create(name="Priya", email="priya@example.com")

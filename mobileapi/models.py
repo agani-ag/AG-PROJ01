@@ -1376,10 +1376,12 @@ class LiveChannel(models.Model):
 
 
 class ChannelLink(models.Model):
-    """The one private link to the Working channels. One row, made on first use."""
+    """The one private link to the Working channels. One row, made on first use. `opens` counts every
+    request to the current link; New link starts it again at 0."""
 
     token = models.CharField(max_length=40, unique=True)
     name = models.CharField(max_length=60, default="SyncUp Channels")
+    opens = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @classmethod

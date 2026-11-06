@@ -169,13 +169,13 @@
 <!-- SEND -->
 <section data-pane="send" hidden>
     <div class="card" style="margin-bottom:16px">
-        <div class="card-head">{% icon "link" %}<h2>Your list link</h2></div>
+        <div class="card-head">{% icon "link" %}<h2>Your list link</h2><span class="small muted" id="list-opens"></span></div>
         <div class="card-body ch-link-row">
             <div class="ch-url" id="list-url"></div>
             <button class="btn btn-sm" type="button" id="link-copy">{% icon "copy" %}Copy</button>
             <button class="btn btn-sm btn-ghost" type="button" id="link-new">{% icon "refresh-cw" %}New link</button>
         </div>
-        <div class="ch-foot">It always gives your Working channels, so a saved list stays up to date. Anyone with this link can open it. New link stops the old one for everyone who saved it, until you send them the new one.</div>
+        <div class="ch-foot">It always gives your Working channels, so a saved list stays up to date. Anyone with this link can open it. New link stops the old one for everyone who saved it, until you send them the new one, and starts the count again at 0.</div>
     </div>
     <div class="card">
         <div class="card-head">{% icon "send" %}<h2>Send by push</h2></div>
@@ -623,6 +623,7 @@ document.addEventListener("DOMContentLoaded", function () {
     function hostOf(url) { try { return new URL(url).hostname; } catch (e) { return ""; } }
     function drawSend() {
         $("list-url").textContent = state.link;
+        $("list-opens").textContent = "Opened " + plural(state.opens, "time");
         $("send-any").hidden = mode !== "any";
         $("send-any-note").hidden = mode !== "any";
         if (!nameEdited) $("send-name").value = mode === "any" ? hostOf($("send-any").value.trim()) : listName;
@@ -680,6 +681,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!ok) return;
             App.fetchJSON(URLS.newLink, { method: "POST", body: {} }).then(function (d) {
                 state.link = d.link;
+                state.opens = d.opens;
                 drawSend();
                 App.toast("New link made. The old one has stopped working.");
             }).catch(fail);

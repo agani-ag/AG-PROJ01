@@ -14,6 +14,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from django.db import transaction
+from django.db.models import F
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
@@ -211,6 +212,8 @@ def list_text():
 @gzip_page
 def list_m3u(request, token):
     """The private link: anyone who has it can read the list, and New link stops the old one."""
-    if not constant_time_compare(token, ChannelLink.load().token):
+    link = ChannelLink.load()
+    if not constant_time_compare(token, link.token):
         raise Http404
+    ChannelLink.objects.filter(pk=link.pk).update(opens=F("opens") + 1)
     return HttpResponse(list_text(), content_type="audio/x-mpegurl; charset=utf-8")

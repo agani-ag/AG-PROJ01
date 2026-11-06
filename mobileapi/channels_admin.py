@@ -59,6 +59,7 @@ def _state(request):
             } for s in ChannelSource.objects.order_by("-last_read_at")
         ],
         "link": _list_url(request, link),
+        "opens": link.opens,
         "name": link.name,
     }
 
@@ -161,8 +162,9 @@ def new_link(request):
     """The old link stops at once, for everyone who saved it, until they're sent this one."""
     link = ChannelLink.load()
     link.token = new_token()
-    link.save(update_fields=["token"])
-    return JsonResponse({"link": _list_url(request, link)})
+    link.opens = 0
+    link.save(update_fields=["token", "opens"])
+    return JsonResponse({"link": _list_url(request, link), "opens": 0})
 
 
 @superuser_required
