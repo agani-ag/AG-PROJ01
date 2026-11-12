@@ -1,5 +1,19 @@
 {% extends "base.html" %}
 {% block title %}{% if is_edit %}{{ account.name }}{% else %}New account{% endif %}{% endblock %}
+{% block head %}
+<style>
+  /* A link's row opens its settings, anywhere on it; its chips open the link itself in a new tab. */
+  .ln-card { position: relative; }
+  .ln-card:hover { background: var(--surface-2); }
+  .ln-row:hover { text-decoration: none; }
+  .ln-row::after { content: ""; position: absolute; inset: 0; }
+  .ln-row:focus-visible { box-shadow: none; }
+  .ln-row:focus-visible::after { box-shadow: inset var(--ring); }
+  .ln-go { position: relative; z-index: 1; display: flex; flex: none; gap: 12px; border-radius: 999px; }
+  .ln-go:hover { text-decoration: none; }
+  .ln-go:hover .badge { box-shadow: 0 0 0 1px currentColor; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-head">
@@ -225,15 +239,17 @@
             <ul class="list">
                 {% for link in links %}
                 <li>
-                    <a class="list-item" href="{% url 'mobile_link_edit' link.id %}">
+                    <div class="list-item ln-card">
                         <span class="main-col">
-                            <span class="title truncate" style="display:block">{{ link.title }}</span>
+                            <a class="title truncate ln-row" style="display:block" href="{% url 'mobile_link_edit' link.id %}">{{ link.title }}</a>
                             <span class="sub truncate" style="display:block">{{ link.url }}</span>
                         </span>
-                        {% if not link.is_active %}<span class="badge badge-danger">Off</span>{% endif %}
-                        {% if link.partner %}<span class="badge badge-info" title="Owned by a partner">{% icon "plug" %}{{ link.partner.name }}</span>
-                        {% else %}<span class="badge badge-accent" title="Added by an admin">{% icon "shield-user" %}Admin</span>{% endif %}
-                    </a>
+                        <a class="ln-go" href="{{ link.url }}" target="_blank" rel="noopener noreferrer" title="Open the link in a new tab" aria-label="Open {{ link.title }} in a new tab">
+                            {% if not link.is_active %}<span class="badge badge-danger">Off</span>{% endif %}
+                            {% if link.partner %}<span class="badge badge-info">{% icon "plug" %}{{ link.partner.name }}</span>
+                            {% else %}<span class="badge badge-accent">{% icon "shield-user" %}Admin</span>{% endif %}
+                        </a>
+                    </div>
                 </li>
                 {% empty %}
                 <li class="empty small">No links yet.</li>
