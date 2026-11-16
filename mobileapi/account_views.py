@@ -243,6 +243,7 @@ def device_hello(request):
         "success": True,
         "device_secret": device.device_secret,
         "token_sites": site_tokens.tokens_for(**who),
+        "ua_rules": site_tokens.ua_rules_for(**who),
         "notifications_new": notifications_api.new_count(**who),
     })
 

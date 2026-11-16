@@ -63,6 +63,12 @@
                 <label class="switch">{{ form.is_active }}<span class="track"></span><span class="sr-only">Active</span></label>
             </div>
             {% include "mobileapi/_token_switch.html" with who="each user's (or, signed out, each phone's) own" %}
+            <div class="field{% if form.ua_append.errors %} invalid{% endif %}" style="margin-top:12px">
+                <label class="label" for="{{ form.ua_append.id_for_label }}">Append to User-Agent <span class="opt">optional</span></label>
+                {{ form.ua_append }}
+                <span class="help">Added to the app's User-Agent for a tab that opens this link, kept until the tab closes. Not a secret — every site the tab visits can read it. Blank = off.</span>
+                {% for e in form.ua_append.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
+            </div>
         </div>
     </div>
 

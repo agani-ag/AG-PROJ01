@@ -104,7 +104,7 @@ class AppAccountForm(forms.ModelForm):
 class AppLinkForm(forms.ModelForm):
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token"]
+        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token", "ua_append"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,7 +119,7 @@ class GeneralLinkForm(forms.ModelForm):
 
     class Meta:
         model = AppLink
-        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token"]
+        fields = ["title", "url", "description", "icon", "color", "is_active", "give_token", "ua_append"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

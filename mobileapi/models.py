@@ -11,6 +11,7 @@ import secrets
 from datetime import timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import IntegrityError, models, transaction
 from django.utils import timezone
@@ -521,6 +522,13 @@ APP_ICON_COLOR_CHOICES = link_icons.color_choices()
 
 
 # =============== Per-account links (the URL list shown in the app) ===============
+def validate_ua_append(value):
+    """A User-Agent append value must be one line of plain printable ASCII (a line break or control
+    character would corrupt the HTTP header). Blank is allowed (= off)."""
+    if value and any(ord(c) < 0x20 or ord(c) > 0x7E for c in value):
+        raise ValidationError("Use plain printable characters only — no line breaks or control characters.")
+
+
 class AppLink(models.Model):
     # Null = a GENERAL link, shown to every account. A set account = a personal link for just that user.
     account = models.ForeignKey(
@@ -552,6 +560,15 @@ class AppLink(models.Model):
     # so that site can push to them (see site_tokens.py). Off by default.
     give_token = models.BooleanField(
         default=False, help_text="Give this link's website the user's SyncUp token (window.SyncUp.token).",
+    )
+    # On a link with a value here, the app appends it to its User-Agent for a tab that STARTS at this
+    # link's website, keeping it for the whole tab (across redirects to other sites) until it's
+    # closed. NOT a secret — the User-Agent is sent to every site and resource the tab touches; it's a
+    # "came from our app" marker, never auth (that stays on give_token). Blank = off. See
+    # site_tokens.ua_rules_for and the app's UaTokens.
+    ua_append = models.CharField(
+        max_length=100, blank=True, default="", validators=[validate_ua_append],
+        help_text="Append to the app's User-Agent for a tab that opens this link (not a secret). Blank = off.",
     )
     # Unused since 23 Oct 2026: "Sign in with SyncUp" was removed. Kept because server migrations
     # only ever add.

@@ -784,6 +784,8 @@ def sync(request):
         "urls": links_for(request.account),
         # Websites switched on for this user and the page token each one gets (window.SyncUp.token).
         "token_sites": site_tokens.tokens_for(account=request.account),
+        # Links with an "append to User-Agent" value, as {url, append} (see site_tokens.ua_rules_for).
+        "ua_rules": site_tokens.ua_rules_for(account=request.account),
         # Notifications page badge: pushes this user hasn't opened yet.
         "notifications_new": notifications_api.new_count(account=request.account),
         "chat_unread": _chat_unread_count(request.account),

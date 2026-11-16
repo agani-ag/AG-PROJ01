@@ -101,6 +101,30 @@ def token_for_link(account, link):
     return found[0]["token"] if found else ""
 
 
+def ua_rules_for(account=None, device=None):
+    """[{"url", "append"}] for switched-on links that carry an "append to User-Agent" value: the
+    user's own links plus general links (signed in), or general links only (signed out). This lives
+    on links only — shortcuts don't carry one. The app binds the value to a tab that STARTS at the
+    link's website and keeps it for that tab (see the app's UaTokens). Mirrors enabled_hosts()."""
+    from .serializers import live_partner_ids  # serializers imports this module
+
+    rules = {}  # url -> append; a later write wins if two links share a url
+    if account is None or account.gets_general_links():
+        for url, append in (
+            AppLink.objects.filter(is_active=True, account__isnull=True)
+            .exclude(ua_append="").values_list("url", "ua_append")
+        ):
+            rules[url] = append
+    if account is not None:
+        for url, append in (
+            AppLink.objects.filter(is_active=True, account=account)
+            .filter(Q(partner__isnull=True) | Q(partner_id__in=live_partner_ids(account)))
+            .exclude(ua_append="").values_list("url", "ua_append")
+        ):
+            rules[url] = append
+    return [{"url": u, "append": a} for u, a in rules.items()]
+
+
 def new_token():
     return TOKEN_PREFIX + secrets.token_urlsafe(30)
 
