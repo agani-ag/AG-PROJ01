@@ -118,6 +118,10 @@ def accounts(request):
         a.device_count = len(devs)
         a.app_code = max((d.app_version_code for d in devs), default=0)
         a.last_active = max((d.last_seen for d in devs if d.last_seen), default=None)
+        # SyncUp open right now on one of their phones (the usage heartbeat; live with the table).
+        a.active_now = any(d.is_active_now for d in devs)
+        if status == "active_now" and not a.active_now:
+            continue
         a.sync_count = items.get(a.id, 0)
         a.sync = sync_state.get(a.id)
         a.no_general = not a.gets_general_links(a.partner_count)

@@ -138,7 +138,7 @@
                 {% icon "smartphone" %}<h2>Devices</h2>
                 <span class="small muted ml-auto" id="acct-sessions" data-live-part>{{ session_count }} active session{{ session_count|pluralize }}</span>
             </div>
-            <ul class="list" id="acct-devices" data-live-part>
+            <ul class="list" id="acct-devices" data-live-part data-show-more="5">
                 {% for x in devices %}
                 <li class="list-item" style="align-items:flex-start">
                     <span class="main-col">

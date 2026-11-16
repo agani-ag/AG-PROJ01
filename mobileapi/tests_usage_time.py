@@ -139,3 +139,22 @@ class UsageTimeTests(TestCase):
         self.assertContains(r, "Active now")
         self.assertContains(r, 'data-live="15"')
         self.assertContains(r, 'data-show-more="8"')
+
+    def test_accounts_list_shows_active_now_and_filters_it(self):
+        priya = AppAccount(name="Priya", email="priya@example.com")
+        priya.set_password("secret123")
+        priya.save()
+        self.hello({"usage_seconds": 60})            # Ravi's phone, signed in
+        self.beat({"usage_seconds": 61, "open": True})
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.com", "pw-123456"))
+        r = self.client.get("/mobile/accounts")
+        self.assertEqual(r.status_code, 200)
+        rows = {a.name: a for a in r.context["accounts"]}
+        self.assertTrue(rows["Ravi"].active_now)
+        self.assertFalse(rows["Priya"].active_now)
+        self.assertContains(r, "Active now")
+        r = self.client.get("/mobile/accounts?status=active_now")
+        self.assertEqual([a.name for a in r.context["accounts"]], ["Ravi"])
+        self.beat({"usage_seconds": 70, "open": False})  # SyncUp closed
+        r = self.client.get("/mobile/accounts?status=active_now")
+        self.assertEqual(r.context["accounts"], [])

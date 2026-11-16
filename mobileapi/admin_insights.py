@@ -150,7 +150,7 @@ def account_list_facts():
     """Per-account device and sync facts for the Accounts table (a handful of queries in total)."""
     devices = defaultdict(list)
     for d in AppDevice.objects.filter(account__isnull=False).only(
-            "account_id", "app_version", "last_seen", "is_active", "device_model"):
+            "account_id", "app_version", "last_seen", "is_active", "device_model", "active_at"):
         devices[d.account_id].append(d)
     items = dict(SyncItem.objects.filter(deleted=False).exclude(kind="tabs")
                  .values_list("account_id").annotate(n=Count("id")))

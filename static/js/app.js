@@ -365,6 +365,7 @@
             if (next && next.innerHTML !== part.innerHTML) part.innerHTML = next.innerHTML;
           });
           $$("[data-table]").forEach(function (t) { if (t.refresh) t.refresh(); });
+          $$("[data-show-more]").forEach(showMore);
           lastAt = Date.now();
           say();
         })
@@ -396,31 +397,28 @@
   }
 
   /* ---- Long lists: <ul data-show-more="8"> shows its first 8 children and a "Show more" button ----
-   * Each click shows that many more until all are shown (the account page's Activity and Browser sync).
+   * Each click shows that many more until all are shown (the account page's Activity, Browser sync and
+   * Devices). Safe to call again: a live refresh re-applies it and keeps how many were opened.
    */
   function showMore(list) {
     var step = Math.max(1, parseInt(list.dataset.showMore, 10) || 10);
-    var items = Array.prototype.slice.call(list.children);
-    if (items.length <= step) return;
-    var shown = step;
-    items.forEach(function (it, i) { it.hidden = i >= shown; });
-    var wrap = document.createElement("div");
-    wrap.className = "show-more";
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-sm btn-ghost";
-    function label() {
-      var left = items.length - shown;
-      btn.textContent = "Show " + Math.min(step, left) + " more · " + left + " left";
+    var st = list._showMore || (list._showMore = { shown: step, wrap: null });
+    if (!st.wrap) {
+      var wrap = document.createElement("div");
+      wrap.className = "show-more";
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-sm btn-ghost";
+      btn.addEventListener("click", function () { st.shown += step; showMore(list); });
+      wrap.appendChild(btn);
+      list.insertAdjacentElement("afterend", wrap);
+      st.wrap = wrap;
     }
-    btn.addEventListener("click", function () {
-      shown += step;
-      items.forEach(function (it, i) { if (i < shown) it.hidden = false; });
-      if (shown >= items.length) wrap.hidden = true; else label();
-    });
-    label();
-    wrap.appendChild(btn);
-    list.insertAdjacentElement("afterend", wrap);
+    var items = Array.prototype.slice.call(list.children);
+    items.forEach(function (it, i) { it.hidden = i >= st.shown; });
+    var left = items.length - st.shown;
+    st.wrap.hidden = left <= 0;
+    if (left > 0) st.wrap.firstChild.textContent = "Show " + Math.min(step, left) + " more · " + left + " left";
   }
 
   function init() {

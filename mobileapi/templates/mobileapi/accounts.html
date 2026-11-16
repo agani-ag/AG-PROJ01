@@ -38,6 +38,7 @@
                 <option value="" {% if not status %}selected{% endif %}>Any status</option>
                 <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
                 <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+                <option value="active_now" {% if status == 'active_now' %}selected{% endif %}>Active now</option>
             </select>
             <select name="app" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="App version">
                 <option value="" {% if not app_filter %}selected{% endif %}>Any app</option>
@@ -109,7 +110,8 @@
                         {% else %}<span class="muted">—</span>{% endif %}
                     </td>
                     <td data-label="Last active" data-value="{{ a.last_active|date:'c' }}" class="nowrap">
-                        {{ a.last_active|date:"d M Y, g:i A"|default:"—" }}
+                        {% if a.active_now %}<span class="badge badge-success" title="SyncUp is open on one of their phones right now">{% icon "activity" %}Active now</span>
+                        {% else %}{{ a.last_active|date:"d M Y, g:i A"|default:"—" }}{% endif %}
                         {% if a.last_login %}<div class="small muted">Sign-in {{ a.last_login|date:"d M Y" }}</div>{% endif %}
                     </td>
                     <td data-label="Links" class="t-right t-hide-sm">{{ a.link_count }}</td>
