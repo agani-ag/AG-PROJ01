@@ -62,7 +62,8 @@ class UsageTimeTests(TestCase):
 
     def test_text(self):
         d = AppDevice(device_id="x", fcm_token="")
-        for seconds, text in [(0, "—"), (59, "—"), (60, "1 m"), (3725, "1 h 02 m"), (36000, "10 h 00 m")]:
+        for seconds, text in [(0, "—"), (7, "7 s"), (59, "59 s"), (60, "1 m 00 s"), (754, "12 m 34 s"),
+                              (3725, "1 h 02 m 05 s"), (36000, "10 h 00 m 00 s")]:
             d.usage_seconds = seconds
             self.assertEqual(d.usage_text, text)
 
@@ -72,7 +73,7 @@ class UsageTimeTests(TestCase):
         for url in ["/mobile/devices", f"/mobile/devices/{device.id}", f"/mobile/accounts/{self.ravi.id}"]:
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200, url)
-            self.assertContains(r, "1 h 02 m", msg_prefix=url)
+            self.assertContains(r, "1 h 02 m 05 s", msg_prefix=url)
 
     # ---- heartbeat (device/beat): every 30 s while the app is open, and once as it closes
     def beat(self, body, secret=None):

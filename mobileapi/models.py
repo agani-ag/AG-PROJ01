@@ -657,12 +657,15 @@ class AppDevice(models.Model):
 
     @property
     def usage_text(self):
-        """usage_seconds as "3 h 05 m", "12 m" or "—"."""
-        minutes = (self.usage_seconds or 0) // 60
-        if not minutes:
+        """usage_seconds with the seconds (user, 17 Nov 2026): "3 h 05 m 09 s", "12 m 30 s", "45 s", or "—"."""
+        total = self.usage_seconds or 0
+        if not total:
             return "—"
-        h, m = divmod(minutes, 60)
-        return f"{h} h {m:02d} m" if h else f"{m} m"
+        m, s = divmod(total, 60)
+        h, m = divmod(m, 60)
+        if h:
+            return f"{h} h {m:02d} m {s:02d} s"
+        return f"{m} m {s:02d} s" if m else f"{s} s"
 
     @property
     def app_version_code(self):
