@@ -15,7 +15,7 @@ RELEASES = [
     ("7", 8),
     ("7.1", 9),
     ("8", 10),
-    ("9", 11),
+    ("9", 12),  # code 11 was uploaded but replaced before release (Play photo/video permission)
 ]
 
 

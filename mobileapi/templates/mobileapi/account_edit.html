@@ -144,7 +144,7 @@
                         </span>
                         <span class="sub" style="display:block">
                             {{ x.d.os_version|default:"Android" }}{% if x.d.country %} · {{ x.d.country }}{% endif %}{% if x.d.locale %} · {{ x.d.locale }}{% endif %}
-                            · seen {{ x.d.last_seen|ago }}
+                            · seen {{ x.d.last_seen|ago }}{% if x.d.usage_seconds %} · used {{ x.d.usage_text }}{% endif %}{% if x.d.is_active_now %} · <span class="text-success">active now</span>{% endif %}
                         </span>
                         <span class="sub" style="display:block">
                             {% if x.signed_in_at %}Signed in {{ x.signed_in_at|date:"d M Y" }} · {% endif %}

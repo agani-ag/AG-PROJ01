@@ -10,6 +10,11 @@
 </div>
 
 <div class="stats" id="dev-stats" data-live-part>
+    <a class="stat" href="{% url 'mobile_devices' %}?state=active_now">
+        <span class="stat-label">{% icon "activity" %}Active now</span>
+        <span class="stat-value">{{ stats.active_now }}</span>
+        <span class="stat-meta">SyncUp open right now</span>
+    </a>
     <a class="stat" href="{% url 'mobile_devices' %}">
         <span class="stat-label">{% icon "smartphone" %}Installs</span>
         <span class="stat-value">{{ stats.installs }}</span>
@@ -41,6 +46,7 @@
         </label>
         <select name="state" class="input input-sm" style="width:auto" onchange="this.form.submit()" aria-label="State">
             <option value="" {% if not f.state %}selected{% endif %}>All installs</option>
+            <option value="active_now" {% if f.state == 'active_now' %}selected{% endif %}>Active now</option>
             <option value="signed_in" {% if f.state == 'signed_in' %}selected{% endif %}>Signed in</option>
             <option value="signed_out" {% if f.state == 'signed_out' %}selected{% endif %}>Signed out</option>
             <option value="inactive" {% if f.state == 'inactive' %}selected{% endif %}>Inactive</option>
@@ -71,6 +77,7 @@
                     <th data-sort="text">Device</th>
                     <th data-sort="num">App</th>
                     <th data-sort="text">Account</th>
+                    <th data-sort="num">Usage</th>
                     <th data-sort="text">Region</th>
                     <th>Notifications</th>
                     <th data-sort="text">Installed</th>
@@ -87,6 +94,7 @@
                     </td>
                     <td data-label="App" data-value="{{ d.app_version_code }}"><span class="badge {% if d.current %}badge-success{% endif %}">v{{ d.app_version|default:"?" }}</span></td>
                     <td data-label="Account">{% if d.account %}<a href="{% url 'mobile_account_edit' d.account.id %}">{{ d.account.name }}</a><div class="small muted">{{ d.account.login_label }}</div>{% else %}<span class="muted">Signed out</span>{% endif %}</td>
+                    <td data-label="Usage" data-value="{{ d.usage_seconds }}" class="nowrap">{{ d.usage_text }}</td>
                     <td data-label="Region">{{ d.country|default:"—" }}{% if d.locale %}<div class="small muted">{{ d.locale }}{% if d.time_zone %} · {{ d.time_zone }}{% endif %}</div>{% endif %}</td>
                     <td data-label="Notifications">
                         {% if d.notifications_allowed == False %}<span class="badge badge-danger">{% icon "bell-off" %}Blocked</span>
@@ -95,7 +103,7 @@
                         {% if not d.updates_enabled %}<div class="small muted">Updates off</div>{% endif %}
                     </td>
                     <td data-label="Installed" data-value="{{ d.installed_at|date:'c' }}" class="nowrap">{{ d.installed_at|date:"d M Y" }}</td>
-                    <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{{ d.last_seen|date:"d M Y, g:i A" }}</td>
+                    <td data-label="Last seen" data-value="{{ d.last_seen|date:'c' }}" class="nowrap">{% if d.is_active_now %}<span class="badge badge-success">{% icon "activity" %}Active now</span>{% else %}{{ d.last_seen|date:"d M Y, g:i A" }}{% endif %}</td>
                     <td class="t-right">
                         {% if d.is_active %}
                         <form method="post" action="{% url 'mobile_device_deactivate' d.id %}"
@@ -108,7 +116,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr data-empty><td colspan="8"><div class="empty">{% icon "smartphone" %}<b>{% if filtered %}No devices match these filters{% else %}No devices registered{% endif %}</b>{% if not filtered %}<span>Every install appears here once the app opens.</span>{% endif %}</div></td></tr>
+                <tr data-empty><td colspan="9"><div class="empty">{% icon "smartphone" %}<b>{% if filtered %}No devices match these filters{% else %}No devices registered{% endif %}</b>{% if not filtered %}<span>Every install appears here once the app opens.</span>{% endif %}</div></td></tr>
                 {% endfor %}
             </tbody>
         </table>

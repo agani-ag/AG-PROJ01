@@ -21,6 +21,7 @@ urlpatterns = [
     path("account/partners/<int:connection_id>/enable", account_views.partner_enable, name="app_partner_enable"),
     path("account/partners/<int:connection_id>/disable", account_views.partner_disable, name="app_partner_disable"),
     path("device/hello", account_views.device_hello, name="app_device_hello"),
+    path("device/beat", account_views.device_beat, name="app_device_beat"),
     path("browser/sync", browser_sync.browser_sync, name="app_browser_sync"),
     path("browser/sync/delete", browser_sync.browser_sync_delete, name="app_browser_sync_delete"),
     path("radio/channels", radio.channels, name="app_radio_channels"),

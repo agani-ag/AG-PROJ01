@@ -52,6 +52,8 @@
                 <dt>App version</dt><dd>v{{ device.app_version|default:"?" }}</dd>
                 <dt>Notifications</dt><dd>{% if device.notifications_allowed == False %}<span class="text-danger">Blocked in Android settings</span>{% elif device.notifications_allowed %}Allowed{% else %}<span class="muted">Not reported (older app)</span>{% endif %}</dd>
                 <dt>SyncUp updates</dt><dd>{% if device.updates_enabled %}On{% else %}Off — no broadcasts{% endif %}</dd>
+                <dt>Usage time</dt><dd>{{ device.usage_text }} <span class="small muted">SyncUp open on this phone (app 9 or later)</span></dd>
+                <dt>Right now</dt><dd>{% if device.is_active_now %}<span class="badge badge-success">{% icon "activity" %}Active now</span>{% else %}<span class="muted">Not open</span>{% endif %}</dd>
                 <dt>Installed</dt><dd>{{ device.installed_at|date:"d M Y, g:i A" }}</dd>
                 <dt>First sign-in</dt><dd>{{ device.converted_at|date:"d M Y, g:i A"|default:"Never" }}</dd>
                 <dt>Reminder sync</dt><dd>{{ device.last_reminder_sync_at|date:"d M Y, g:i A"|default:"—" }}</dd>

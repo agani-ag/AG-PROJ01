@@ -831,11 +831,14 @@ def devices(request):
         "updates_off": active.filter(updates_enabled=False).count(),
         "notif_blocked": active.filter(notifications_allowed=False).count(),
         "new_7": AppDevice.objects.filter(installed_at__gte=timezone.now() - timedelta(days=7)).count(),
+        "active_now": AppDevice.objects.filter(AppDevice.active_now_q()).count(),
     }
 
     # Filters (server-side, so they work across pages).
     f = {k: (request.GET.get(k) or "").strip() for k in ("state", "app", "country", "notif", "q")}
-    if f["state"] == "signed_in":
+    if f["state"] == "active_now":
+        qs = qs.filter(AppDevice.active_now_q())
+    elif f["state"] == "signed_in":
         qs = qs.filter(is_active=True, account__isnull=False)
     elif f["state"] == "signed_out":
         qs = qs.filter(is_active=True, account__isnull=True)

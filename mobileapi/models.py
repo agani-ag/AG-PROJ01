@@ -633,9 +633,36 @@ class AppDevice(models.Model):
     install_source = models.CharField(max_length=60, blank=True, default="")
     notifications_allowed = models.BooleanField(null=True, blank=True)
     updates_enabled = models.BooleanField(default=True, help_text="The app's 'SyncUp updates' switch.")
+    # Usage time (16 Nov 2026): how long SyncUp has been open on this phone, in seconds, signed in or not.
+    # The app measures it (opened → closed) and sends the total with its check-in; a phone with "Share
+    # usage time" off doesn't send it.
+    usage_seconds = models.PositiveIntegerField(default=0, help_text="Time SyncUp has been open on this phone (seconds).")
+    # While the app is open it beats every 30 s (device/beat) with that total; closing it sends a last beat
+    # that clears this. Set and recent = the app is open on this phone right now.
+    active_at = models.DateTimeField(null=True, blank=True, help_text="Last 'SyncUp is open' heartbeat; blank once closed.")
 
     class Meta:
         ordering = ["-last_seen"]
+
+    ACTIVE_WINDOW = timedelta(seconds=75)  # a beat every 30 s; two missed = not open any more
+
+    @classmethod
+    def active_now_q(cls):
+        """Phones with SyncUp open right now (a heartbeat in the last ACTIVE_WINDOW)."""
+        return models.Q(active_at__gte=timezone.now() - cls.ACTIVE_WINDOW)
+
+    @property
+    def is_active_now(self):
+        return bool(self.active_at and self.active_at >= timezone.now() - self.ACTIVE_WINDOW)
+
+    @property
+    def usage_text(self):
+        """usage_seconds as "3 h 05 m", "12 m" or "—"."""
+        minutes = (self.usage_seconds or 0) // 60
+        if not minutes:
+            return "—"
+        h, m = divmod(minutes, 60)
+        return f"{h} h {m:02d} m" if h else f"{m} m"
 
     @property
     def app_version_code(self):

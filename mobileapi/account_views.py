@@ -176,11 +176,39 @@ _HELLO_FIELDS = {
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def device_beat(request):
+    """The app's heartbeat while it's open (every 30 s) and once as it closes, for every install that has
+    "Share usage time" on (16 Nov 2026): its usage total, and whether it's open now.
+
+    Body: {device_id, device_secret, usage_seconds?, open: bool}. No Bearer needed: the device_secret from
+    device/hello proves the phone. Light on purpose (one UPDATE), so it isn't rate limited like hello."""
+    data = json_body(request)
+    if data is None:
+        return _bad("Invalid JSON")
+    device_id = (data.get("device_id") or "").strip()[:255]
+    secret = data.get("device_secret") or ""
+    device = AppDevice.objects.filter(device_id=device_id).only("id", "device_secret").first() if device_id else None
+    if device is None or not device.device_secret or device.device_secret != secret:
+        return _bad("Unknown device", status=403)
+    now = timezone.now()
+    fields = {"last_seen": now, "active_at": now if data.get("open") else None}
+    if "usage_seconds" in data:
+        try:
+            fields["usage_seconds"] = max(0, min(int(data["usage_seconds"]), 2_000_000_000))
+        except (TypeError, ValueError):
+            pass
+    AppDevice.objects.filter(id=device.id).update(**fields)
+    return JsonResponse({"success": True})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def device_hello(request):
     """Every install checks in (launch + FCM token change), signed in or not.
 
     Body: {device_id, device_secret?, fcm_token?, app_version?, os_version?, locale?, time_zone?,
-           device_model?, webview_version?, install_source?, notifications_allowed?, updates_enabled?}
+           device_model?, webview_version?, install_source?, notifications_allowed?, updates_enabled?,
+           usage_seconds? (the app's own count of seconds it has been open on this phone)}
     The first hello issues a device_secret; later hellos for that device_id must send it back, so
     nobody can take over another install's row by guessing its id. With a valid Bearer token the
     signed-in account is attached; without one the account is left as it is (sign-out detaches it
@@ -225,6 +253,12 @@ def device_hello(request):
             device.notifications_allowed = bool(data.get("notifications_allowed"))
         if "updates_enabled" in data:
             device.updates_enabled = bool(data.get("updates_enabled"))
+        # Usage time: every install, signed in or not (left out when the app's switch is off).
+        if "usage_seconds" in data:
+            try:
+                device.usage_seconds = max(0, min(int(data["usage_seconds"]), 2_000_000_000))
+            except (TypeError, ValueError):
+                pass
         country = (request.META.get("HTTP_CF_IPCOUNTRY") or "").strip().upper()
         if country and country != "XX":
             device.country = country[:4]
