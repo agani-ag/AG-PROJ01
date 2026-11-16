@@ -127,3 +127,15 @@ class UsageTimeTests(TestCase):
         self.assertContains(r, "Active now")
         self.assertEqual(r.context["stats"]["active_now"], 1)
         self.assertEqual(len(r.context["page"].object_list), 1)
+
+    def test_account_page_shows_live_usage_and_active_now(self):
+        self.hello({"usage_seconds": 3725})
+        self.beat({"usage_seconds": 3730, "open": True})
+        self.client.force_login(get_user_model().objects.create_superuser("boss", "boss@example.com", "pw-123456"))
+        r = self.client.get(f"/mobile/accounts/{self.ravi.id}")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'id="acct-live" data-live-part')
+        self.assertContains(r, "1 h 02 m 10 s")
+        self.assertContains(r, "Active now")
+        self.assertContains(r, 'data-live="15"')
+        self.assertContains(r, 'data-show-more="8"')

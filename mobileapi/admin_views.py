@@ -56,6 +56,7 @@ from .models import (
     RadioChannel,
     PUSH_SOURCE_CHOICES,
     PUSH_STATUS_CHOICES,
+    usage_text,
 )
 
 # People listed at once when the admin starts a chat; searching reaches the rest.
@@ -175,12 +176,18 @@ def account_edit(request, account_id):
         messages.error(request, form.errors.as_text())
     else:
         form = AppAccountForm(instance=account)
+    devices = insights.account_devices(account)
     return render(request, "mobileapi/account_edit.html", {
         "form": form,
         "account": account,
         "is_edit": True,
         "links": account.links.select_related("partner").all(),
-        "devices": insights.account_devices(account),
+        "devices": devices,
+        # Live on the page (refreshed every 15 s): SyncUp open now on any of this account's phones, and their usage time.
+        "usage": {
+            "text": usage_text(sum(x["d"].usage_seconds or 0 for x in devices)),
+            "active_now": any(x["d"].is_active_now for x in devices),
+        },
         "connections": account.partner_connections.select_related("partner").all(),
         "sync": insights.sync_summary(account),
         "activity": insights.account_activity(account),

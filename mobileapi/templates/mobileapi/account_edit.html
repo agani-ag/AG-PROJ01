@@ -28,6 +28,11 @@
             {% elif account.source == "self" %}<span class="badge badge-accent">{% icon "user-plus" %}Self sign-up</span>
             {% else %}<span class="badge">Created by an admin</span>{% endif %}
             <span class="small muted">Created {{ account.created_at|date:"d M Y" }} · Last sign-in {{ account.last_login|date:"d M Y, g:i A"|default:"never" }}</span>
+            {# Live (every 15 s, see the Devices card's data-live): open now on any of their phones, and usage time. #}
+            <span class="row gap-sm" id="acct-live" data-live-part>
+                {% if usage.active_now %}<span class="badge badge-success">{% icon "activity" %}Active now</span>{% endif %}
+                <span class="badge" title="Time SyncUp has been open on this account's phones">{% icon "clock" %}{{ usage.text }}</span>
+            </span>
         </div>
         <div class="chips" style="margin-top:8px" aria-label="Ways to sign in">
             {% if account.email %}<a class="chip" href="mailto:{{ account.email }}" title="Send an email to {{ account.email }}">{% icon "mail" %}{{ account.email }}</a>{% endif %}
@@ -109,7 +114,7 @@
     {% if is_edit %}
     <div class="card">
         <div class="card-head">{% icon "activity" %}<h2>Activity</h2><span class="small muted ml-auto">Sign-ins, partners and pushes</span></div>
-        <ul class="timeline">
+        <ul class="timeline" data-show-more="8">
             {% for e in activity %}
             <li>
                 <span class="t-ico">{% icon e.icon %}</span>
@@ -128,12 +133,12 @@
 
     {% if is_edit %}
     <div class="stack sticky">
-        <div class="card">
+        <div class="card" data-live="15">
             <div class="card-head">
                 {% icon "smartphone" %}<h2>Devices</h2>
-                <span class="small muted ml-auto">{{ session_count }} active session{{ session_count|pluralize }}</span>
+                <span class="small muted ml-auto" id="acct-sessions" data-live-part>{{ session_count }} active session{{ session_count|pluralize }}</span>
             </div>
-            <ul class="list">
+            <ul class="list" id="acct-devices" data-live-part>
                 {% for x in devices %}
                 <li class="list-item" style="align-items:flex-start">
                     <span class="main-col">
@@ -195,6 +200,7 @@
                     <dt>Wellbeing</dt><dd class="num">{{ sync.drinks }} drink{{ sync.drinks|pluralize }} <span class="small muted">· {{ sync.habits }} habit{{ sync.habits|pluralize }} · {{ sync.nights }} night{{ sync.nights|pluralize }} · {{ sync.moods }} mood{{ sync.moods|pluralize }} · {{ sync.step_days }} step day{{ sync.step_days|pluralize }}</span></dd>
                     <dt>Open tabs</dt><dd class="num">{{ sync.open_tabs }} <span class="small muted">on {{ sync.devices|length }} device{{ sync.devices|length|pluralize }}</span></dd>
                 </dl>
+                <div data-show-more="4">
                 {% for r in sync.devices %}
                 <div class="row gap-sm small" style="margin-top:10px;flex-wrap:wrap">
                     <span class="status-dot{% if r.enabled != False and r.recent %} on{% endif %}"></span>
@@ -202,6 +208,7 @@
                     <span class="muted">{% if r.enabled == False %}sync off{% else %}synced {{ r.last_sync|ago }}{% endif %}{% if r.types %} · {{ r.types|join:", " }}{% endif %}</span>
                 </div>
                 {% endfor %}
+                </div>
                 {% else %}
                 <span class="muted small">Nothing synced yet.</span>
                 {% endif %}

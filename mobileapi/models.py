@@ -602,6 +602,18 @@ class AppLink(models.Model):
         return f"{self.title} ({self.account.login_label if self.account_id else 'general'})"
 
 
+def usage_text(seconds):
+    """Usage time with the seconds (user, 17 Nov 2026): "3 h 05 m 09 s", "12 m 30 s", "45 s", or "—"."""
+    total = int(seconds or 0)
+    if total <= 0:
+        return "—"
+    m, s = divmod(total, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h} h {m:02d} m {s:02d} s"
+    return f"{m} m {s:02d} s" if m else f"{s} s"
+
+
 # =============== FCM device registration ===============
 class AppDevice(models.Model):
     """One app install. `account` is whoever is signed in on it right now (blank = signed out);
@@ -657,15 +669,7 @@ class AppDevice(models.Model):
 
     @property
     def usage_text(self):
-        """usage_seconds with the seconds (user, 17 Nov 2026): "3 h 05 m 09 s", "12 m 30 s", "45 s", or "—"."""
-        total = self.usage_seconds or 0
-        if not total:
-            return "—"
-        m, s = divmod(total, 60)
-        h, m = divmod(m, 60)
-        if h:
-            return f"{h} h {m:02d} m {s:02d} s"
-        return f"{m} m {s:02d} s" if m else f"{s} s"
+        return usage_text(self.usage_seconds)
 
     @property
     def app_version_code(self):

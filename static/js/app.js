@@ -395,6 +395,34 @@
     App.refreshLive = tick;
   }
 
+  /* ---- Long lists: <ul data-show-more="8"> shows its first 8 children and a "Show more" button ----
+   * Each click shows that many more until all are shown (the account page's Activity and Browser sync).
+   */
+  function showMore(list) {
+    var step = Math.max(1, parseInt(list.dataset.showMore, 10) || 10);
+    var items = Array.prototype.slice.call(list.children);
+    if (items.length <= step) return;
+    var shown = step;
+    items.forEach(function (it, i) { it.hidden = i >= shown; });
+    var wrap = document.createElement("div");
+    wrap.className = "show-more";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm btn-ghost";
+    function label() {
+      var left = items.length - shown;
+      btn.textContent = "Show " + Math.min(step, left) + " more · " + left + " left";
+    }
+    btn.addEventListener("click", function () {
+      shown += step;
+      items.forEach(function (it, i) { if (i < shown) it.hidden = false; });
+      if (shown >= items.length) wrap.hidden = true; else label();
+    });
+    label();
+    wrap.appendChild(btn);
+    list.insertAdjacentElement("afterend", wrap);
+  }
+
   function init() {
     // Top-bar breadcrumb from the active sidebar link and the page's <h1>:
     // "Accounts / Chat Tester" on a detail page, "Notify / Reminders" on a section page.
@@ -411,6 +439,7 @@
     }
     $$("[data-table]").forEach(enhanceTable);
     $$("form[data-track-changes]").forEach(trackChanges);
+    $$("[data-show-more]").forEach(showMore);
     // Django messages arrive as JSON (see base.html) and show as toasts; the server-rendered copy is for no-JS.
     var msgs = $("#django-messages");
     if (msgs) {
