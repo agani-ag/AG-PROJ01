@@ -34,14 +34,7 @@
                 <label class="label" for="{{ form.url.id_for_label }}">URL</label>
                 {{ form.url }}
                 {% for e in form.url.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
-                <select class="input" aria-label="Pick from existing URLs"
-                        onchange="if(this.value){document.getElementById('{{ form.url.id_for_label }}').value=this.value;}">
-                    <option value="">— or pick from existing URLs —</option>
-                    {% for u in all_urls %}
-                    <option value="{{ u.url }}">{{ u.label }}</option>
-                    {% endfor %}
-                </select>
-                <span class="help">Distinct URLs already used across users. Selecting one fills the URL box.</span>
+                {% include "mobileapi/_url_pick.html" %}
             </div>
             <div class="form-grid">
                 <div class="field{% if form.description.errors %} invalid{% endif %}">

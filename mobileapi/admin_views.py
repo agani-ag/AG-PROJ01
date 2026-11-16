@@ -1069,13 +1069,23 @@ def _cloudinary_widget_cfg():
 
 
 def _distinct_link_urls():
-    """All links' URLs across every account, de-duplicated by URL (first title wins).
-    Used as the broadcast fallback for the 'pick an existing URL' dropdowns."""
+    """All links' URLs across every account, de-duplicated by URL, for the 'pick an existing URL' dropdowns.
+    Each carries what a link at that URL already has — title, description and User-Agent append — from the
+    newest such link, a blank description or append filled from an older one that has it. The link pages fill
+    those in too when one is picked (_url_pick.html); the push and reminder pages use only url and label."""
     seen = {}
-    for url, title in AppLink.objects.order_by("title").values_list("url", "title"):
-        if url and url not in seen:
-            seen[url] = title
-    return [{"url": url, "label": f"{title} — {url}"} for url, title in seen.items()]
+    for url, title, description, ua in AppLink.objects.order_by("-id").values_list("url", "title", "description", "ua_append"):
+        if not url:
+            continue
+        entry = seen.setdefault(url, {"url": url, "title": title or "", "description": "", "ua_append": ""})
+        if not entry["description"] and description:
+            entry["description"] = description
+        if not entry["ua_append"] and ua:
+            entry["ua_append"] = ua
+    picks = sorted(seen.values(), key=lambda e: (e["title"].lower(), e["url"]))
+    for e in picks:
+        e["label"] = f"{e['title']} — {e['url']}"
+    return picks
 
 
 # ------------------------------------------------------------------ Reminders

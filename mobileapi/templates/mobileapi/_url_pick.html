@@ -1,0 +1,31 @@
+{# "Pick from existing URLs" on the link pages (a user's link, a general link). Picking one fills the URL box, and the #}
+{# title, description and User-Agent append that a link at that URL already has (blank ones are left as they are). #}
+<select class="input" aria-label="Pick from existing URLs" data-url-pick
+        data-for-url="{{ form.url.id_for_label }}" data-for-title="{{ form.title.id_for_label }}"
+        data-for-description="{{ form.description.id_for_label }}" data-for-ua="{{ form.ua_append.id_for_label }}">
+    <option value="">— or pick from existing URLs —</option>
+    {% for u in all_urls %}
+    <option value="{{ u.url }}" data-title="{{ u.title }}" data-description="{{ u.description }}" data-ua="{{ u.ua_append }}">{{ u.label }}</option>
+    {% endfor %}
+</select>
+<span class="help">Distinct URLs already used across users. Picking one fills the URL, title and description, and the User-Agent value when that link has one.</span>
+<script>
+document.querySelectorAll("select[data-url-pick]:not([data-bound])").forEach(function (pick) {
+    pick.setAttribute("data-bound", "");
+    pick.addEventListener("change", function () {
+        var o = pick.selectedOptions[0];
+        if (!pick.value || !o) return;
+        // The "How it looks" preview and the unsaved-changes bar follow typing, so each fill says it typed.
+        var fill = function (id, value) {
+            var el = id && document.getElementById(id);
+            if (!el || !value) return;
+            el.value = value;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        fill(pick.dataset.forUrl, pick.value);
+        fill(pick.dataset.forTitle, o.dataset.title);
+        fill(pick.dataset.forDescription, o.dataset.description);
+        fill(pick.dataset.forUa, o.dataset.ua);
+    });
+});
+</script>
