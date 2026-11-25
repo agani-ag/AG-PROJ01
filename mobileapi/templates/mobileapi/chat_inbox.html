@@ -106,6 +106,38 @@
             color: var(--text); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
         .sheet button.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
         .sheet button:disabled { opacity: .6; }
+
+        /* Active now (people with SyncUp open — the console's green count), next to the title. */
+        .active-chip { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; height: 32px;
+            padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: #16a34a;
+            font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .active-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+        .active-chip.none { color: var(--muted); }
+        .active-chip.none .dot { background: #9ca3af; }
+
+        /* Start a chat: the + bubble (room under the list so the last chat scrolls clear of it). */
+        #listView .conv-list { padding-bottom: 88px; }
+        .new-chat { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 5; width: 56px; height: 56px;
+            display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--me-bg); color: #fff;
+            box-shadow: 0 6px 16px rgba(0,0,0,.28); cursor: pointer; }
+        .new-chat svg { width: 26px; height: 26px; }
+
+        /* Its people picker: a tall sheet, Active now first. */
+        .psheet { width: 100%; max-width: 560px; height: 86vh; display: flex; flex-direction: column; background: var(--surface);
+            color: var(--text); border-radius: 18px 18px 0 0; overflow: hidden; }
+        .psheet-top { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+        .psheet-title { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .psheet-title h2 { margin: 0; font-size: 17px; flex: 1; }
+        .psheet-x { border: 0; background: transparent; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 6px; cursor: pointer; }
+        .psheet-top input { width: 100%; border: 1px solid var(--border); border-radius: 20px; padding: 9px 14px; font-size: 15px;
+            background: var(--bg); color: var(--text); }
+        .people-status { margin-top: 8px; font-size: 12.5px; color: var(--muted); min-height: 16px; }
+        .people-list { flex: 1; overflow-y: auto; padding-bottom: env(safe-area-inset-bottom); }
+        .people-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 7px 14px;
+            background: var(--bar); border-bottom: 1px solid var(--sep); font-size: 12px; font-weight: 600; color: var(--muted); }
+        .people-head.on { color: #16a34a; }
+        .people-head.on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; }
+        .people-list .presence-dot { border-color: var(--surface); }
     </style>
 </head>
 <body>
@@ -116,9 +148,11 @@
                 <div class="title">Support inbox</div>
                 <small id="listStatus"></small>
             </div>
+            <button id="activeChip" class="active-chip none" type="button" title="People with SyncUp open now" hidden><span class="dot"></span><span id="activeText"></span></button>
         </header>
         <div class="search"><input id="search" placeholder="Search name or email…" autocomplete="off"></div>
         <div id="convList" class="conv-list"></div>
+        <button id="newChatBtn" class="new-chat" type="button" aria-label="New message" title="New message"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
     </div>
 
     <!-- THREAD -->
@@ -157,6 +191,18 @@
         </div>
     </div>
 
+    <!-- Start a chat with anyone signed in to the app (the +) -->
+    <div class="sheet-back" id="peopleSheet" hidden>
+        <div class="psheet" role="dialog" aria-modal="true" aria-labelledby="peopleTitle">
+            <div class="psheet-top">
+                <div class="psheet-title"><h2 id="peopleTitle">New message</h2><button class="psheet-x" id="peopleClose" type="button" aria-label="Close">&#10005;</button></div>
+                <input id="peopleSearch" type="search" placeholder="Search name, email or phone" autocomplete="off">
+                <div class="people-status" id="peopleStatus"></div>
+            </div>
+            <div class="people-list" id="peopleList"></div>
+        </div>
+    </div>
+
     <script>
         var CSRF = document.querySelector('meta[name="csrf"]').content;
         var LIST_URL = "{% url 'chat_inbox_list' %}";
@@ -164,6 +210,7 @@
         var REPLY_URL = "{% url 'chat_inbox_reply' 0 %}";
         var TYPING_URL = "{% url 'chat_inbox_typing' 0 %}";
         var CLEAR_URL = "{% url 'chat_inbox_clear' 0 %}";
+        var PEOPLE_URL = "{% url 'chat_inbox_people' %}";
         function threadUrl(id) { return THREAD_URL.replace(/\/0\/messages\.json$/, "/" + id + "/messages.json"); }
         function replyUrl(id) { return REPLY_URL.replace(/\/0\/reply$/, "/" + id + "/reply"); }
         function typingUrl(id) { return TYPING_URL.replace(/\/0\/typing$/, "/" + id + "/typing"); }
@@ -225,6 +272,7 @@
                 conversations = d.conversations || [];
                 var unread = conversations.reduce(function (n, c) { return n + (c.unread||0); }, 0);
                 listStatus.textContent = conversations.length + " conversation" + (conversations.length===1?"":"s") + (unread ? " · " + unread + " unread" : "");
+                if (typeof d.active === "number") setActive(d.active);
                 renderList();
             }).catch(function () {});
         }
@@ -343,6 +391,71 @@
                 fetch(typingUrl(current), { method: "POST", credentials: "same-origin", headers: { "X-CSRFToken": CSRF } }).catch(function () {});
             }
         });
+        /* ---- Active now + start a chat (as on the console's Messages page) ---- */
+        var activeChip = document.getElementById("activeChip"), activeText = document.getElementById("activeText");
+        var peopleSheet = document.getElementById("peopleSheet"), peopleSearch = document.getElementById("peopleSearch");
+        var peopleList = document.getElementById("peopleList"), peopleStatus = document.getElementById("peopleStatus");
+        var people = [], peopleTimer = null, peopleSeq = 0;
+        function setActive(n) {
+            activeChip.hidden = false;
+            activeChip.className = "active-chip" + (n ? "" : " none");
+            activeText.textContent = n + " active now";
+        }
+        // Active now first (SyncUp open on their phone), then everyone else; the server sends them in that order.
+        function renderPeople(total, q, active) {
+            peopleStatus.textContent = (total > people.length
+                ? "Showing " + people.length + " of " + total + ". Search to find the others."
+                : total + (total === 1 ? " person" : " people") + (q ? " found" : " signed in to the app"))
+                + (active ? " · " + active + " active now" : "");
+            if (!people.length) { peopleList.innerHTML = '<div class="list-empty">' + (q ? "No matches" : "No one is signed in") + "</div>"; return; }
+            peopleList.innerHTML = people.map(function (p, i) {
+                var head = "";
+                if (active && i === 0) head = '<div class="people-head on">Active now · ' + active + "</div>";
+                else if (active && !p.online && people[i - 1].online) head = '<div class="people-head">Everyone else</div>';
+                return head + '<button class="conv-item" type="button" data-i="' + i + '">' +
+                    '<div class="avatar-wrap"><div class="avatar" style="background:' + colorFor(p.id) + '">' + esc(initials(p.name)) + '</div>' +
+                    '<span class="presence-dot' + (p.online ? " online" : "") + '"></span></div>' +
+                    '<div class="conv-main"><div class="conv-top"><span class="conv-name">' + esc(p.name) + '</span></div>' +
+                    '<div class="conv-top"><span class="conv-prev">' + esc(p.email) + '</span></div></div></button>';
+            }).join("");
+        }
+        function loadPeople() {
+            var seq = ++peopleSeq, q = peopleSearch.value.trim();
+            fetch(PEOPLE_URL + (q ? "?q=" + encodeURIComponent(q) : ""), { credentials: "same-origin" })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+                .then(function (d) {
+                    if (seq !== peopleSeq) return;  // an older search finishing late
+                    people = d.people || [];
+                    renderPeople(d.total || 0, q, d.active || 0);
+                    if (typeof d.active === "number" && !q) setActive(d.active);
+                })
+                .catch(function () {
+                    if (seq !== peopleSeq) return;
+                    people = []; peopleStatus.textContent = "";
+                    peopleList.innerHTML = '<div class="list-empty">Couldn\'t load people. Check your connection and try again.</div>';
+                });
+        }
+        function openPeople() {
+            peopleSearch.value = "";
+            peopleList.innerHTML = '<div class="list-empty">Loading…</div>';
+            peopleStatus.textContent = "";
+            peopleSheet.hidden = false;
+            loadPeople();
+        }
+        function closePeople() { peopleSheet.hidden = true; peopleSeq++; }
+        document.getElementById("newChatBtn").addEventListener("click", openPeople);
+        activeChip.addEventListener("click", openPeople);  // the list starts with who's active now
+        document.getElementById("peopleClose").addEventListener("click", closePeople);
+        peopleSheet.addEventListener("click", function (e) { if (e.target === peopleSheet) closePeople(); });  // the backdrop
+        peopleSearch.addEventListener("input", function () { clearTimeout(peopleTimer); peopleTimer = setTimeout(loadPeople, 200); });
+        peopleList.addEventListener("click", function (e) {
+            var row = e.target.closest(".conv-item"); if (!row) return;
+            var p = people[parseInt(row.dataset.i, 10)]; if (!p) return;
+            closePeople();
+            openThread(p.id, p.name, p.online, p.last_seen_ms || 0);
+            input.focus();
+        });
+
         search.addEventListener("input", renderList);
         thread.addEventListener("scroll", updateJump);
         jump.addEventListener("click", function () { scrollBottom(); updateJump(); });

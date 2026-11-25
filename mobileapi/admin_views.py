@@ -33,7 +33,7 @@ from . import telegram_backup
 from . import telegram_chats as tg_chats
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import hub_people
-from .chat_views import clear_chat
+from .chat_views import chat_people as _chat_people, chat_people_payload, clear_chat
 from . import partner_api
 from . import site_tokens
 from .channel_lists import is_channel_link
@@ -59,9 +59,6 @@ from .models import (
     PUSH_STATUS_CHOICES,
     usage_text,
 )
-
-# People listed at once when the admin starts a chat; searching reaches the rest.
-CHAT_PEOPLE_LIMIT = 50
 
 # Chats re-checked per request while the Telegram page loops through them all. Each one costs
 # up to three Telegram round-trips, so keep the batch small enough that a request stays quick.
@@ -1329,19 +1326,6 @@ def chat_list_json(request):
     return JsonResponse({"conversations": data})
 
 
-def _chat_people():
-    """Who the admin can start a chat with: anyone signed in to the app (a token that still works).
-    Support agents are left out: their app Chat opens the inbox, which hides their own thread, so
-    they'd never see the message. `on`: SyncUp is open on one of their phones right now."""
-    signed_in = AppAuthToken.objects.filter(
-        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
-        account=OuterRef("pk"), revoked=False,
-    )
-    open_now = AppDevice.objects.filter(AppDevice.active_now_q(), account=OuterRef("pk"))
-    return (AppAccount.objects.filter(Exists(signed_in), is_active=True, admin_chat_mode=False)
-            .annotate(on=Exists(open_now)))
-
-
 def chat_counts():
     """The Messages menu's two counts: unread messages, and people with SyncUp open now (the + list's Active now)."""
     return {
@@ -1360,20 +1344,8 @@ def chat_counts_json(request):
 @superuser_required
 def chat_people_json(request):
     """The + list: people the admin can message, Active now first, then everyone else, each A-Z.
-    `q` to search."""
-    people = _chat_people()
-    q = (request.GET.get("q") or "").strip()
-    if q:
-        people = people.filter(
-            Q(name__icontains=q) | Q(email__icontains=q) | Q(phone__icontains=q) | Q(username__icontains=q)
-        )
-    shown = list(people.order_by("-on", Lower("name"))[:CHAT_PEOPLE_LIMIT])
-    presence = AppDevice.presence([a.id for a in shown])
-    return JsonResponse({
-        "total": people.count(),
-        "active": people.filter(on=True).count(),
-        "people": [{"id": a.id, "name": a.name, "email": a.login_label, **presence[a.id], "online": a.on} for a in shown],
-    })
+    `q` to search. The app's support inbox has the same list (chat_views.chat_inbox_people)."""
+    return JsonResponse(chat_people_payload(request.GET.get("q")))
 
 
 @superuser_required

@@ -12,14 +12,15 @@ import json
 from datetime import timedelta
 
 from django.core import signing
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Exists, Max, OuterRef, Q
+from django.db.models.functions import Lower
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from . import fcm
-from .models import AppAccount, AppChatMessage, AppDevice, AppNotificationLog
+from .models import AppAccount, AppAuthToken, AppChatMessage, AppDevice, AppNotificationLog
 from .serializers import chat_message_dict
 
 CHAT_SALT = "syncup-chat-web"
@@ -144,6 +145,41 @@ def chat_typing(request):
     return JsonResponse({"ok": True})
 
 
+# People listed at once when starting a chat (console + or inbox +); searching reaches the rest.
+CHAT_PEOPLE_LIMIT = 50
+
+
+def chat_people():
+    """Who the admin (console) or a support agent (app inbox) can start a chat with: anyone signed in to
+    the app (a token that still works). Support agents are left out: their app Chat opens the inbox, which
+    hides their own thread, so they'd never see the message. `on`: SyncUp is open on one of their phones
+    right now — the + list's Active now, and the active counts on the Messages menu and the inbox."""
+    signed_in = AppAuthToken.objects.filter(
+        Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
+        account=OuterRef("pk"), revoked=False,
+    )
+    open_now = AppDevice.objects.filter(AppDevice.active_now_q(), account=OuterRef("pk"))
+    return (AppAccount.objects.filter(Exists(signed_in), is_active=True, admin_chat_mode=False)
+            .annotate(on=Exists(open_now)))
+
+
+def chat_people_payload(q):
+    """The + list: Active now first, then everyone else, each A-Z; `q` searches name, email, phone, username."""
+    people = chat_people()
+    q = (q or "").strip()
+    if q:
+        people = people.filter(
+            Q(name__icontains=q) | Q(email__icontains=q) | Q(phone__icontains=q) | Q(username__icontains=q)
+        )
+    shown = list(people.order_by("-on", Lower("name"))[:CHAT_PEOPLE_LIMIT])
+    presence = AppDevice.presence([a.id for a in shown])
+    return {
+        "total": people.count(),
+        "active": people.filter(on=True).count(),
+        "people": [{"id": a.id, "name": a.name, "email": a.login_label, **presence[a.id], "online": a.on} for a in shown],
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Mobile support-agent inbox (admin_chat_mode) — same session, gated on the flag
 # --------------------------------------------------------------------------- #
@@ -221,7 +257,17 @@ def chat_inbox_list(request):
             "last_at_ms": int(a.last_message_at.timestamp() * 1000) if a.last_message_at else 0,
             **presence[a.id],
         })
-    return JsonResponse({"conversations": data})
+    # Active now: people with SyncUp open — the same count as the console's Messages menu.
+    return JsonResponse({"conversations": data, "active": chat_people().filter(on=True).count()})
+
+
+@require_http_methods(["GET"])
+def chat_inbox_people(request):
+    """The inbox's + (start a chat with anyone signed in to the app), as on the console."""
+    agent = _session_agent(request)
+    if not agent:
+        return JsonResponse({"error": "unauthorized"}, status=401)
+    return JsonResponse(chat_people_payload(request.GET.get("q")))
 
 
 @require_http_methods(["GET"])

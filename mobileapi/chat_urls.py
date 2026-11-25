@@ -13,6 +13,7 @@ urlpatterns = [
     # Support-agent inbox (admin_chat_mode users)
     path("inbox/", c.chat_inbox_home, name="chat_inbox_home"),
     path("inbox/list.json", c.chat_inbox_list, name="chat_inbox_list"),
+    path("inbox/people.json", c.chat_inbox_people, name="chat_inbox_people"),
     path("inbox/<int:account_id>/messages.json", c.chat_inbox_thread, name="chat_inbox_thread"),
     path("inbox/<int:account_id>/reply", c.chat_inbox_reply, name="chat_inbox_reply"),
     path("inbox/<int:account_id>/typing", c.chat_inbox_typing, name="chat_inbox_typing"),
