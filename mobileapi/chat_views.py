@@ -209,6 +209,8 @@ def chat_inbox_list(request):
         )
         .order_by("-last_message_at")
     )
+    accounts = list(accounts)
+    presence = AppDevice.presence([a.id for a in accounts])  # Active now / Last seen, as on Devices
     data = []
     for a in accounts:
         last = a.chat_messages.order_by("-created_at").first()
@@ -217,8 +219,7 @@ def chat_inbox_list(request):
             "last_body": (last.body[:90] if last else ""),
             "last_sender": (last.sender if last else ""),
             "last_at_ms": int(a.last_message_at.timestamp() * 1000) if a.last_message_at else 0,
-            "online": a.is_active_on_chat(30),
-            "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
+            **presence[a.id],
         })
     return JsonResponse({"conversations": data})
 
@@ -248,8 +249,7 @@ def chat_inbox_thread(request, account_id):
     return JsonResponse({
         "account": {
             "id": target.id, "name": target.name, "email": target.login_label,
-            "online": target.is_active_on_chat(30),
-            "last_seen_ms": int(target.chat_last_seen_at.timestamp() * 1000) if target.chat_last_seen_at else 0,
+            **AppDevice.presence([target.id])[target.id],
         },
         "messages": rows,
         "latest_id": AppChatMessage.objects.filter(account=target).aggregate(m=Max("id"))["m"] or 0,

@@ -6,9 +6,9 @@ def admin_shell(request):
     if not (user and user.is_authenticated and user.is_superuser):
         return {}
 
-    def unread_chats():
-        # Imported lazily; the query only runs if the sidebar actually renders the badge.
-        from mobileapi.models import AppChatMessage
-        return AppChatMessage.objects.filter(sender="user", read_by_admin=False).count()
+    def chat_counts():
+        # Imported lazily; the queries only run if the sidebar renders the counts. app.js keeps them live.
+        from mobileapi.admin_views import chat_counts
+        return chat_counts()
 
-    return {"nav_unread_chats": unread_chats}
+    return {"nav_chat_counts": chat_counts}

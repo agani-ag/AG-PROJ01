@@ -114,6 +114,7 @@ urlpatterns = [
     path("chats/people.json", v.chat_people_json, name="mobile_chat_people_json"),
     path("chats/<int:account_id>/messages.json", v.chat_thread_json, name="mobile_chat_thread_json"),
     path("chats/<int:account_id>/reply", v.chat_reply_json, name="mobile_chat_reply_json"),
+    path("chats/counts.json", v.chat_counts_json, name="mobile_chat_counts"),
     path("chats/<int:account_id>/typing", v.chat_typing_admin, name="mobile_chat_typing"),
     path("chats/<int:account_id>/clear", v.chat_clear_json, name="mobile_chat_clear"),
     path("chats/<int:account_id>", v.chat_detail, name="mobile_chat_detail"),

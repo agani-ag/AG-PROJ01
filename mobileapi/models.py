@@ -667,6 +667,21 @@ class AppDevice(models.Model):
     def is_active_now(self):
         return bool(self.active_at and self.active_at >= timezone.now() - self.ACTIVE_WINDOW)
 
+    @classmethod
+    def presence(cls, account_ids):
+        """{account id: {"online", "last_seen_ms"}} from their phones, as the Devices page shows them: online
+        while SyncUp is open on one of them, else when one last checked in (0 = no phone signed in)."""
+        since = timezone.now() - cls.ACTIVE_WINDOW
+        found = {i: {"online": False, "last_seen_ms": 0} for i in account_ids}
+        rows = (cls.objects.filter(account_id__in=found).values("account_id").order_by()
+                .annotate(seen=models.Max("last_seen"), beat=models.Max("active_at")))
+        for r in rows:
+            found[r["account_id"]] = {
+                "online": bool(r["beat"] and r["beat"] >= since),
+                "last_seen_ms": int(r["seen"].timestamp() * 1000) if r["seen"] else 0,
+            }
+        return found
+
     @property
     def usage_text(self):
         return usage_text(self.usage_seconds)

@@ -79,6 +79,8 @@ img { max-width: 100%; height: auto; }
 .nav-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 .nav-link[aria-current="page"] { background: var(--accent-soft); color: var(--accent-ink); }
 .nav-link .icon { width: 17px; height: 17px; }
+.nav-link .counts { margin-left: auto; display: flex; gap: 4px; }
+.nav-link .count.count-live { background: var(--success); }
 .nav-link .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .nav-link .ext { margin-left: auto; width: 13px; height: 13px; color: var(--faint); }
 .side-foot { border-top: 1px solid var(--border); padding: 10px; }

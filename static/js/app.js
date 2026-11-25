@@ -421,6 +421,33 @@
     if (left > 0) st.wrap.firstChild.textContent = "Show " + Math.min(step, left) + " more · " + left + " left";
   }
 
+  /* ---- Live sidebar counts: <span data-counts="url"> holds [data-count="key"] badges ----
+   * The url answers {key: number}; asked again every 15 s while the tab is showing, and at once
+   * when it comes back. A badge hides at 0. App.refreshCounts() asks now (after reading a chat).
+   */
+  function startCounts() {
+    var box = $("[data-counts]"); if (!box) return;
+    var busy = false;
+    function refresh() {
+      if (busy || document.hidden) return;
+      busy = true;
+      fetch(box.dataset.counts, { credentials: "same-origin" })
+        .then(function (r) { if (!r.ok || r.redirected) throw new Error("HTTP " + r.status); return r.json(); })
+        .then(function (d) {
+          $$("[data-count]", box).forEach(function (b) {
+            var n = d[b.dataset.count] || 0;
+            b.textContent = n;
+            b.hidden = !n;
+          });
+        })
+        .catch(function () {})
+        .then(function () { busy = false; });
+    }
+    setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+    App.refreshCounts = refresh;
+  }
+
   function init() {
     // Top-bar breadcrumb from the active sidebar link and the page's <h1>:
     // "Accounts / Chat Tester" on a detail page, "Notify / Reminders" on a section page.
@@ -447,6 +474,7 @@
     paintThemeButton();
     syncThemeColor();
     startLive();
+    startCounts();
   }
   window.App = { toast: toast, confirm: confirmDialog, fetchJSON: fetchJSON, csrf: csrf, icon: icon, openPalette: openPalette, enhanceTable: enhanceTable, copy: copyText };
 

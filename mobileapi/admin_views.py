@@ -20,7 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from .serializers import chat_message_dict
 
@@ -1236,7 +1236,10 @@ def chats(request):
         )
         .order_by("-last_message_at")
     )
-    return render(request, "mobileapi/chats.html", {"accounts": accounts})
+    # ?with=<account id> (the account page's Message button) opens that person's chat straight away.
+    start = AppAccount.objects.filter(pk=request.GET.get("with")).first() if str(request.GET.get("with") or "").isdigit() else None
+    start_chat = start and {"id": start.id, "name": start.name, "email": start.login_label, **AppDevice.presence([start.id])[start.id]}
+    return render(request, "mobileapi/chats.html", {"accounts": accounts, "start_chat": start_chat})
 
 
 @superuser_required
@@ -1276,6 +1279,8 @@ def chat_list_json(request):
         )
         .order_by("-last_message_at")
     )
+    accounts = list(accounts)
+    presence = AppDevice.presence([a.id for a in accounts])  # Active now / Last seen, as on Devices
     data = []
     for a in accounts:
         last = a.chat_messages.order_by("-created_at").first()
@@ -1287,37 +1292,55 @@ def chat_list_json(request):
             "last_body": (last.body[:90] if last else ""),
             "last_sender": (last.sender if last else ""),
             "last_at_ms": int(a.last_message_at.timestamp() * 1000) if a.last_message_at else 0,
-            # Teams-style presence (based on the user's chat polling):
-            "online": a.is_active_on_chat(30),
-            "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
+            **presence[a.id],
         })
     return JsonResponse({"conversations": data})
 
 
-@superuser_required
-def chat_people_json(request):
-    """Who the admin can start a chat with: anyone signed in to the app (a token that still works),
-    A-Z, `q` to search. Support agents are left out: their app Chat opens the inbox, which hides
-    their own thread, so they'd never see the message."""
+def _chat_people():
+    """Who the admin can start a chat with: anyone signed in to the app (a token that still works).
+    Support agents are left out: their app Chat opens the inbox, which hides their own thread, so
+    they'd never see the message. `on`: SyncUp is open on one of their phones right now."""
     signed_in = AppAuthToken.objects.filter(
         Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()),
         account=OuterRef("pk"), revoked=False,
     )
-    people = AppAccount.objects.filter(Exists(signed_in), is_active=True, admin_chat_mode=False)
+    open_now = AppDevice.objects.filter(AppDevice.active_now_q(), account=OuterRef("pk"))
+    return (AppAccount.objects.filter(Exists(signed_in), is_active=True, admin_chat_mode=False)
+            .annotate(on=Exists(open_now)))
+
+
+def chat_counts():
+    """The Messages menu's two counts: unread messages, and people with SyncUp open now (the + list's Active now)."""
+    return {
+        "unread": AppChatMessage.objects.filter(sender="user", read_by_admin=False).count(),
+        "active": _chat_people().filter(on=True).count(),
+    }
+
+
+@superuser_required
+@require_GET
+def chat_counts_json(request):
+    """The Messages menu's counts; every admin page asks again every 15 s (app.js) so they stay live."""
+    return JsonResponse(chat_counts())
+
+
+@superuser_required
+def chat_people_json(request):
+    """The + list: people the admin can message, Active now first, then everyone else, each A-Z.
+    `q` to search."""
+    people = _chat_people()
     q = (request.GET.get("q") or "").strip()
     if q:
         people = people.filter(
             Q(name__icontains=q) | Q(email__icontains=q) | Q(phone__icontains=q) | Q(username__icontains=q)
         )
+    shown = list(people.order_by("-on", Lower("name"))[:CHAT_PEOPLE_LIMIT])
+    presence = AppDevice.presence([a.id for a in shown])
     return JsonResponse({
         "total": people.count(),
-        "people": [{
-            "id": a.id,
-            "name": a.name,
-            "email": a.login_label,
-            "online": a.is_active_on_chat(30),
-            "last_seen_ms": int(a.chat_last_seen_at.timestamp() * 1000) if a.chat_last_seen_at else 0,
-        } for a in people.order_by(Lower("name"))[:CHAT_PEOPLE_LIMIT]],
+        "active": people.filter(on=True).count(),
+        "people": [{"id": a.id, "name": a.name, "email": a.login_label, **presence[a.id], "online": a.on} for a in shown],
     })
 
 
@@ -1342,8 +1365,7 @@ def chat_thread_json(request, account_id):
         "account": {
             "id": account.id, "name": account.name, "email": account.login_label,
             "active": account.is_active,
-            "online": account.is_active_on_chat(30),
-            "last_seen_ms": int(account.chat_last_seen_at.timestamp() * 1000) if account.chat_last_seen_at else 0,
+            **AppDevice.presence([account.id])[account.id],
         },
         "messages": rows,
         "read_upto_id": read_upto,

@@ -41,6 +41,10 @@
         </div>
         {% endif %}
     </div>
+    {# A support agent's app Chat opens the inbox, which hides their own thread: they'd never see it. #}
+    {% if is_edit and account.is_active and not account.admin_chat_mode %}
+    <a class="btn btn-primary" href="{% url 'mobile_chats' %}?with={{ account.id }}">{% icon "messages-square" %}Message</a>
+    {% endif %}
 </div>
 
 <div class="{% if is_edit %}split{% else %}stack{% endif %}">

@@ -41,6 +41,9 @@
     .new-chat .icon { width: 24px; height: 24px; }
     .people-search { padding: 12px 16px; border-bottom: 1px solid var(--border); }
     .people-list { height: min(52vh, 420px); overflow-y: auto; }
+    .people-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 7px 18px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--muted); }
+    .people-head.on { color: var(--success); }
+    .people-head.on::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
 
     /* ---- Thread ---- */
     .chat-thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -174,7 +177,7 @@
                 <textarea id="replyInput" class="input" rows="1" placeholder="Type a message…" aria-label="Message"></textarea>
                 <button type="submit" class="btn btn-primary btn-send" aria-label="Send message" title="Send (Enter)">{% icon "send-horizontal" %}</button>
             </form>
-            <p class="help"><span class="kbd-hint">Enter to send, Shift+Enter for a new line. </span>Delivered to the user's devices as a notification (skipped while they're active here).</p>
+            <p class="help"><span class="kbd-hint">Enter to send, Shift+Enter for a new line. </span>Delivered to the user's devices as a notification (skipped while they have the chat open).</p>
         </div>
     </section>
 </div>
@@ -199,6 +202,7 @@
 {% endblock %}
 
 {% block script %}
+{{ start_chat|json_script:"start-chat" }}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     var CSRF = "{{ csrf_token }}";
@@ -432,6 +436,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 updateReadReceipts();
                 var tr = document.getElementById("typingRow");
                 if (tr) tr.hidden = !d.user_typing;
+                if (firstLoad) { loadList(); if (App.refreshCounts) App.refreshCounts(); }  // just read: the list and the menu drop it now
                 if (firstLoad || stick) { scrollBottom(); }
                 else if (added) { newCount += added; }
                 updateJump();
@@ -493,17 +498,22 @@ document.addEventListener("DOMContentLoaded", function () {
     var peopleStatus = document.getElementById("peopleStatus");
     var people = [], peopleTimer = null, peopleSeq = 0;
 
-    function renderPeople(total, q) {
-        peopleStatus.textContent = total > people.length
+    // Active now first (SyncUp open on their phone), then everyone else; the server sends them in that order.
+    function renderPeople(total, q, active) {
+        peopleStatus.textContent = (total > people.length
             ? "Showing " + people.length + " of " + total + ". Search to find the others."
-            : total + (total === 1 ? " person" : " people") + (q ? " found" : " signed in to the app");
+            : total + (total === 1 ? " person" : " people") + (q ? " found" : " signed in to the app"))
+            + (active ? " · " + active + " active now" : "");
         if (!people.length) {
             peopleList.innerHTML = '<div class="empty">' + App.icon(q ? "search" : "users") + "<b>" + (q ? "No matches" : "No one is signed in") + "</b></div>";
             return;
         }
         peopleList.innerHTML = people.map(function (p, i) {
             var presTitle = p.online ? "Active now" : (p.last_seen_ms ? "Last seen " + relTime(p.last_seen_ms) : "Offline");
-            return '' +
+            var head = "";
+            if (active && i === 0) head = '<div class="people-head on">Active now · ' + active + "</div>";
+            else if (active && !p.online && people[i - 1].online) head = '<div class="people-head">Everyone else</div>';
+            return head +
               '<button type="button" class="conv-item" data-i="' + i + '">' +
                 '<span class="avatar-wrap">' +
                   '<span class="avatar" style="background:' + colorFor(p.id) + '">' + esc(initials(p.name)) + '</span>' +
@@ -523,7 +533,7 @@ document.addEventListener("DOMContentLoaded", function () {
             .then(function (d) {
                 if (seq !== peopleSeq) return;  // an older search finishing late
                 people = d.people || [];
-                renderPeople(d.total || 0, q);
+                renderPeople(d.total || 0, q, d.active || 0);
             })
             .catch(function (err) {
                 if (seq !== peopleSeq) return;
@@ -553,6 +563,12 @@ document.addEventListener("DOMContentLoaded", function () {
     });
     newChat.addEventListener("click", function (e) { if (e.target === newChat) newChat.close(); });  // the backdrop
 
+    // From an account page's Message button: that person's chat, open and ready to type.
+    var start = JSON.parse(document.getElementById("start-chat").textContent);
+    if (start) {
+        openConversation(start.id, start.name, start.email, start.online, start.last_seen_ms);
+        replyInput.focus();
+    }
     loadList();
     setInterval(loadList, 10000);
     setInterval(function () { loadThread(); }, 4000);

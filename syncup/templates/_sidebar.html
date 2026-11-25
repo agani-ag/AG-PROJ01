@@ -16,7 +16,7 @@
         </div>
         <div class="nav-group">
             <div class="nav-label">Notify</div>
-            <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with n=nav_unread_chats %}{% if n %}<span class="count" title="{{ n }} unread">{{ n }}</span>{% endif %}{% endwith %}</a>
+            <a class="nav-link" href="{% url 'mobile_chats' %}" {% nav_active "mobile_chats mobile_chat_detail" %}>{% icon "messages-square" %}<span class="nav-text">Messages</span>{% with c=nav_chat_counts %}<span class="counts" data-counts="{% url 'mobile_chat_counts' %}"><span class="count count-live" data-count="active" title="With SyncUp open now"{% if not c.active %} hidden{% endif %}>{{ c.active }}</span><span class="count" data-count="unread" title="Unread messages"{% if not c.unread %} hidden{% endif %}>{{ c.unread }}</span></span>{% endwith %}</a>
             <a class="nav-link" href="{% url 'mobile_reminders' %}" {% nav_active "mobile_reminders mobile_reminder_edit mobile_reminder_receipts" %}>{% icon "calendar-clock" %}<span class="nav-text">Reminders</span></a>
             <a class="nav-link" href="{% url 'mobile_push' %}" {% nav_active "mobile_push" %}>{% icon "bell-ring" %}<span class="nav-text">Push notifications</span></a>
             <a class="nav-link" href="{% url 'mobile_telegram' %}" {% nav_active "mobile_telegram" %}>{% icon "send" %}<span class="nav-text">Telegram</span></a>
