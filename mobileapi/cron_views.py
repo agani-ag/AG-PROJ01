@@ -209,8 +209,7 @@ def cleanup(request):
         do_vacuum = request.GET.get("vacuum") in ("1", "true", "yes")
         stats = run_cleanup(vacuum=do_vacuum)
         backup = telegram_backup.due()
-        host = request.get_host()
-        then = (lambda: telegram_backup.run_daily(host)) if backup == "sending after this reply" else None
+        then = telegram_backup.run_daily if backup == "sending after this reply" else None
         return AfterReply({"ok": True, **stats, "backup": backup}, then=then)
     except Exception as e:  # noqa: BLE001 — surface any failure to the cron service as 5xx
         return JsonResponse({"ok": False, "error": str(e)[:500]}, status=500)

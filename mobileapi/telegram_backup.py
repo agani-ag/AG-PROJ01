@@ -58,16 +58,16 @@ def due():
     return "sending after this reply"
 
 
-def run_daily(host):
+def run_daily():
     """The cron's backup, run after its reply. Skips quietly if today's has gone already."""
     if due() != "sending after this reply" or not CronLock.acquire(BACKUP_JOB, BACKUP_EVERY):
         return
-    ok, _ = send(host)
+    ok, _ = send()
     if not ok:
         CronLock.release(BACKUP_JOB)  # try again on the next cron call
 
 
-def send(host):
+def send():
     """Copy the database and send it with its note. Returns (ok, message id | error). Logged in
     the Telegram send log either way."""
     chat = chat_id()
@@ -76,7 +76,7 @@ def send(host):
     note = ""
     try:
         data = _snapshot()
-        note = _note(host, len(data))
+        note = _note(len(data))
         ok, out = telegram.send_document(chat, db_file(), data, note, mime="application/vnd.sqlite3")
     except Exception as e:  # noqa: BLE001 — a backup must never break the request it rides on
         logger.exception("Database backup failed")
@@ -124,18 +124,15 @@ def _mb(size):
     return f"{size / 1024 / 1024:.1f} MB" if size >= 100 * 1024 else f"{size / 1024:.0f} KB"
 
 
-def _note(host, size):
-    """The text under the file: when, where from, how big, what's in it, and how to restore."""
+def _note(size):
+    """The text under the file: when, how big, and what's in it."""
     now = timezone.localtime()
     counts = [f"{label} {model.objects.count():,}" for label, model in COUNTS]
     return "\n".join([
         "SyncUp database backup",
         f"{dateformat.format(now, 'd M Y, g:i A')} {now.tzname()}",
-        host,
         "",
         f"{db_file()}, {_mb(size)}",
         " · ".join(counts[:3]),
         " · ".join(counts[3:]),
-        "",
-        f"To restore: put this file in place of {db_file()} on the server, then Reload the web app.",
     ])[:telegram.MAX_CAPTION]

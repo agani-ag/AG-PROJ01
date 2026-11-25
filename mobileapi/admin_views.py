@@ -528,7 +528,7 @@ def telegram_backup_save(request):
 @require_POST
 def telegram_backup_now(request):
     """Send a backup straight away (the daily one still goes as usual)."""
-    ok, out = telegram_backup.send(request.get_host())
+    ok, out = telegram_backup.send()
     if ok:
         messages.success(request, "Backup sent. Check the chat.")
     else:

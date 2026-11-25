@@ -137,7 +137,7 @@ class BackupFileTests(TransactionTestCase):
 
     def test_the_file_is_the_whole_database_as_it_is_under_its_own_name(self):
         with mock.patch.object(telegram_backup, "db_file", return_value="ag-proj01.sqlite3"):
-            ok, _ = telegram_backup.send("example.org")
+            ok, _ = telegram_backup.send()
         self.assertTrue(ok)
         chat, name, data, note = self.send.call_args.args
         self.assertEqual(name, "ag-proj01.sqlite3")
@@ -145,19 +145,20 @@ class BackupFileTests(TransactionTestCase):
         self.assertEqual(open_backup(data), {"mobileapi_appaccount": 2, "django_session": 1, "auth_user": 1})
         self.assertEqual(self.send.call_args.kwargs["mime"], "application/vnd.sqlite3")
 
-    def test_the_note_says_when_where_how_big_whats_in_it_and_how_to_restore(self):
-        telegram_backup.send("microman2000.pythonanywhere.com")
+    def test_the_note_says_when_how_big_and_whats_in_it_and_nothing_else(self):
+        with mock.patch.object(telegram_backup, "db_file", return_value="ag-proj01.sqlite3"):
+            telegram_backup.send()
         note = self.send.call_args.args[3]
         lines = note.splitlines()
+        self.assertEqual(len(lines), 6)
         self.assertEqual(lines[0], "SyncUp database backup")
-        self.assertTrue(lines[1].endswith("IST"))
-        self.assertEqual(lines[2], "microman2000.pythonanywhere.com")
-        self.assertRegex(lines[4], r"^.+, [\d.]+ [KM]B$")
-        self.assertTrue(lines[4].startswith(telegram_backup.db_file() + ", "))
-        self.assertIn("Accounts 2", note)
-        self.assertIn("Chat messages 0", note)
-        self.assertIn(f"put this file in place of {telegram_backup.db_file()}", note)
-        self.assertLessEqual(len(note), telegram.MAX_CAPTION)
+        self.assertRegex(lines[1], r"^\d{2} \w{3} \d{4}, \d{1,2}:\d{2} [AP]M IST$")
+        self.assertEqual(lines[2], "")
+        self.assertRegex(lines[3], r"^ag-proj01\.sqlite3, [\d.]+ [KM]B$")
+        self.assertTrue(lines[4].startswith("Accounts 2 · Devices 0 · Links 0"))
+        self.assertTrue(lines[5].startswith("Reminders 0 · Chat messages 0 · Synced items 0"))
+        for gone in ("http", "pythonanywhere", "testserver", "restore", "Reload"):
+            self.assertNotIn(gone, note)
 
     def test_a_database_busy_too_long_fails_the_backup_instead_of_hanging(self):
         # The copy reads a file another connection holds locked, the way a long write would.
@@ -175,7 +176,7 @@ class BackupFileTests(TransactionTestCase):
         try:
             with mock.patch.object(telegram_backup, "COPY_TIMEOUT", 0.3),                     mock.patch.object(telegram_backup.sqlite3, "connect", side_effect=connect):
                 started = time.monotonic()
-                ok, error = telegram_backup.send("example.org")
+                ok, error = telegram_backup.send()
         finally:
             held.rollback()
             held.close()
@@ -186,7 +187,7 @@ class BackupFileTests(TransactionTestCase):
         self.send.assert_not_called()
 
     def test_each_backup_is_in_the_send_log(self):
-        telegram_backup.send("example.org")
+        telegram_backup.send()
         log = AppTelegramLog.objects.get()
         self.assertEqual((log.chat_id, log.status, log.message_id), (GROUP, "sent", "77"))
         self.assertTrue(log.text.startswith("SyncUp database backup"))
