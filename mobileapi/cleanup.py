@@ -24,6 +24,7 @@ from .models import (
     AppDevice,
     AppNotificationLog,
     AppReminder,
+    AppTelegramLog,
 )
 
 
@@ -42,6 +43,8 @@ def run_cleanup(vacuum=False):
     if cfg.cleanup_log_days:
         cutoff = now - timedelta(days=cfg.cleanup_log_days)
         stats["notification_logs"] = AppNotificationLog.objects.filter(sent_at__lt=cutoff).delete()[0]
+        # The Telegram send log keeps the same days as the push log.
+        stats["telegram_logs"] = AppTelegramLog.objects.filter(created_at__lt=cutoff).delete()[0]
 
     if cfg.cleanup_chat_days:
         cutoff = now - timedelta(days=cfg.cleanup_chat_days)
