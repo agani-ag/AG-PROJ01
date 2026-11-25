@@ -99,8 +99,9 @@
                 </select>
                 <button type="submit" class="btn btn-primary">{% icon "save" %}Save</button>
             </div>
-            <span class="help">Once a day, when the cleanup cron runs, after it has answered. Each file is the server's
-                <code>{{ db_file }}</code> itself, ready to put back in place, with a note of when it was made and what's in it.
+            <span class="help">Once a day, when the cleanup cron runs, after it has answered. Each file is the server's whole
+                database, named for the day (<code>syncup-2026-11-25.sqlite3</code>), with a note of when it was made and what's in it.
+                Renamed to <code>{{ db_file }}</code>, it goes straight back in place.
                 Up to 50 MB, Telegram's limit for a bot. Missing a group? Add the bot to it, then use <b>Scan for chats</b> below.</span>
         </form>
         <div class="alert alert-warning">

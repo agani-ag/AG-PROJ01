@@ -135,18 +135,17 @@ class BackupFileTests(TransactionTestCase):
         self.send = mock.patch.object(telegram, "send_document", return_value=(True, "77")).start()
         self.addCleanup(mock.patch.stopall)
 
-    def test_the_file_is_the_whole_database_as_it_is_under_its_own_name(self):
-        with mock.patch.object(telegram_backup, "db_file", return_value="ag-proj01.sqlite3"):
-            ok, _ = telegram_backup.send()
+    def test_the_file_is_the_whole_database_named_for_the_day(self):
+        ok, _ = telegram_backup.send()
         self.assertTrue(ok)
         chat, name, data, note = self.send.call_args.args
-        self.assertEqual(name, "ag-proj01.sqlite3")
+        self.assertEqual(name, f"syncup-{timezone.localtime():%Y-%m-%d}.sqlite3")
         self.assertTrue(data.startswith(b"SQLite format 3\x00"))  # a plain .sqlite3, not zipped
         self.assertEqual(open_backup(data), {"mobileapi_appaccount": 2, "django_session": 1, "auth_user": 1})
         self.assertEqual(self.send.call_args.kwargs["mime"], "application/vnd.sqlite3")
 
     def test_the_note_says_when_how_big_and_whats_in_it_and_nothing_else(self):
-        with mock.patch.object(telegram_backup, "db_file", return_value="ag-proj01.sqlite3"):
+        with mock.patch.object(telegram_backup, "backup_name", return_value="syncup-2026-11-25.sqlite3"):
             telegram_backup.send()
         note = self.send.call_args.args[3]
         lines = note.splitlines()
@@ -154,7 +153,7 @@ class BackupFileTests(TransactionTestCase):
         self.assertEqual(lines[0], "SyncUp database backup")
         self.assertRegex(lines[1], r"^\d{2} \w{3} \d{4}, \d{1,2}:\d{2} [AP]M IST$")
         self.assertEqual(lines[2], "")
-        self.assertRegex(lines[3], r"^ag-proj01\.sqlite3, [\d.]+ [KM]B$")
+        self.assertRegex(lines[3], r"^syncup-2026-11-25\.sqlite3, [\d.]+ [KM]B$")  # the same name as the file
         self.assertTrue(lines[4].startswith("Accounts 2 · Devices 0 · Links 0"))
         self.assertTrue(lines[5].startswith("Reminders 0 · Chat messages 0 · Synced items 0"))
         for gone in ("http", "pythonanywhere", "testserver", "restore", "Reload"):
@@ -255,7 +254,8 @@ class TelegramPageTests(TestCase):
         self.assertIn('<option value="555">Me · Person</option>', page)
         self.assertNotIn("Old group ·", page)
         self.assertIn("Everyone in that chat gets the whole database", page)
-        self.assertIn("<code>ag-proj01.sqlite3</code> itself", page)
+        self.assertIn("named for the day (<code>syncup-2026-11-25.sqlite3</code>)", page)
+        self.assertIn("Renamed to <code>ag-proj01.sqlite3</code>, it goes straight back in place.", page)
 
     def test_picking_a_chat_turns_it_on_and_off_again(self):
         self.save(GROUP)

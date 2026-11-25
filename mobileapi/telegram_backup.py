@@ -8,8 +8,8 @@ At most one backup per BACKUP_EVERY: the CronLock is held that long after a good
 after a failed one so the next cron call tries again. "Backup now" on the Telegram page
 sends straight away and leaves the daily one alone.
 
-The file is the server's .sqlite3 itself, whole and under its own name, so it can be put back in
-place as it is. It's taken with SQLite's online backup rather than a plain file copy: a copy made
+The file is the server's .sqlite3 itself, whole, named for the day it was made (syncup-YYYY-MM-DD.sqlite3);
+renamed to the server's file name it goes straight back in place. It's taken with SQLite's online backup rather than a plain file copy: a copy made
 while the site is writing could catch half a change.
 """
 import logging
@@ -76,8 +76,9 @@ def send():
     note = ""
     try:
         data = _snapshot()
-        note = _note(len(data))
-        ok, out = telegram.send_document(chat, db_file(), data, note, mime="application/vnd.sqlite3")
+        name = backup_name()
+        note = _note(name, len(data))
+        ok, out = telegram.send_document(chat, name, data, note, mime="application/vnd.sqlite3")
     except Exception as e:  # noqa: BLE001 — a backup must never break the request it rides on
         logger.exception("Database backup failed")
         ok, out = False, f"Couldn't make the backup: {e}"
@@ -91,6 +92,11 @@ def send():
 def db_file():
     """The server database's own file name, e.g. ag-proj01.sqlite3."""
     return os.path.basename(str(settings.DATABASES["default"]["NAME"]))
+
+
+def backup_name():
+    """What the file is called in Telegram: the day it was made, e.g. syncup-2026-11-25.sqlite3."""
+    return f"syncup-{timezone.localtime():%Y-%m-%d}.sqlite3"
 
 
 def _snapshot():
@@ -124,7 +130,7 @@ def _mb(size):
     return f"{size / 1024 / 1024:.1f} MB" if size >= 100 * 1024 else f"{size / 1024:.0f} KB"
 
 
-def _note(size):
+def _note(name, size):
     """The text under the file: when, how big, and what's in it."""
     now = timezone.localtime()
     counts = [f"{label} {model.objects.count():,}" for label, model in COUNTS]
@@ -132,7 +138,7 @@ def _note(size):
         "SyncUp database backup",
         f"{dateformat.format(now, 'd M Y, g:i A')} {now.tzname()}",
         "",
-        f"{db_file()}, {_mb(size)}",
+        f"{name}, {_mb(size)}",
         " · ".join(counts[:3]),
         " · ".join(counts[3:]),
     ])[:telegram.MAX_CAPTION]
