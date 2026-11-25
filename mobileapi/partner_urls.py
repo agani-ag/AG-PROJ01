@@ -29,6 +29,8 @@ urlpatterns = [
     # Telegram relay (our bot delivers a report/message to a chat id the partner supplies)
     path("telegram/send", v.telegram_send, name="partner_telegram_send"),
     path("telegram/bulk", v.telegram_bulk, name="partner_telegram_bulk"),
+    # ...and a file, passed straight through: the raw body, ?chat_id=&filename=&caption= (e.g. a backup)
+    path("telegram/document", v.telegram_document, name="partner_telegram_document"),
 
     # Action / verification prompts (otp / code / number / notice / approve)
     path("users/<int:user_id>/action", v.action_by_id, name="partner_action_by_id"),

@@ -10,6 +10,7 @@ RAW chat_id (not a hard-coded group index) and configured from the database.
 """
 import logging
 import time
+import uuid
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -148,6 +149,64 @@ def send_document(chat_id, filename, data, caption="", mime="application/octet-s
             continue
         break
     return False, last_err
+
+
+STREAM_CHUNK = 64 * 1024
+
+
+class _PassThrough:
+    """The sendDocument body, built as it goes: the form fields, then the file's bytes read from
+    `source` a chunk at a time as Telegram takes them, then the closing line. Its length is known
+    up front, so it goes with a Content-Length, not chunked. Nothing is kept: each chunk is passed
+    on and dropped."""
+
+    def __init__(self, fields, filename, mime, source, size):
+        boundary = uuid.uuid4().hex
+        head = "".join(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'
+                       for k, v in fields.items())
+        head += (f'--{boundary}\r\nContent-Disposition: form-data; name="document"; filename="{filename}"\r\n'
+                 f"Content-Type: {mime}\r\n\r\n")
+        self.head, self.tail = head.encode(), f"\r\n--{boundary}--\r\n".encode()
+        self.source, self.size = source, size
+        self.content_type = f"multipart/form-data; boundary={boundary}"
+
+    def __len__(self):
+        return len(self.head) + self.size + len(self.tail)
+
+    def __iter__(self):
+        yield self.head
+        left = self.size
+        while left:
+            chunk = self.source.read(min(STREAM_CHUNK, left))
+            if not chunk:
+                raise OSError("the upload ended before all its bytes arrived")
+            left -= len(chunk)
+            yield chunk
+        yield self.tail
+
+
+def stream_document(chat_id, filename, source, size, caption="", mime="application/octet-stream"):
+    """Send a file to a chat straight from `source` (e.g. the incoming request), `size` bytes, without
+    keeping it: it goes on to Telegram as it's read. One try only, since the bytes can't be read
+    twice; on failure the sender still has the file and tries again. Returns (ok, message_id | error).
+    `filename` must already be safe for a header (no quotes, backslashes or line breaks)."""
+    tok = _token()
+    if not tok:
+        return False, "Telegram not configured (set the bot token on the Telegram page)"
+    body = _PassThrough({"chat_id": str(chat_id).strip(), "caption": (caption or "")[:MAX_CAPTION]},
+                        filename, mime, source, size)
+    try:
+        # A plain session: an automatic retry would resend a stream that's already been read.
+        with requests.Session() as s:
+            resp = s.post(API.format(token=tok, method="sendDocument"), data=body,
+                          headers={"Content-Type": body.content_type}, timeout=(10, DOCUMENT_TIMEOUT))
+            result = resp.json()
+    except (ValueError, OSError, requests.exceptions.RequestException) as e:
+        logger.error("Telegram sendDocument (stream) error: %s", e)
+        return False, f"Telegram unreachable: {e}"[:300]
+    if result.get("ok"):
+        return True, str(result.get("result", {}).get("message_id", ""))
+    return False, (result.get("description") or "Telegram error")[:300]
 
 
 def get_me(token=None):

@@ -28,6 +28,8 @@ Separate from /app/v1/ (mobile auth) and /mobile/ (admin): its own key gate, CSR
 rate-limited per partner.
 """
 import json
+import mimetypes
+import os
 from datetime import timedelta
 from functools import wraps
 
@@ -907,6 +909,68 @@ def telegram_send(request):
         status = 403 if result["error"] == TELEGRAM_NOT_ALLOWED else 502
         return JsonResponse({"success": False, **result}, status=status)
     return JsonResponse({"success": True, **result})
+
+
+def _document_name(name):
+    """What Telegram shows as the file's name: no folders, quotes, backslashes or control characters."""
+    name = os.path.basename(str(name or "").replace("\\", "/"))
+    name = "".join(ch for ch in name if ch.isprintable() and ch not in '"\\').strip()[:200]
+    return name or "file"
+
+
+@partner_api_required
+@require_http_methods(["POST"])
+def telegram_document(request):
+    """Pass one file, with an optional caption, straight to a Telegram chat on this partner's allowed
+    list (GSTSync's daily database backup, for one). Nothing is kept: the request body is read a chunk
+    at a time and each chunk goes on to Telegram as it arrives; no file is written and the whole file
+    is never in memory.
+
+    The file is the raw request body (Content-Type: application/octet-stream, with Content-Length).
+    In the query string: chat_id (required), filename (what Telegram shows) and caption (plain text,
+    up to 1024 characters). Up to 50 MB, Telegram's limit for a bot. Checked before a byte is read:
+    the key, the chat, the size. One try: on failure the partner still has the file and sends again.
+    Logged in the Telegram send log (name, size and caption; never the file)."""
+    if not telegram.is_configured():
+        return _err("Telegram is not configured on the server", 503)
+    partner = request.partner
+    chat_id = (request.GET.get("chat_id") or "").strip()
+    # Form encoders may send line breaks as CRLF; Telegram would keep the CRs.
+    caption = (request.GET.get("caption") or "").replace("\r\n", "\n")
+    filename = _document_name(request.GET.get("filename"))
+    content_type = (request.META.get("CONTENT_TYPE") or "").split(";")[0].strip().lower()
+    try:
+        size = int(request.META.get("CONTENT_LENGTH") or "")
+    except ValueError:
+        size = None
+    if not chat_id:
+        return _err("chat_id is required (in the query string)")
+    if content_type != "application/octet-stream":
+        return _err("send the file as the raw request body with Content-Type: application/octet-stream", 415)
+    if size is None:
+        return _err("Content-Length is required", 411)
+    if size <= 0:
+        return _err("the file is empty")
+    if size > telegram.MAX_DOCUMENT:
+        return _err(f"file is {size / 1024 / 1024:.1f} MB; Telegram takes up to 50 MB from a bot", 413)
+    if len(caption) > telegram.MAX_CAPTION:
+        return _err(f"caption can be at most {telegram.MAX_CAPTION} characters")
+    logged = f"File: {filename} ({size / 1024 / 1024:.1f} MB)" + (f"\n{caption}" if caption else "")
+    if not PartnerTelegramChat.allows(partner, chat_id):
+        AppTelegramLog.objects.create(partner=partner, chat_id=chat_id[:64], text=logged,
+                                      status="failed", error=TELEGRAM_NOT_ALLOWED)
+        return JsonResponse({"success": False, "chat_id": chat_id, "error": TELEGRAM_NOT_ALLOWED}, status=403)
+    mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    ok, info = telegram.stream_document(chat_id, filename, request, size, caption, mime=mime)
+    if ok:
+        PartnerTelegramChat.touch(partner, chat_id)
+    AppTelegramLog.objects.create(
+        partner=partner, chat_id=chat_id[:64], text=logged, status="sent" if ok else "failed",
+        message_id=info if ok else "", error="" if ok else info,
+    )
+    if not ok:
+        return JsonResponse({"success": False, "chat_id": chat_id, "error": info}, status=502)
+    return JsonResponse({"success": True, "chat_id": chat_id, "message_id": info})
 
 
 @partner_api_required
