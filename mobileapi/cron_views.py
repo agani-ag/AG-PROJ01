@@ -28,6 +28,7 @@ from django.views.decorators.http import require_http_methods
 
 from . import fcm
 from . import telegram
+from . import telegram_backup
 from . import telegram_chats
 from .cleanup import run_cleanup
 from .models import AppDevice, AppReminder, CronLock
@@ -73,6 +74,25 @@ LOCK_TTL_SECONDS = 15 * 60
 # Per-token FCM timeout for cron sends. Well below the interactive default — sends are sequential,
 # so one unreachable token must not eat the run's budget.
 FCM_TIMEOUT = 5
+
+
+class AfterReply(JsonResponse):
+    """A JSON reply that runs `then` once it has been sent: the WSGI server calls close() after the
+    last byte goes out. PythonAnywhere runs web apps without threads, so this is how slow work (the
+    daily backup) keeps from holding up the cron call."""
+
+    def __init__(self, data, then=None, **kwargs):
+        super().__init__(data, **kwargs)
+        self._then = then
+
+    def close(self):
+        super().close()
+        then, self._then = self._then, None
+        if then:
+            try:
+                then()
+            except Exception:  # noqa: BLE001 — the reply is gone; all we can do is log
+                logger.exception("Work after the cron reply failed")
 
 
 # --------------------------------------------------------------------------- #
@@ -179,13 +199,19 @@ def _telegram_tick():
 @cron_endpoint
 def cleanup(request):
     """Prune old/expired rows per the admin's retention windows. Single-flight and idempotent —
-    safe to call daily (or more often). Pass ?vacuum=1 to also reclaim disk space (off-peak)."""
+    safe to call daily (or more often). Pass ?vacuum=1 to also reclaim disk space (off-peak).
+
+    Then, once its reply has gone out, the daily database backup to Telegram (telegram_backup.py):
+    `backup` in the reply says "off", "sent today" or "sending after this reply"."""
     if not CronLock.acquire(CLEANUP_JOB, LOCK_TTL_SECONDS):
         return JsonResponse({"ok": True, "skipped": "locked"})
     try:
         do_vacuum = request.GET.get("vacuum") in ("1", "true", "yes")
         stats = run_cleanup(vacuum=do_vacuum)
-        return JsonResponse({"ok": True, **stats})
+        backup = telegram_backup.due()
+        host = request.get_host()
+        then = (lambda: telegram_backup.run_daily(host)) if backup == "sending after this reply" else None
+        return AfterReply({"ok": True, **stats, "backup": backup}, then=then)
     except Exception as e:  # noqa: BLE001 — surface any failure to the cron service as 5xx
         return JsonResponse({"ok": False, "error": str(e)[:500]}, status=500)
     finally:

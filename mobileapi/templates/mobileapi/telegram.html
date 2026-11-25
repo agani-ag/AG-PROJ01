@@ -76,6 +76,45 @@
 </div>
 
 {% if configured %}
+<!-- Daily database backup -->
+<div class="card" id="backup">
+    <div class="card-head" style="flex-wrap:wrap">
+        {% icon "database-backup" %}<h2 style="flex:1 1 auto">Daily database backup</h2>
+        {% if cfg.telegram_backup_chat_id %}<span class="badge badge-success"><span class="dot"></span>On</span>
+        {% else %}<span class="badge">Off</span>{% endif %}
+    </div>
+    <div class="card-body stack">
+        <form method="POST" action="{% url 'mobile_telegram_backup_save' %}" class="field">
+            {% csrf_token %}
+            <label class="label" for="tg-backup-chat">Send backups to</label>
+            <div class="input-group">
+                <select id="tg-backup-chat" name="telegram_backup_chat_id" class="input">
+                    <option value="">Off: no backups</option>
+                    {% for c in backup_choices %}
+                    <option value="{{ c.chat_id }}"{% if c.chat_id == cfg.telegram_backup_chat_id %} selected{% endif %}>{{ c.display_name }} · {% if c.is_private %}Person{% elif c.chat_type == "channel" %}Channel{% else %}Group{% endif %}{% if c.member_count %} · {{ c.member_count }} people{% endif %}</option>
+                    {% endfor %}
+                    {% if cfg.telegram_backup_chat_id and not backup_chat_listed %}
+                    <option value="{{ cfg.telegram_backup_chat_id }}" selected>{{ cfg.telegram_backup_chat_id }} · the bot isn't in it now</option>
+                    {% endif %}
+                </select>
+                <button type="submit" class="btn btn-primary">{% icon "save" %}Save</button>
+            </div>
+            <span class="help">Once a day, when the cleanup cron runs, after it has answered. Each file is the server's
+                <code>{{ db_file }}</code> itself, ready to put back in place, with a note of when it was made and what's in it.
+                Up to 50 MB, Telegram's limit for a bot. Missing a group? Add the bot to it, then use <b>Scan for chats</b> below.</span>
+        </form>
+        <div class="alert alert-warning">
+            {% icon "triangle-alert" %}
+            <div class="alert-body"><b>Everyone in that chat gets the whole database</b>Accounts, app and admin sign-ins, and this
+                bot's token are in it: with the file, someone could sign in as anyone. Pick a chat only you are in.</div>
+        </div>
+        <form method="POST" action="{% url 'mobile_telegram_backup_now' %}" class="row">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm"{% if not cfg.telegram_backup_chat_id %} disabled title="Pick a chat and save first"{% endif %}>{% icon "database-backup" %}Backup now</button>
+        </form>
+    </div>
+</div>
+
 <!-- Partner onboarding kit -->
 <div class="card">
     <div class="card-head">{% icon "handshake" %}<h2>Give this to your partner</h2></div>

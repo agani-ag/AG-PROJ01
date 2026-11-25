@@ -29,6 +29,7 @@ from . import cron_views
 from . import fcm
 from . import remoteconfig as rc
 from . import telegram as tg
+from . import telegram_backup
 from . import telegram_chats as tg_chats
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import hub_people
@@ -465,8 +466,12 @@ def telegram_page(request):
     allowed = tg_chats.partner_map()
     for c in chats:
         c.partner_names = allowed.get(c.chat_id, [])
+    backup_choices = telegram_backup.choices()
     return render(request, "mobileapi/telegram.html", {
         "cfg": cfg,
+        "backup_choices": backup_choices,
+        "db_file": telegram_backup.db_file(),
+        "backup_chat_listed": any(c.chat_id == cfg.telegram_backup_chat_id for c in backup_choices),
         # Partners + the chats each may send to (empty list = that partner can't send anywhere).
         "partners": AppPartner.objects.prefetch_related("telegram_chats").order_by("name"),
         "configured": bool((cfg.telegram_bot_token or "").strip()),
@@ -502,6 +507,33 @@ def telegram_save(request):
     cfg.save(update_fields=["telegram_bot_token", "telegram_bot_username",
                             "telegram_admin_chat_id", "updated_at"])
     return redirect("mobile_telegram")
+
+
+@superuser_required
+@require_POST
+def telegram_backup_save(request):
+    """Which chat gets the daily database backup: one the bot is in, or none (off)."""
+    cfg = AppConfig.load()
+    chosen = (request.POST.get("telegram_backup_chat_id") or "").strip()[:64]
+    if chosen and chosen not in {c.chat_id for c in telegram_backup.choices()}:
+        messages.error(request, "Pick a chat the bot is in. If it's missing, use Scan for chats first.")
+        return redirect(reverse("mobile_telegram") + "#backup")
+    cfg.telegram_backup_chat_id = chosen
+    cfg.save(update_fields=["telegram_backup_chat_id", "updated_at"])
+    messages.success(request, "Daily backups are on." if chosen else "Daily backups are off.")
+    return redirect(reverse("mobile_telegram") + "#backup")
+
+
+@superuser_required
+@require_POST
+def telegram_backup_now(request):
+    """Send a backup straight away (the daily one still goes as usual)."""
+    ok, out = telegram_backup.send(request.get_host())
+    if ok:
+        messages.success(request, "Backup sent. Check the chat.")
+    else:
+        messages.error(request, f"Backup not sent: {out}")
+    return redirect(reverse("mobile_telegram") + "#backup")
 
 
 @superuser_required

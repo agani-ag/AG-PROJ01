@@ -790,6 +790,8 @@ class AppConfig(models.Model):
         max_length=64, blank=True, default="",
         help_text="Chat id for our own reports and alerts, e.g. -1001234567890.",
     )
+    # Where the daily database backup goes (Telegram page → Daily database backup). Blank = off.
+    telegram_backup_chat_id = models.CharField(max_length=64, blank=True, default="")
     # getUpdates is a queue: each call confirms everything before this id, so the next scan only
     # returns what's new. Telegram drops unconfirmed updates after ~24h, hence the cron scan.
     telegram_updates_offset = models.BigIntegerField(default=0)

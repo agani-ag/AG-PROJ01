@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 API = "https://api.telegram.org/bot{token}/{method}"
 MAX_TEXT = 4096  # Telegram's hard limit for a message body.
+MAX_CAPTION = 1024  # ...and for the text under a file.
+MAX_DOCUMENT = 50 * 1024 * 1024  # the largest file a bot may upload
+DOCUMENT_TIMEOUT = 60
 
 # Retry policy for send(): up to 3 attempts total on TRANSIENT failures only.
 MAX_SEND_ATTEMPTS = 3
@@ -106,6 +109,40 @@ def send(chat_id, text, parse_mode=None):
             retryable = data.get("error_code") in _RETRYABLE_CODES
             retry_after = (data.get("parameters") or {}).get("retry_after")
 
+        if attempt < MAX_SEND_ATTEMPTS - 1 and retryable:
+            time.sleep(min(retry_after or _BACKOFF[attempt], _MAX_SLEEP))
+            continue
+        break
+    return False, last_err
+
+
+def send_document(chat_id, filename, data, caption="", mime="application/octet-stream"):
+    """Send a file (bytes) to a chat, with a caption. Returns (ok, message_id | error). Same retry
+    rule as send(): transient failures up to 3 times, permanent ones fail at once."""
+    tok = _token()
+    if not tok:
+        return False, "Telegram not configured (set the bot token on the Telegram page)"
+    if len(data) > MAX_DOCUMENT:
+        return False, f"The file is {len(data) / 1024 / 1024:.1f} MB; Telegram takes up to 50 MB from a bot."
+    fields = {"chat_id": str(chat_id).strip(), "caption": (caption or "")[:MAX_CAPTION]}
+    last_err = "Telegram unreachable"
+    for attempt in range(MAX_SEND_ATTEMPTS):
+        try:
+            with _session() as s:
+                resp = s.post(API.format(token=tok, method="sendDocument"), data=fields,
+                              files={"document": (filename, data, mime)}, timeout=DOCUMENT_TIMEOUT)
+                result = resp.json()
+        except (ValueError, requests.exceptions.RequestException) as e:
+            logger.error("Telegram sendDocument error: %s", e)
+            result = None
+        if result and result.get("ok"):
+            return True, str(result.get("result", {}).get("message_id", ""))
+        if result is None:
+            last_err, retryable, retry_after = "Telegram unreachable", True, None
+        else:
+            last_err = (result.get("description") or "Telegram error")[:300]
+            retryable = result.get("error_code") in _RETRYABLE_CODES
+            retry_after = (result.get("parameters") or {}).get("retry_after")
         if attempt < MAX_SEND_ATTEMPTS - 1 and retryable:
             time.sleep(min(retry_after or _BACKOFF[attempt], _MAX_SLEEP))
             continue

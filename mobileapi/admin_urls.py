@@ -64,6 +64,8 @@ urlpatterns = [
     path("telegram/verify", v.telegram_verify, name="mobile_telegram_verify"),
     path("telegram/discover", v.telegram_discover, name="mobile_telegram_discover"),
     path("telegram/test", v.telegram_test, name="mobile_telegram_test"),
+    path("telegram/backup", v.telegram_backup_save, name="mobile_telegram_backup_save"),
+    path("telegram/backup/now", v.telegram_backup_now, name="mobile_telegram_backup_now"),
     # Which Telegram chats each partner may send to
     path("telegram/partner/<int:partner_id>/chats/add", v.telegram_partner_chat_add, name="mobile_telegram_chat_add"),
     path("telegram/chats/<int:chat_pk>/delete", v.telegram_partner_chat_delete, name="mobile_telegram_chat_delete"),
