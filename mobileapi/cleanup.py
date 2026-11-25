@@ -8,15 +8,30 @@ run is a handful of fast SQL statements. Never touches active/current data:
   * device (delivery="device") reminders and any active/pending reminder are never removed;
   * only deactivated devices are eligible.
 
+Synced items (browser sync) are tidied without phones noticing — nothing is sent to them, and an
+account's own data written by a phone that's gone is kept (it's the account's, not the phone's):
+
+  * history: repeat visits of a page older than HISTORY_REPEATS_AFTER_DAYS go, the newest visit of
+    each page always stays. Every visit of the last 30 days stays: the app's Most used sites (7 and
+    30 days, the TV row) counts them, and a newly signed-in phone builds it from these rows. Phones
+    that already have the older visits keep them;
+  * open-tab rows of phones that haven't synced in OTHER_DEVICE_DAYS (already hidden from the
+    other phones), that are no longer registered, or that are now signed in to someone else;
+  * rows of kinds the app no longer syncs (never sent to a phone).
+
+Deleted markers are kept, however old: a phone away when something was deleted would otherwise
+never hear of it, keep its own copy, and bring the item back to every phone if it later edits it.
+
 Returns a stats dict of {table: rows_deleted} so callers can report what happened.
 """
 from datetime import timedelta
 
 from django.contrib.sessions.models import Session
 from django.db import connection
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
+from .browser_sync import CLIENT_KINDS, OTHER_DEVICE_DAYS
 from .models import (
     AppAuthToken,
     AppChatMessage,
@@ -25,10 +40,13 @@ from .models import (
     AppNotificationLog,
     AppReminder,
     AppTelegramLog,
+    SyncItem,
 )
 
 
 STALE_PUBLIC_INSTALL_DAYS = 180
+HISTORY_REPEATS_AFTER_DAYS = 30
+DELETE_BATCH = 500  # ids per DELETE, under SQLite's limit on query variables
 
 
 def run_cleanup(vacuum=False):
@@ -75,6 +93,8 @@ def run_cleanup(vacuum=False):
             ).delete()[0]
         )
 
+    stats.update(tidy_sync_items(now))
+
     if vacuum:
         # Reclaims file space freed by the deletes. Locks the DB briefly, so it's opt-in and best
         # run off-peak. Must run outside a transaction (autocommit) — fine from the command and
@@ -84,3 +104,41 @@ def run_cleanup(vacuum=False):
         stats["vacuumed"] = True
 
     return stats
+
+
+def tidy_sync_items(now):
+    """The synced-items part of the cleanup (see the module docstring). Returns its stats."""
+    stats = {"sync_history_repeats": _delete_ids(_history_repeats(now))}
+
+    owned = AppDevice.objects.filter(device_id=OuterRef("key"), account_id=OuterRef("account_id"))
+    stale_tabs = (SyncItem.objects.filter(kind="tabs").annotate(owned=Exists(owned))
+                  .filter(Q(changed_at__lt=now - timedelta(days=OTHER_DEVICE_DAYS)) | Q(owned=False)))
+    stats["sync_stale_tabs"] = _delete_ids(list(stale_tabs.values_list("pk", flat=True)))
+
+    stats["sync_retired_kinds"] = SyncItem.objects.exclude(kind__in=CLIENT_KINDS | {"tabs"}).delete()[0]
+    return stats
+
+
+def _history_repeats(now):
+    """Ids of history visits older than HISTORY_REPEATS_AFTER_DAYS whose page has a newer visit in the
+    same account."""
+    cutoff_ms = int((now - timedelta(days=HISTORY_REPEATS_AFTER_DAYS)).timestamp() * 1000)
+    visits = []
+    newest = {}  # (account, url) → the newest visit, (visited_ms, pk)
+    rows = SyncItem.objects.filter(kind="history", deleted=False).values_list("pk", "account_id", "updated_ms", "data")
+    for pk, account_id, updated_ms, data in rows.iterator():
+        data = data if isinstance(data, dict) else {}
+        url = data.get("url")
+        if not url:
+            continue
+        visit, page = (data.get("visited_ms") or updated_ms or 0, pk), (account_id, url)
+        visits.append((visit, page))
+        newest[page] = max(newest.get(page, visit), visit)
+    return [visit[1] for visit, page in visits if visit[0] < cutoff_ms and visit != newest[page]]
+
+
+def _delete_ids(ids):
+    deleted = 0
+    for start in range(0, len(ids), DELETE_BATCH):
+        deleted += SyncItem.objects.filter(pk__in=ids[start:start + DELETE_BATCH]).delete()[0]
+    return deleted

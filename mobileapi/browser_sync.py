@@ -95,7 +95,10 @@ def browser_sync(request):
         return _bad(f"Send at most {MAX_CHANGES_PER_CALL} changes per call")
 
     now = timezone.now()
-    since = parse_datetime(data.get("since") or "") if data.get("since") else None
+    try:
+        since = parse_datetime(str(data.get("since") or "")) if data.get("since") else None
+    except ValueError:
+        since = None  # well formed but not a real time: a full download, as for an empty cursor
     history_cutoff_ms = int((now - timedelta(days=HISTORY_DAYS)).timestamp() * 1000)
     wellbeing_cutoff_ms = int((now - timedelta(days=WELLBEING_DAYS)).timestamp() * 1000)
     rejected = []
