@@ -17,10 +17,11 @@ import hmac
 import ipaddress
 import json
 from datetime import timedelta
-from urllib.parse import urlsplit
+from html import escape
+from urllib.parse import quote, urlsplit
 
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -277,3 +278,46 @@ def channels(request):
         # Everything on offer now, for newer apps.
         "stations": [_station(c) for c in live if c.radio_on_air or c.files_enabled],
     })
+
+
+_OFFLINE_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Not online right now</title>
+<style>body{{font-family:system-ui,sans-serif;background:#f6f7fb;color:#0f172a;display:flex;min-height:100vh;
+align-items:center;justify-content:center;margin:0;padding:16px}}main{{max-width:420px;text-align:center}}
+h1{{font-size:20px;margin:0 0 8px}}p{{color:#475569;line-height:1.5;margin:0}}</style></head>
+<body><main><h1>{title}</h1><p>{body}</p></main></body></html>"""
+
+
+@require_http_methods(["GET", "HEAD"])
+def file_link(request, key, path):
+    """A station file's lasting link, shared from the app (Cloud → Shared → Share link): /s/<station key>/files/<path>.
+    A station's public address changes every time AudioSync restarts, so this finds where it is now and forwards
+    there. Only to its files (never another part of the station); a PIN station asks for its PIN itself."""
+    cfg = AppConfig.load()
+    station = None
+    if cfg.radio_enabled and key and len(key) <= 64:
+        cutoff = timezone.now() - timedelta(seconds=cfg.radio_stale_after_seconds)
+        for c in RadioChannel.objects.filter(is_live=True, files_enabled=True, last_heartbeat_at__gte=cutoff).exclude(files_url=""):
+            if hmac.compare_digest(station_key(c.broadcaster_id), key):
+                station = c
+                break
+    parts = [p for p in path.split("/") if p not in ("", ".")]
+    target = None
+    if station is not None and parts and ".." not in parts:
+        try:
+            u = urlsplit(station.files_url)
+        except ValueError:
+            u = None
+        if u is not None and u.scheme in ("http", "https") and u.netloc:
+            target = f"{u.scheme}://{u.netloc}/files/" + "/".join(quote(p, safe="") for p in parts)
+            if request.GET.get("dl") == "1":
+                target += "?dl=1"
+    if target is None:
+        name = escape(station.name) if station is not None else "The station"
+        page = _OFFLINE_PAGE.format(
+            title=f"{name} isn't online right now",
+            body="This file lives on someone's PC, shared through SyncUp. The link works again when the station is back.",
+        )
+        # 503, not 404: the site swaps every HTML 404 for its plain "page not found" (main/middleware.py).
+        return HttpResponse(page, status=503, content_type="text/html; charset=utf-8")
+    return HttpResponseRedirect(target)

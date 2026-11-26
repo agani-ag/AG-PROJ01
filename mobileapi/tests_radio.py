@@ -276,3 +276,52 @@ class StationPresenceTests(TestCase):
 
     def test_live_rows_are_for_a_superuser_only(self):
         self.assertEqual(self.client.get("/mobile/radio/rows").status_code, 302)
+
+
+class StationFileLinkTests(TestCase):
+    """/s/<key>/files/<path>: a shared station file's link that keeps working after AudioSync gets a new address."""
+
+    def setUp(self):
+        cfg = AppConfig.load()
+        cfg.radio_enabled = True
+        cfg.save()
+        self.ch = RadioChannel.objects.create(
+            broadcaster_id="pc-1", name="Studio <One>", stream_url="https://abc.trycloudflare.com/stream", is_live=True,
+            last_heartbeat_at=timezone.now(), files_enabled=True, files_url="https://abc.trycloudflare.com/api/files/")
+        from .radio import station_key
+        self.key = station_key("pc-1")
+
+    def test_forwards_to_the_station_now(self):
+        r = self.client.get(f"/s/{self.key}/files/Music/My%20Song.mp3")
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r["Location"], "https://abc.trycloudflare.com/files/Music/My%20Song.mp3")
+        self.ch.files_url = "https://xyz.trycloudflare.com/api/files/"  # AudioSync restarted
+        self.ch.save()
+        r = self.client.get(f"/s/{self.key}/files/%E0%AE%AA%E0%AE%BE/a.txt?dl=1")
+        self.assertEqual(r["Location"], "https://xyz.trycloudflare.com/files/%E0%AE%AA%E0%AE%BE/a.txt?dl=1")
+
+    def test_offline_or_unknown_station_gets_a_plain_page(self):
+        r = self.client.get("/s/0123456789abcdef01234567/files/a.mp3")
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("isn't online right now", r.content.decode())
+        r = self.client.get(f"/s/{self.key}/files/.")  # no file named: the station's name, made safe
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("Studio &lt;One&gt; isn", r.content.decode())
+        self.ch.is_live = False
+        self.ch.save()
+        r = self.client.get(f"/s/{self.key}/files/a.mp3")
+        self.assertEqual(r.status_code, 503)
+        self.assertIn("The station isn", r.content.decode())
+
+    def test_only_files_never_elsewhere(self):
+        r = self.client.get(f"/s/{self.key}/files/Music/../../api/info")
+        self.assertNotEqual(r.status_code, 302)
+        self.ch.files_enabled = False
+        self.ch.save()
+        self.assertEqual(self.client.get(f"/s/{self.key}/files/a.mp3").status_code, 503)
+
+    def test_admin_switch_off_means_no_links(self):
+        cfg = AppConfig.load()
+        cfg.radio_enabled = False
+        cfg.save()
+        self.assertEqual(self.client.get(f"/s/{self.key}/files/a.mp3").status_code, 503)
