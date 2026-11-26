@@ -230,6 +230,18 @@
                    select (through Android's own picker) or capture is used. SyncUp does not scan your
                    photos or files. Music lists the songs on your phone to play them, and the Video player the
                    videos in the folders you add; they are never uploaded.</p>
+                <p class="block"><strong>Cloud (only if your administrator switches it on for your account).</strong>
+                   Photos, videos and files you upload to Cloud — one by one, or a whole folder you pick with
+                   Android's folder picker — are stored with <strong>Cloudinary</strong>, our storage provider, in a
+                   folder for your account. Our servers keep each file's name, size and type so your folder can be
+                   listed. Only you and SyncUp administrators with full Cloud access can browse your folder. Every
+                   Cloud file has its own web link: anyone you give a link to (Share link or Copy link) can open
+                   that file.</p>
+                <p class="block"><strong>Stations' shared folders (Shared).</strong> Some stations share folders from
+                   their owner's PC (AudioSync). Files you open or download come straight from that PC; files you
+                   send or copy there — from your phone or from Cloud — go straight to it and are then kept by the
+                   station's owner, not by us. A Share link for a station file goes through SyncUp's address, which
+                   only points the person who opens it to where the station is now; we don't keep the file.</p>
             </section>
 
             <section id="how-we-use-information">
@@ -271,6 +283,11 @@
                     <li><strong>Web content you open in the app</strong> may be operated by us or third
                         parties; any camera/microphone/location/file access you grant goes to the page you
                         opened, under that page's own terms.</li>
+                    <li><strong>Cloudinary</strong> stores the files you upload to Cloud (only if your
+                        administrator switched Cloud on for you) and serves them from their web links —
+                        <a href="https://cloudinary.com/privacy">Cloudinary Privacy Policy</a>.</li>
+                    <li><strong>Station owners</strong> receive the files you send or copy to their shared folders,
+                        on their own PC.</li>
                     <li><strong>Cloudflare</strong> runs the test server for the Sensors Network test. Only
                         when you press Start, your phone exchanges test data with it to measure your
                         connection, so Cloudflare sees your IP address, as any website does. The test data
@@ -310,6 +327,9 @@
                         your links, reminders, support chat, partner connections, page tokens and the
                         notifications sent to you. You are signed out on every device. Data already on your
                         phones stays there until you clear it or uninstall the app.</li>
+                    <li><strong>Cloud files</strong> are kept until you delete them; a file you delete in Cloud is
+                        removed from Cloudinary straight away. When your account is deleted, its Cloud files are
+                        listed for deletion at once and removed from Cloudinary by an administrator.</li>
                     <li>Usage time stays with the phone's record, which is no longer linked to you once you
                         sign out there or delete your account; it goes when that record is removed.</li>
                     <li>Installs nobody has signed in on are removed from our records after 6 months without
@@ -343,8 +363,9 @@
                         on your phone. Your songs stay on your device; we never upload or collect them.</span></li>
                     <li><strong>Photos and videos</strong><span class="sr-only"> — </span><span class="def">no permission: you pick them with Android's own
                         pickers. The Video player shows only the folders you add with Android's folder picker and the
-                        videos you pick; you can remove them any time, and they are never uploaded. On Android 9 and
-                        older, storage permission is asked only to save downloads and photos.</span></li>
+                        videos you pick; you can remove them any time, and they are never uploaded. Cloud uploads
+                        only the photos, files or folder you pick yourself. On Android 9 and older, storage
+                        permission is asked only to save downloads and photos.</span></li>
                     <li><strong>Notifications</strong><span class="sr-only"> — </span><span class="def">to show push notifications and reminders.</span></li>
                     <li><strong>Fingerprint / face</strong><span class="sr-only"> — </span><span class="def">only if you turn on the app lock with
                         biometrics.</span></li>
