@@ -11,6 +11,7 @@ from . import notifications_api
 from . import hub_links
 from . import hub_people
 from . import cloud_api
+from . import cloud_notify
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -66,6 +67,8 @@ urlpatterns = [
     path("cloud/pending", cloud_api.pending, name="app_cloud_pending"),
     path("cloud/usage", cloud_api.usage, name="app_cloud_usage"),
     path("cloud/stats", cloud_api.stats, name="app_cloud_stats"),
+    # Cloudinary calls this on every upload / move / rename / delete (Console → Settings → Webhook Notifications).
+    path("cloud/notify", cloud_notify.notify, name="app_cloud_notify"),
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),
 ]
