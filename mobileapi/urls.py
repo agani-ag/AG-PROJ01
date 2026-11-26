@@ -10,6 +10,7 @@ from . import home_shortcuts
 from . import notifications_api
 from . import hub_links
 from . import hub_people
+from . import cloud_api
 
 urlpatterns = [
     path("auth/login", views.login, name="app_login"),
@@ -51,6 +52,19 @@ urlpatterns = [
     path("hub/people", hub_people.people, name="app_hub_people"),  # SyncHub copies SyncUp's people (links key)
     path("hub/people/who", hub_people.who, name="app_hub_people_who"),
     # Partner action / verification prompts shown on the phone
+    # App → Tools → Cloudinary (cloud_api.py): the server signs, the phone talks to Cloudinary itself.
+    path("cloud/access", cloud_api.access, name="app_cloud_access"),
+    path("cloud/credentials", cloud_api.credentials, name="app_cloud_credentials"),
+    path("cloud/files", cloud_api.files, name="app_cloud_files"),
+    path("cloud/sign", cloud_api.sign_request, name="app_cloud_sign"),
+    path("cloud/uploaded", cloud_api.uploaded, name="app_cloud_uploaded"),
+    path("cloud/deleted", cloud_api.deleted, name="app_cloud_deleted"),
+    path("cloud/renamed", cloud_api.renamed, name="app_cloud_renamed"),
+    path("cloud/folders", cloud_api.folder_create, name="app_cloud_folder_create"),
+    path("cloud/folders/delete", cloud_api.folder_delete, name="app_cloud_folder_delete"),
+    path("cloud/accounts", cloud_api.accounts, name="app_cloud_accounts"),
+    path("cloud/pending", cloud_api.pending, name="app_cloud_pending"),
+    path("cloud/usage", cloud_api.usage, name="app_cloud_usage"),
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),
 ]

@@ -19,6 +19,8 @@ def account_dict(account):
         "source": account.source,
         # Created or added by a partner: the app keeps their Home to the partner's links (app v8+).
         "partner_user": account.is_partner_user(),
+        # Tools → Cloudinary: off | own (their own folder) | all (everything). Older apps ignore it.
+        "cloudinary": account.cloudinary_access,
     }
 
 

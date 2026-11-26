@@ -34,6 +34,7 @@ from . import telegram_chats as tg_chats
 from .forms import AppAccountForm, AppConfigForm, AppLinkForm, GeneralLinkForm, PushForm, ReminderForm
 from . import hub_people
 from .chat_views import chat_people as _chat_people, chat_people_payload, clear_chat
+from .cloud_api import usage_text as cloud_usage_text
 from . import partner_api
 from . import site_tokens
 from .channel_lists import is_channel_link
@@ -194,6 +195,8 @@ def account_edit(request, account_id):
         "sync": insights.sync_summary(account),
         "activity": insights.account_activity(account),
         "session_count": account.tokens.filter(revoked=False, expires_at__gt=timezone.now()).count(),
+        # Their own Cloudinary folder (app → Tools → Cloudinary): files and space used, if any.
+        "cloud_usage": cloud_usage_text(account),
     })
 
 

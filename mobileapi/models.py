@@ -30,6 +30,13 @@ ACCOUNT_SOURCE_CHOICES = [
     ("self", "Self sign-up"),
 ]
 
+# Tools → Cloudinary in the app (mobileapi/cloud_api.py).
+CLOUDINARY_ACCESS_CHOICES = [
+    ("off", "Off"),
+    ("own", "Own folder"),
+    ("all", "Everything"),
+]
+
 
 class AppAccount(models.Model):
     """A mobile app user. Separate from Django `User` (which is admin-only).
@@ -72,6 +79,13 @@ class AppAccount(models.Model):
     radio_enabled = models.BooleanField(
         default=True,
         help_text="Show the in-app Radio feature for this user (only when the master radio switch is on too).",
+    )
+    # Tools → Cloudinary in the app (2026-11-26). off: no tile. own: their own folder only
+    # (<CLOUDINARY_FOLDER>/accounts/<id>; the server signs each upload, delete and rename). all: every folder
+    # and file — their app is given the API key (admins / staff only).
+    cloudinary_access = models.CharField(
+        max_length=4, choices=CLOUDINARY_ACCESS_CHOICES, default="off",
+        help_text="Cloudinary in the app: off, their own folder, or everything (admins / staff).",
     )
     # No longer used: Chat is on/off for every signed-in user from the master switch only
     # (AppConfig.chat_enabled) — the per-account toggle was dropped 2026-10-09. Kept unchanged so no
@@ -1477,3 +1491,64 @@ class DnsService(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class CloudFolder(models.Model):
+    """A folder someone made in their own Cloudinary space (app → Tools → Cloudinary). Cloudinary only keeps
+    folders that hold files, and this server can't ask it anyway, so empty folders are kept here."""
+    account = models.ForeignKey(AppAccount, on_delete=models.CASCADE, related_name="cloud_folders")
+    path = models.CharField(max_length=500, help_text="Full Cloudinary path, e.g. syncup/accounts/12/Trips")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("account", "path")]
+        ordering = ["path"]
+
+    def __str__(self):
+        return self.path
+
+
+class CloudFile(models.Model):
+    """A file in someone's own Cloudinary folder (<CLOUDINARY_FOLDER>/accounts/<id>/...). This server can't
+    reach Cloudinary, so it keeps its own list: the phone reports each upload (its signature is checked),
+    delete and rename. "Own folder" people see their folder from here. The account deleted: `account` goes
+    blank and the file waits for an Everything admin's app to delete it from Cloudinary (owner_id stays)."""
+    account = models.ForeignKey(
+        AppAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name="cloud_files",
+    )
+    owner_id = models.PositiveIntegerField(db_index=True, help_text="The account whose folder it's in")
+    resource_type = models.CharField(max_length=10)  # image | video | raw
+    public_id = models.CharField(max_length=500)
+    folder = models.CharField(max_length=500, db_index=True)
+    name = models.CharField(max_length=255)
+    format = models.CharField(max_length=20, blank=True)
+    bytes = models.BigIntegerField(default=0)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    duration = models.FloatField(null=True, blank=True)
+    version = models.CharField(max_length=20, blank=True)
+    url = models.URLField(max_length=1000)
+    uploaded_by = models.ForeignKey(
+        AppAccount, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("resource_type", "public_id")]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.public_id
+
+
+class CloudUsage(models.Model):
+    """How much of the Cloudinary plan is used (app → Tools → Cloud). This server can't ask Cloudinary, so an
+    Everything admin's app reports it whenever it opens Cloud; everyone sees it next to their own use. One row."""
+    plan = models.CharField(max_length=60, blank=True)
+    used_bytes = models.BigIntegerField(default=0)
+    total_bytes = models.BigIntegerField(default=0)
+    storage_bytes = models.BigIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.plan or 'Cloudinary'}: {self.used_bytes} of {self.total_bytes}"

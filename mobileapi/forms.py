@@ -35,7 +35,7 @@ class AppAccountForm(forms.ModelForm):
 
     class Meta:
         model = AppAccount
-        fields = ["name", "email", "phone", "username", "is_active", "admin_chat_mode"]
+        fields = ["name", "email", "phone", "username", "is_active", "admin_chat_mode", "cloudinary_access"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -56,6 +56,8 @@ class AppAccountForm(forms.ModelForm):
                          if self.instance.general_links is None else
                          "You switched the general links off for this user.")
         self.fields["general_links_on"].help_text = help_text
+        # Cloudinary in the app (Tools → Cloud): a form sent without it keeps the account's current level.
+        self.fields["cloudinary_access"].required = False
 
     def _identifier(self, field, normalizer):
         raw = self.cleaned_data.get(field)
@@ -68,6 +70,9 @@ class AppAccountForm(forms.ModelForm):
 
     def clean_email(self):
         return self._identifier("email", normalize_email)
+
+    def clean_cloudinary_access(self):
+        return self.cleaned_data.get("cloudinary_access") or (self.instance.cloudinary_access if self.instance.pk else "off") or "off"
 
     def clean_phone(self):
         return self._identifier("phone", normalize_phone)
