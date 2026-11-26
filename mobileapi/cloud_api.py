@@ -21,7 +21,7 @@ import secrets
 import time
 
 from django.conf import settings
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -692,3 +692,58 @@ def console_files(request):
         "created_at": f.created_at.isoformat() if f.created_at else "",
         "tags": ["syncup_cloud", f"acct_{f.owner_id}"],
     } for f in qs[:5000]]})
+
+
+# --------------------------------------------------------------------------- storage details (app: the Storage button)
+_AUDIO_FMT = {"mp3", "m4a", "aac", "wav", "ogg", "opus", "flac", "amr", "wma"}
+_DOC_FMT = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "rtf", "odt", "ods", "odp", "md",
+            "json", "xml", "html", "htm", "epub"}
+_ARCHIVE_FMT = {"zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"}
+
+
+def _format_of(f):
+    return (f.format or os.path.splitext(f.public_id)[1].lstrip(".")).lower()
+
+
+def kind_of_file(f):
+    """photos | videos | audio | documents | archives | other — for the Storage details."""
+    fmt = _format_of(f)
+    if f.resource_type == "image":
+        return "photos"
+    if f.resource_type == "video":
+        return "audio" if (fmt in _AUDIO_FMT or not f.width) else "videos"
+    if fmt in _DOC_FMT:
+        return "documents"
+    if fmt in _ARCHIVE_FMT:
+        return "archives"
+    return "other"
+
+
+@require_http_methods(["GET"])
+@app_token_required
+def stats(request):
+    """The app's Storage details: what the person's own folder holds, by kind and by file type, and the shared
+    Cloudinary plan. Everything accounts also get the total of everyone's own folders."""
+    refused = _gate(request)
+    if refused:
+        return refused
+    files = list(CloudFile.objects.filter(owner_id=request.account.id))
+    kinds, formats = {}, {}
+    for f in files:
+        k = kinds.setdefault(kind_of_file(f), {"count": 0, "bytes": 0})
+        k["count"] += 1
+        k["bytes"] += f.bytes or 0
+        fm = formats.setdefault(_format_of(f) or "?", {"count": 0, "bytes": 0})
+        fm["count"] += 1
+        fm["bytes"] += f.bytes or 0
+    data = {
+        "files": len(files),
+        "used_bytes": sum(f.bytes or 0 for f in files),
+        "kinds": sorted(({"kind": k, **v} for k, v in kinds.items()), key=lambda x: -x["bytes"]),
+        "formats": sorted(({"format": k, **v} for k, v in formats.items()), key=lambda x: -x["bytes"])[:12],
+        "cloud": cloud_plan(),
+    }
+    if request.account.cloudinary_access == "all":
+        agg = CloudFile.objects.aggregate(n=Count("id"), b=Sum("bytes"), p=Count("owner_id", distinct=True))
+        data["everyone"] = {"people": agg["p"] or 0, "files": agg["n"] or 0, "bytes": agg["b"] or 0}
+    return JsonResponse(data)

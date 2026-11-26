@@ -383,3 +383,32 @@ class ConsoleTests(CloudTestCase):
         self.assertEqual([(f["name"], f["tags"]) for f in d["files"]], [("Beach.jpg", ["syncup_cloud", f"acct_{self.asha.id}"])])
         self.assertEqual(len(self.client.get("/mobile/cloud/files.json").json()["files"]), 2)
         self.assertEqual(Client().get("/mobile/cloud/files.json").status_code, 403)
+
+
+class StatsTests(CloudTestCase):
+    """The app's Storage button: the person's own folder by kind and file type, and the shared plan."""
+
+    def test_by_kind_and_type(self):
+        asha = self.person("Asha")
+        root = f"syncup/accounts/{asha.id}"
+        for pid, rtype, fmt, size, w in [("a_1", "image", "jpg", 300, 10), ("b_1", "image", "png", 100, 10),
+                                         ("c_1", "video", "mp4", 1000, 640), ("d_1", "video", "mp3", 50, None),
+                                         ("e_1.pdf", "raw", "pdf", 20, None), ("f_1.zip", "raw", "zip", 5, None),
+                                         ("g_1.bin", "raw", "bin", 1, None)]:
+            f = self.listed(asha, f"{root}/{pid}", rtype=rtype, bytes=size)
+            f.format, f.width = fmt, w
+            f.save()
+        d = self.get(asha, "cloud/stats").json()
+        self.assertEqual((d["files"], d["used_bytes"]), (7, 1476))
+        self.assertEqual([(k["kind"], k["count"], k["bytes"]) for k in d["kinds"]],
+                         [("videos", 1, 1000), ("photos", 2, 400), ("audio", 1, 50), ("documents", 1, 20),
+                          ("archives", 1, 5), ("other", 1, 1)])
+        self.assertEqual(d["formats"][0], {"format": "mp4", "count": 1, "bytes": 1000})
+        self.assertNotIn("everyone", d)
+
+    def test_everything_also_sees_everyones_total(self):
+        asha, admin = self.person("Asha"), self.person("Root", "all")
+        self.listed(asha, f"syncup/accounts/{asha.id}/a_1", bytes=10)
+        self.listed(admin, f"syncup/accounts/{admin.id}/b_1", bytes=5)
+        self.assertEqual(self.get(admin, "cloud/stats").json()["everyone"], {"people": 2, "files": 2, "bytes": 15})
+        self.assertEqual(self.get(self.person("Off", "off"), "cloud/stats").status_code, 403)

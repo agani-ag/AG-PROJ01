@@ -65,6 +65,7 @@ urlpatterns = [
     path("cloud/accounts", cloud_api.accounts, name="app_cloud_accounts"),
     path("cloud/pending", cloud_api.pending, name="app_cloud_pending"),
     path("cloud/usage", cloud_api.usage, name="app_cloud_usage"),
+    path("cloud/stats", cloud_api.stats, name="app_cloud_stats"),
     path("action/<int:action_id>", views.action_get, name="app_action_get"),
     path("action/<int:action_id>/respond", views.action_respond, name="app_action_respond"),
 ]
