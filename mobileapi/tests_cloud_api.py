@@ -412,3 +412,48 @@ class StatsTests(CloudTestCase):
         self.listed(admin, f"syncup/accounts/{admin.id}/b_1", bytes=5)
         self.assertEqual(self.get(admin, "cloud/stats").json()["everyone"], {"people": 2, "files": 2, "bytes": 15})
         self.assertEqual(self.get(self.person("Off", "off"), "cloud/stats").status_code, 403)
+
+
+class LiveTests(CloudTestCase):
+    """An open Cloud page reloads when its change mark changes, and gets a silent push when the files or the
+    access change."""
+
+    def test_the_mark_changes_with_the_files(self):
+        asha = self.person("Asha")
+        root = f"syncup/accounts/{asha.id}"
+        first = self.get(asha, "cloud/access").json()["changes"]
+        self.assertEqual(first, self.get(asha, "cloud/access").json()["changes"])  # steady
+        f = self.listed(asha, root + "/a_1")
+        second = self.get(asha, "cloud/access").json()["changes"]
+        self.assertNotEqual(first, second)
+        f.name = "renamed.jpg"
+        f.save()
+        third = self.get(asha, "cloud/access").json()["changes"]
+        self.assertNotEqual(second, third)
+        f.delete()
+        self.assertEqual(first, self.get(asha, "cloud/access").json()["changes"])
+        self.assertEqual(self.get(self.person("Off", "off"), "cloud/access").json()["changes"], "")
+
+    def test_an_upload_pings_the_owners_other_phones(self):
+        from unittest import mock
+        asha = self.person("Asha")
+        from .models import AppDevice
+        AppDevice.objects.create(account=asha, device_id="other-phone", fcm_token="tok-other")
+        with mock.patch("mobileapi.cloud_api.fcm.is_configured", return_value=True), \
+                mock.patch("mobileapi.cloud_api.fcm.send_silent") as send:
+            self.post(asha, "cloud/uploaded", {"result": cloudinary_result(f"syncup/accounts/{asha.id}/x_1")})
+        send.assert_called_once_with(["tok-other"], {"type": "cloud", "what": "files"})
+
+    def test_changing_access_on_the_account_page_pings_their_phones(self):
+        from unittest import mock
+        from .models import AppDevice
+        asha = self.person("Asha", "own")
+        AppDevice.objects.create(account=asha, device_id="p1", fcm_token="tok-1")
+        self.client.force_login(get_user_model().objects.create_superuser("root", password="x"))
+        with mock.patch("mobileapi.cloud_api.fcm.is_configured", return_value=True), \
+                mock.patch("mobileapi.cloud_api.fcm.send_silent") as send:
+            self.client.post(f"/mobile/accounts/{asha.id}", {"name": "Asha", "email": asha.email, "is_active": "on",
+                                                              "cloudinary_access": "all"})
+        asha.refresh_from_db()
+        self.assertEqual(asha.cloudinary_access, "all")
+        send.assert_called_once_with(["tok-1"], {"type": "cloud", "what": "access"})

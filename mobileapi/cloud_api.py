@@ -15,6 +15,7 @@ An "Own folder" phone only ever gets signatures for files in its own folder, so 
 """
 import hashlib
 import hmac
+import logging
 import os
 import re
 import secrets
@@ -26,8 +27,11 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import fcm
 from .auth import app_token_required, json_body
-from .models import AppAccount, CloudFile, CloudFolder, CloudUsage
+from .models import AppAccount, AppDevice, CloudFile, CloudFolder, CloudUsage
+
+logger = logging.getLogger(__name__)
 
 RESOURCE_TYPES = ("image", "video", "raw")
 # One folder name: letters (any language), digits, spaces and a few safe marks. Cloudinary refuses ? & # \ % < > +.
@@ -257,6 +261,46 @@ def _target(request, body):
     return account.id, (f"{root}/{rel}" if rel else root)
 
 
+# --------------------------------------------------------------------------- live: change mark + silent ping
+def changes_mark(account):
+    """A short code that changes whenever the files or folders this account sees change — their own folder, or
+    everyone's for Everything. The app checks it every few seconds while Cloud is open and reloads only then."""
+    if account.cloudinary_access == "all":
+        files, folders = CloudFile.objects.all(), CloudFolder.objects.all()
+    else:
+        files, folders = CloudFile.objects.filter(owner_id=account.id), CloudFolder.objects.filter(account_id=account.id)
+    h = hashlib.md5()
+    for pid, size, name in files.order_by("id").values_list("public_id", "bytes", "name"):
+        h.update(f"{pid}|{size}|{name}\n".encode("utf-8"))
+    for path in folders.order_by("id").values_list("path", flat=True):
+        h.update(f"d:{path}\n".encode("utf-8"))
+    return h.hexdigest()[:12]
+
+
+def ping_cloud(account_ids, what="files", skip_device=""):
+    """A silent push to these accounts' phones — "Cloud changed" (what: files | access) — so an open Cloud page
+    reloads at once, and a changed access shows straight away. Best-effort: the page also checks every 15 s."""
+    ids = [i for i in set(account_ids or []) if i]
+    if not ids:
+        return
+    try:
+        if not fcm.is_configured():
+            return
+        devices = AppDevice.objects.filter(account_id__in=ids, is_active=True).exclude(fcm_token="").exclude(fcm_token__isnull=True)
+        if skip_device:
+            devices = devices.exclude(device_id=skip_device)
+        tokens = list(devices.values_list("fcm_token", flat=True))
+        if tokens:
+            fcm.send_silent(tokens, {"type": "cloud", "what": what})
+    except Exception:  # noqa: BLE001 — never fail the change over a ping
+        logger.exception("Cloud ping failed")
+
+
+def _device_of(request):
+    token = getattr(request, "auth_token", None)
+    return getattr(token, "device_id", "") or ""
+
+
 # --------------------------------------------------------------------------- shared by the app and the console
 def tags_for(owner_id):
     """Tags every upload gets (the console's gallery works by tags): all SyncUp Cloud files, and the person's."""
@@ -341,6 +385,8 @@ def access(request):
         "folder_mode": folder_mode(),
         "used_bytes": used_bytes(a.id),
         "cloud": cloud_plan(),
+        # Changes whenever the files this account sees change: an open Cloud page reloads when it does.
+        "changes": changes_mark(a) if a.cloudinary_access != "off" else "",
     })
 
 
@@ -462,6 +508,7 @@ def uploaded(request):
         return error
     if f is None:
         return JsonResponse({"ok": True, "listed": False})
+    ping_cloud([f.owner_id], skip_device=_device_of(request))
     return JsonResponse({"ok": True, "listed": True, "file": file_dict(f)})
 
 
@@ -477,13 +524,16 @@ def deleted(request):
     body = json_body(request) or {}
     items = body.get("files") if isinstance(body.get("files"), list) else [body]
     removed = 0
+    owners = set()
     for it in items[:500]:
         if not isinstance(it, dict):
             continue
         qs = CloudFile.objects.filter(public_id=str(it.get("public_id") or ""), resource_type=it.get("resource_type"))
         if request.account.cloudinary_access != "all":
             qs = qs.filter(owner_id=request.account.id)
+        owners.update(qs.values_list("owner_id", flat=True))
         removed += qs.delete()[0]
+    ping_cloud(owners, skip_device=_device_of(request))
     return JsonResponse({"ok": True, "removed": removed})
 
 
@@ -505,6 +555,7 @@ def renamed(request):
     if not is_all and (f.owner_id != request.account.id or dst.rsplit("/", 1)[0] != f.folder):
         return _err("forbidden", "That file isn't in your folder.", 403)
     owner = owner_of(dst)
+    ping_cloud([f.owner_id, owner], skip_device=_device_of(request))
     if owner is None:  # an admin moved it out of every own folder
         f.delete()
         return JsonResponse({"ok": True, "listed": False})
@@ -536,6 +587,7 @@ def folder_create(request):
     if not AppAccount.objects.filter(pk=owner).exists():
         return _err("not_found", "No such account.", 404)
     CloudFolder.objects.get_or_create(account_id=owner, path=path)
+    ping_cloud([owner], skip_device=_device_of(request))
     return JsonResponse({"ok": True})
 
 
@@ -561,6 +613,7 @@ def folder_delete(request):
     ids = [f.id for f in CloudFolder.objects.filter(account_id=owner, path__startswith=path)
            if f.path == path or f.path.startswith(prefix)]
     CloudFolder.objects.filter(id__in=ids).delete()
+    ping_cloud([owner], skip_device=_device_of(request))
     return JsonResponse({"ok": True})
 
 
@@ -664,6 +717,7 @@ def console_uploaded(request, account_id):
         return error
     if f is None:
         return _err("forbidden", "That file isn't in their folder.", 403)
+    ping_cloud([f.owner_id])
     return JsonResponse({"ok": True, "file": file_dict(f)})
 
 
@@ -674,6 +728,8 @@ def console_deleted(request, account_id):
     body = json_body(request) or {}
     removed = CloudFile.objects.filter(owner_id=account_id, resource_type=body.get("resource_type"),
                                        public_id=str(body.get("public_id") or "")).delete()[0]
+    if removed:
+        ping_cloud([int(account_id)])
     return JsonResponse({"ok": True, "removed": removed})
 
 

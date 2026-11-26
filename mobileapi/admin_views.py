@@ -171,9 +171,14 @@ def account_add(request):
 def account_edit(request, account_id):
     account = get_object_or_404(AppAccount, id=account_id)
     if request.method == "POST":
+        cloud_before = account.cloudinary_access
         form = AppAccountForm(request.POST, instance=account)
         if form.is_valid():
             form.save()
+            # Cloud switched on, off or changed: their app shows it straight away (silent push).
+            if account.cloudinary_access != cloud_before:
+                from .cloud_api import ping_cloud
+                ping_cloud([account.id], what="access")
             messages.success(request, "Account saved.")
             return redirect("mobile_account_edit", account.id)
         messages.error(request, form.errors.as_text())
