@@ -49,7 +49,7 @@
 <div class="page-head">
     <div class="titles">
         <h1>Cloud gallery</h1>
-        <p class="page-sub">Device backups and notification images stored in Cloudinary</p>
+        <p class="page-sub">Device backups, notification images and people's Cloud files, stored in Cloudinary</p>
     </div>
     <div class="page-actions">
         <button class="btn" type="button" id="selectBtn" aria-pressed="false">{% icon "square-check" %}Select</button>
@@ -62,15 +62,15 @@
 {# Upload (toggled by the Upload button, hidden by default) #}
 <section class="card" id="settingsPanel" hidden>
     <div class="card-head">
-        {% icon "cloud-upload" %}<h2>Upload images</h2>
+        {% icon "cloud-upload" %}<h2>Upload</h2>
         <button class="btn btn-ghost btn-icon btn-sm" type="button" id="uploadClose" aria-label="Close upload panel">{% icon "x" %}</button>
     </div>
     <div class="card-body stack" style="gap:12px">
         <div id="upTarget"></div>
         <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload images: drop files here, or press Enter to browse">
             {% icon "image-up" %}
-            <div><b>Drag &amp; drop</b> images here, or <label for="fileInput" class="dropzone-browse">browse</label></div>
-            <span class="help">Images only. You can pick several at once.</span>
+            <div><b>Drag &amp; drop</b> files here, or <label for="fileInput" class="dropzone-browse">browse</label></div>
+            <span class="help" id="dropHint">Images only. You can pick several at once.</span>
             <input type="file" id="fileInput" accept="image/*" multiple hidden>
         </div>
         <div class="progress" id="upProgress" role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><div class="progress-bar" id="upProgressBar"></div></div>
@@ -86,12 +86,17 @@
             <select id="scope" class="input">
                 <option value="">All scopes</option>
                 <option value="device" selected>Devices</option>
+                <option value="account">Accounts</option>
                 <option value="notification">Notifications</option>
             </select>
         </div>
-        <div class="field">
+        <div class="field" id="deviceField">
             <label class="label" for="deviceFilter">Device</label>
             <select id="deviceFilter" class="input"><option value="">All devices</option></select>
+        </div>
+        <div class="field" id="accountField" hidden>
+            <label class="label" for="accountFilter">Account</label>
+            <select id="accountFilter" class="input"><option value="">All accounts</option></select>
         </div>
         <div class="field">
             <label class="label" for="rtype">Type</label>
@@ -202,6 +207,10 @@ const config = JSON.parse(
   const TAG = config.tags || "";
   const UPLOAD_PRESET = config.upload_preset || "";
   const SIGN_URL = config.sign_url || "";
+  // Accounts scope (app → Tools → Cloud): every file is tagged CLOUD_TAG and acct_<id>.
+  const CLOUD_TAG = config.cloud_tag || "syncup_cloud";
+  const CLOUD_ACCOUNTS = config.accounts || [];
+  const accountUrl = (pattern, id) => String(pattern || "").replace("/accounts/0/", "/accounts/" + id + "/");
 
   // Notification images are backed up under this tag/folder (separate from the
   // per-device "devices" namespace). We fetch this list too and mark its assets
@@ -214,6 +223,7 @@ const config = JSON.parse(
   const els = {
     rtype: byId("rtype"), scope: byId("scope"),
     deviceFilter: byId("deviceFilter"), filter: byId("filter"),
+    accountFilter: byId("accountFilter"), deviceField: byId("deviceField"), accountField: byId("accountField"),
     gallery: byId("gallery"), status: byId("status"), upStatus: byId("upStatus"),
     countBadge: byId("countBadge"), sentinel: byId("sentinel"),
     dropzone: byId("dropzone"), fileInput: byId("fileInput"),
@@ -342,6 +352,10 @@ const config = JSON.parse(
       // Notification images live under a separate tag/folder.
       const notif = await fetchTagList(rtype, NOTIF_TAG);
 
+      // People's Cloud files: the base tag, plus one list per account tag (acct_<id>).
+      const cloudBase = await fetchTagList(rtype, CLOUD_TAG);
+      const cloudShards = await mapLimit(CLOUD_ACCOUNTS.map(a => a.tag), LIST_CONCURRENCY, tag => fetchTagList(rtype, tag));
+
       // Merge + de-dupe by public_id; stamp each asset with its scope. Device
       // lists come first so their objects win on ties (notif won't collide anyway).
       const seen = new Map();
@@ -351,17 +365,21 @@ const config = JSON.parse(
       addAll(base.resources, "device");
       shards.forEach(s => addAll(s.resources, "device"));
       addAll(notif.resources, "notification");
+      addAll(cloudBase.resources, "account");
+      cloudShards.forEach(sh => addAll(sh.resources, "account"));
 
       resources = Array.from(seen.values());
       resources.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
       buildDeviceFilter();
+      buildAccountFilter();
       syncScopeUI();
       render();
 
       // Status: explain what sharding did (or why it couldn't help).
       const shardHits = shards.filter(s => s.resources.length > 0).length;
       const notifCount = notif.resources.length;
+      const accountCount = resources.filter(r => r._scope === "account").length;
       const total = resources.length;
       if (!total) {
         setStatus('Loaded, but no images carry the tag "' + escapeHtml(TAG) + '" / "' + NOTIF_TAG +
@@ -372,7 +390,8 @@ const config = JSON.parse(
           'To show all files, tag each asset with its device_id (no per-device tags were found).', "err");
       } else {
         setStatus('Loaded ' + total + ' image(s) from ' + (shardHits + 1) +
-          ' device list(s)' + (notifCount ? (' + ' + notifCount + ' notification(s)') : '') + '.', "ok");
+          ' device list(s)' + (notifCount ? (' + ' + notifCount + ' notification(s)') : '') +
+          (accountCount ? (' + ' + accountCount + ' from accounts') : '') + '.', "ok");
       }
     } catch (err) {
       let msg = err.message || String(err);
@@ -402,21 +421,61 @@ const config = JSON.parse(
       if (devices.includes(cur)) {els.deviceFilter.value = cur;}
   }
 
-  // The Device filter only makes sense for device-scope assets. When the Scope is
-  // "notification", disable it (notifications have no device).
+  // Which account a Cloud file belongs to: its acct_<id> tag, else its folder (…/accounts/<id>/…).
+  function accountOf(r) {
+    const tag = (r.tags || []).find(t => /^acct_\d+$/.test(t));
+    if (tag) return tag.slice(5);
+    const m = /\/accounts\/(\d+)\//.exec(r.public_id || "");
+    return m ? m[1] : "";
+  }
+  function accountName(id) {
+    const a = CLOUD_ACCOUNTS.find(x => String(x.id) === String(id));
+    return a ? a.name : ("Account " + id);
+  }
+
+  // The Account dropdown: the account tags found on the files (acct_<id>), named, plus people with Cloud
+  // switched on who have nothing yet — pick one to see only theirs, and to upload into their folder.
+  function buildAccountFilter() {
+    const counts = {};
+    resources.filter(r => r._scope === "account").forEach(r => {
+      const id = accountOf(r);
+      if (id) counts[id] = (counts[id] || 0) + 1;
+    });
+    const ids = Array.from(new Set(Object.keys(counts).concat(
+      CLOUD_ACCOUNTS.filter(a => a.access !== "off").map(a => String(a.id)))));
+    ids.sort((a, b) => accountName(a).localeCompare(accountName(b)));
+    const cur = els.accountFilter.value;
+    els.accountFilter.innerHTML = '<option value="">All accounts</option>' + ids.map(id =>
+      `<option value="${escapeHtml(id)}">${escapeHtml(accountName(id))} · acct_${escapeHtml(id)}` +
+      (counts[id] ? ` (${counts[id]})` : "") + "</option>").join("");
+    if (ids.includes(cur)) els.accountFilter.value = cur;
+  }
+
+  // Devices scope shows the Device filter, Accounts the Account filter; Notifications neither.
   function syncScopeUI() {
-    const notifOnly = els.scope.value === "notification";
-    els.deviceFilter.disabled = notifOnly;
-    if (notifOnly) els.deviceFilter.value = "";
+    const scope = els.scope.value;
+    const accounts = scope === "account";
+    els.accountField.hidden = !accounts;
+    els.deviceField.hidden = accounts;
+    els.deviceFilter.disabled = scope === "notification";
+    if (scope === "notification") els.deviceFilter.value = "";
+    if (!accounts) els.accountFilter.value = "";
+    // Accounts take any kind of file; devices and notifications are pictures.
+    els.fileInput.setAttribute("accept", accounts ? "" : "image/*");
+    const hint = document.getElementById("dropHint");
+    if (hint) hint.textContent = accounts ? "Any kind of file. You can pick several at once." : "Images only. You can pick several at once.";
+    updateUploadTarget();
   }
 
   function currentList() {
     const q = els.filter.value.trim().toLowerCase();
     const dev = els.deviceFilter.value;
+    const acct = els.accountFilter.value;
     const scope = els.scope.value;
     return resources.filter(r => {
       if (scope && r._scope !== scope) return false;
-      if (dev && deviceOf(r.public_id) !== dev) return false;
+      if (dev && (r._scope !== "device" || deviceOf(r.public_id) !== dev)) return false;
+      if (acct && accountOf(r) !== acct) return false;
       if (q && !(r.public_id || "").toLowerCase().includes(q)) return false;
       return true;
     });
@@ -721,6 +780,13 @@ const config = JSON.parse(
     if (data.result !== "ok" && data.result !== "not found")
       throw new Error((data.error && data.error.message) || data.result || ("HTTP " + res.status));
 
+    // A person's Cloud file: take it off the list their app reads too.
+    const acct = r._scope === "account" ? accountOf(r) : "";
+    if (acct) {
+      await App.fetchJSON(accountUrl(config.account_deleted_url, acct), {
+        method: "POST", body: { public_id: r.public_id, resource_type: rtype } }).catch(() => {});
+    }
+
     const i = resources.indexOf(r);
     if (i >= 0) resources.splice(i, 1);
     selected.delete(r.public_id);
@@ -737,8 +803,8 @@ const config = JSON.parse(
 
     try {
       await destroyResource(r);
-      buildDeviceFilter(); render();
-      App.toast("Image deleted.", "success");
+      buildDeviceFilter(); buildAccountFilter(); render();
+      App.toast("Deleted.", "success");
     } catch (e) {
       App.toast("Delete failed: " + (e.message || String(e)), "error");
     }
@@ -769,7 +835,7 @@ const config = JSON.parse(
       if (done === list.length || done % 4 === 0)
         setStatus(SPIN + "Deleting " + done + "/" + list.length + "…");
     });
-    buildDeviceFilter(); render();
+    buildDeviceFilter(); buildAccountFilter(); render();
     setStatus("Deleted " + ok + " file(s)" + (fail ? (", " + fail + " failed.") : "."), fail ? "err" : "ok");
     if (fail) {
       App.toast("Delete finished: " + ok + " deleted, " + fail + " failed.", fail === list.length ? "error" : "warning");
@@ -786,6 +852,22 @@ const config = JSON.parse(
 
   // Show where uploads will land, based on the selected Device filter.
   function updateUploadTarget() {
+    if (els.scope.value === "account") {
+      const id = els.accountFilter.value;
+      if (id) {
+        const a = CLOUD_ACCOUNTS.find(x => String(x.id) === id);
+        els.upTarget.className = "alert alert-success";
+        els.upTarget.innerHTML = App.icon("tag") + '<div class="alert-body">Any file goes into <strong>' + escapeHtml(accountName(id)) +
+          "</strong>'s Cloud folder" + (a ? ' (<span class="mono">' + escapeHtml(a.root) + "</span>)" : "") +
+          ', tagged <span class="mono">' + escapeHtml(CLOUD_TAG) + '</span> and <span class="mono">acct_' + escapeHtml(id) +
+          "</span>. They see it in the app under Tools → Cloud.</div>";
+      } else {
+        els.upTarget.className = "alert alert-warning";
+        els.upTarget.innerHTML = App.icon("triangle-alert") + '<div class="alert-body">Pick an account in the filters below — ' +
+          "uploads go straight into that person's Cloud folder.</div>";
+      }
+      return;
+    }
     const deviceId = els.deviceFilter.value;
     if (deviceId) {
       const userId = userOf(deviceId);
@@ -807,10 +889,52 @@ const config = JSON.parse(
     els.upProgressBar.className = "progress-bar" + (state ? " " + state : "");
   }
 
+  // Into a person's Cloud folder: the server signs each upload for their folder and tags, the browser sends it
+  // to Cloudinary, and the server lists it for their app. Any kind of file.
+  async function uploadToAccount(files, id) {
+    let done = 0, failed = 0, lastError = "";
+    setUpStatus(SPIN + "Uploading 0/" + files.length + "…");
+    setUpProgress(0);
+    for (const file of files) {
+      try {
+        const s = await App.fetchJSON(accountUrl(config.account_sign_url, id), {
+          method: "POST", body: { action: "upload", folder: "", name: file.name, mime: file.type } });
+        const form = new FormData();
+        Object.keys(s.params).forEach(k => form.append(k, s.params[k]));
+        form.append("file", file);
+        const res = await fetch(s.url, { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error((data.error && data.error.message) || ("HTTP " + res.status));
+        await App.fetchJSON(accountUrl(config.account_uploaded_url, id), { method: "POST", body: { result: data, name: file.name } });
+        if ((data.resource_type || "image") === els.rtype.value) {
+          resources.unshift(Object.assign({}, data, { _scope: "account" }));
+        }
+        done++;
+      } catch (e) {
+        failed++;
+        lastError = (e.data && e.data.message) || e.message || String(e);
+        if (lastError === "Failed to fetch" || /NetworkError/i.test(lastError))
+          lastError = "Couldn't reach Cloudinary — check the internet, or that the cloud name is right";
+      }
+      setUpStatus(SPIN + "Uploading " + (done + failed) + "/" + files.length + "…" +
+        (failed ? " (" + failed + " failed: " + escapeHtml(lastError) + ")" : ""));
+      setUpProgress(Math.round((done + failed) / files.length * 100));
+      buildAccountFilter(); render();
+    }
+    setUpProgress(100, failed ? "danger" : "success");
+    if (!failed) setUpStatus("Uploaded " + done + " file(s) to " + escapeHtml(accountName(id)) + ".", "ok");
+    else setUpStatus("Uploaded " + done + ", failed " + failed + ". Last error: " + escapeHtml(lastError) + ".", "err");
+  }
+
   async function uploadFiles(fileList) {
     const cloud = CLOUD_NAME, preset = UPLOAD_PRESET, tag = TAG;
     const files = Array.from(fileList || []);
     if (!files.length) return;
+    if (els.scope.value === "account") {
+      const id = els.accountFilter.value;
+      if (!id) { setUpStatus("Pick an account in the filters first.", "err"); return; }
+      return uploadToAccount(files, id);
+    }
 
     // Uploads inherit the currently-selected Device so they carry the same tags
     // the backup app writes (`device_<id>`, `user_<id>`, mediaType, base tag) and
@@ -880,6 +1004,7 @@ const config = JSON.parse(
   els.rtype.addEventListener("change", loadImages);
   els.filter.addEventListener("input", render);
   els.scope.addEventListener("change", () => { syncScopeUI(); render(); });
+  els.accountFilter.addEventListener("change", () => { render(); updateUploadTarget(); });
   els.deviceFilter.addEventListener("change", () => { render(); updateUploadTarget(); });
   els.statusBtn.addEventListener("click", cloudStatus);
   els.refreshBtn.addEventListener("click", loadImages);

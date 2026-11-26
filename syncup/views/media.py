@@ -38,10 +38,32 @@ def cloudinary(request):
         "tags": getattr(settings, "CLOUDINARY_FOLDER_PREFIX", "devices"),
         "cloud_name": getattr(settings, "CLOUDINARY_CLOUD_NAME", ""),
         "sign_url": reverse("cloud_sign"),
+        # Accounts scope: people's Cloud folders (app → Tools → Cloud), tagged syncup_cloud + acct_<id>.
+        **_cloud_accounts_config(),
     }
 
     encoded = base64.b64encode(json.dumps(config, cls=DjangoJSONEncoder).encode()).decode()
     return render(request, "services/cloudinary.html", {"app_config": encoded})
+
+
+def _cloud_accounts_config():
+    """The gallery's Accounts scope: people with Cloud switched on or with files (names for the account tags), and
+    the console's sign / uploaded / deleted addresses (account 0 = replaced by the chosen account's id)."""
+    from mobileapi import cloud_api
+    from mobileapi.models import AppAccount, CloudFile, CloudFolder
+    from django.db.models import Q
+
+    ids = set(CloudFile.objects.values_list("owner_id", flat=True).distinct())
+    ids |= set(CloudFolder.objects.values_list("account_id", flat=True).distinct())
+    people = AppAccount.objects.filter(Q(pk__in=ids) | ~Q(cloudinary_access="off")).order_by("name")
+    return {
+        "cloud_tag": "syncup_cloud",
+        "accounts": [{"id": a.id, "name": a.name or a.login_label, "tag": f"acct_{a.id}", "root": cloud_api.account_root(a.id),
+                      "access": a.cloudinary_access} for a in people],
+        "account_sign_url": reverse("mobile_account_cloud_sign", args=[0]),
+        "account_uploaded_url": reverse("mobile_account_cloud_uploaded", args=[0]),
+        "account_deleted_url": reverse("mobile_account_cloud_deleted", args=[0]),
+    }
 
 
 @csrf_exempt

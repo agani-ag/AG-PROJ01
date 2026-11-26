@@ -326,41 +326,6 @@ def record_upload(result, name, uploaded_by=None, only_owner=None):
     return f, None
 
 
-def thumb_url(f):
-    """A small square picture of a listed file (photo, video's first frame, PDF's first page), or ""."""
-    i = f.url.find("/upload/")
-    if i < 0:
-        return ""
-    head, tail = f.url[:i + 8], f.url[i + 8:]
-    if f.resource_type == "image":
-        return head + "c_fill,w_96,h_96,q_auto,f_auto/" + tail
-    if f.resource_type == "video" and f.width:
-        return head + "c_fill,w_96,h_96,so_0,q_auto/" + tail.rsplit(".", 1)[0] + ".jpg"
-    if f.resource_type == "raw" and f.format == "pdf":
-        return (head + "c_fill,w_96,h_96,pg_1,q_auto/" + tail.rsplit(".", 1)[0] + ".jpg").replace("/raw/upload/", "/image/upload/")
-    return ""
-
-
-def account_files(account):
-    """The console's Cloud files card for one account: their folders and files, from this server's list."""
-    root = account_root(account.id)
-    files = list(CloudFile.objects.filter(owner_id=account.id).order_by("folder", "-created_at"))
-    folders = {f.folder[len(root):].strip("/") for f in files if f.folder.startswith(root + "/")}
-    folders |= {p[len(root):].strip("/") for p in CloudFolder.objects.filter(account=account).values_list("path", flat=True)
-                if p.startswith(root + "/")}
-    for f in files:
-        f.rel_folder = f.folder[len(root):].strip("/") if f.folder.startswith(root) else f.folder
-        f.thumb = thumb_url(f)
-        f.size_text = _size(f.bytes)
-    return {
-        "configured": configured(),
-        "root": root,
-        "folders": sorted(folders, key=lambda n: (n.lower(), n)),
-        "files": files,
-        "summary": usage_text(account),
-    }
-
-
 # --------------------------------------------------------------------------- endpoints
 @require_http_methods(["GET"])
 @app_token_required

@@ -338,13 +338,17 @@ class ConsoleTests(CloudTestCase):
         f = CloudFile.objects.get()
         self.assertEqual((f.owner_id, f.name, f.uploaded_by), (self.asha.id, "Report.docx", None))
 
-    def test_the_page_shows_their_files_and_folders(self):
-        self.listed(self.asha, self.root + "/Docs/plan_1a2b3c.pdf", name="Plan.pdf", rtype="raw")
-        page = self.client.get(f"/mobile/accounts/{self.asha.id}")
-        self.assertContains(page, "Cloud files")
-        self.assertContains(page, "Plan.pdf")
-        self.assertContains(page, '<option value="Docs">Docs</option>', html=True)
-        self.assertContains(page, "Cloud is off for Asha")
+    def test_the_cloud_gallery_lists_accounts_by_tag(self):
+        import base64
+        self.listed(self.asha, self.root + "/a_1")
+        self.person("Off person", "off")
+        page = self.client.get("/services/cloudinary")
+        self.assertEqual(page.status_code, 200)
+        cfg = json.loads(base64.b64decode(page.context["app_config"]))
+        self.assertEqual(cfg["cloud_tag"], "syncup_cloud")
+        self.assertEqual([a["name"] for a in cfg["accounts"]], ["Asha"])
+        self.assertEqual(cfg["accounts"][0]["tag"], f"acct_{self.asha.id}")
+        self.assertIn("/mobile/accounts/0/cloud/sign", cfg["account_sign_url"])
 
     def test_delete_and_only_their_files(self):
         f = self.listed(self.asha, self.root + "/a_1")
