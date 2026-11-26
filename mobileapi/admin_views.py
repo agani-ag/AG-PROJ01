@@ -849,7 +849,7 @@ def action_test(request):
             messages.success(
                 request,
                 f"Sent a {atype} prompt to {account.login_label} — {delivered} device(s). Complete it on "
-                "the phone, then refresh this page to see the response below.",
+                "the phone; the response shows below as soon as it's answered.",
             )
         return redirect("mobile_action_test")
 
@@ -859,6 +859,7 @@ def action_test(request):
     return render(request, "mobileapi/action_test.html", {
         "accounts": AppAccount.objects.filter(is_active=True),
         "recent": recent,
+        "log_days": AppConfig.load().cleanup_log_days,   # retention used by /cron/cleanup
     })
 
 

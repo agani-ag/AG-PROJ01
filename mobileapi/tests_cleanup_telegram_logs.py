@@ -65,4 +65,4 @@ class TelegramLogCleanupTests(TestCase):
     def test_the_setting_says_it_covers_both(self):
         self.client.force_login(get_user_model().objects.create_superuser("boss", password="pw"))
         page = self.client.get(reverse("mobile_config")).content.decode()
-        self.assertIn("Push and Telegram logs", page)
+        self.assertIn("Push, Telegram and Verify logs", page)

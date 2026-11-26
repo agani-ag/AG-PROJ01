@@ -93,7 +93,7 @@
             <p class="help card-intro">Days to keep each kind of data before the cleanup job removes it. <b>0 = keep forever.</b> Expired login tokens and sessions are always removed; unread chat is always kept.</p>
             <div class="form-grid">
                 <div class="field{% if form.cleanup_log_days.errors %} invalid{% endif %}">
-                    <label class="label" for="{{ form.cleanup_log_days.id_for_label }}">Push and Telegram logs <span class="opt">days</span></label>
+                    <label class="label" for="{{ form.cleanup_log_days.id_for_label }}">Push, Telegram and Verify logs <span class="opt">days</span></label>
                     {{ form.cleanup_log_days }}
                     {% for e in form.cleanup_log_days.errors %}<span class="error">{% icon "circle-alert" "icon-sm" %}{{ e }}</span>{% endfor %}
                 </div>

@@ -6,6 +6,10 @@
     <div class="titles">
         <h1>Verify test</h1>
         <p class="page-sub">Send an <b>OTP</b>, <b>code entry</b>, <b>select-a-number</b>, <b>info notice</b> or <b>approve/reject</b> prompt to a user's phone to test the flow yourself, before a partner uses the API.</p>
+        <p class="small muted" style="margin-top:4px">
+            {% if log_days %}Prompts older than {{ log_days }} day{{ log_days|pluralize }} are removed by the daily cleanup.{% else %}Prompts are kept forever: log cleanup is turned off.{% endif %}
+            <a href="{% url 'mobile_config' %}">Change in App config</a>
+        </p>
     </div>
 </div>
 
@@ -98,10 +102,11 @@
     </div>
 </form>
 
-<div class="card" data-table>
+<div class="card" data-table data-live="10">
     <div class="card-head">
         {% icon "list-checks" %}<h2>Recent prompts</h2>
-        <a href="{% url 'mobile_action_test' %}" class="btn btn-sm">{% icon "refresh-cw" %}Refresh</a>
+        <button class="btn btn-ghost btn-sm live-chip" type="button" data-live-toggle aria-pressed="true"
+                title="Updating automatically — click to pause"><span class="status-dot on" data-live-dot></span><span data-live-label>Live</span></button>
     </div>
     <div class="table-wrap">
         <table class="table table-stack">
@@ -116,7 +121,7 @@
                     <th>Source</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="prompt-rows" data-live-part>
                 {% for r in recent %}
                 <tr>
                     <td data-label="When" data-value="{{ r.created_at|date:'c' }}" class="nowrap t-hide-sm">{{ r.created_at|date:"d M, g:i:s A" }}</td>
@@ -140,7 +145,7 @@
             </tbody>
         </table>
     </div>
-    <div class="table-foot"><span data-table-count></span></div>
+    <div class="table-foot" id="prompt-foot" data-live-part><span data-table-count></span></div>
 </div>
 {% endblock %}
 
