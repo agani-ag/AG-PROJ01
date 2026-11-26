@@ -463,3 +463,46 @@ class LiveTests(CloudTestCase):
         asha.refresh_from_db()
         self.assertEqual(asha.cloudinary_access, "all")
         send.assert_called_once_with(["tok-1"], {"type": "cloud", "what": "access"})
+
+
+class LookTests(CloudTestCase):
+    """Own folders read straight from Cloudinary (user, 27 Nov 2026): the server signs a search link for the
+    person's own folder — maths only, no call — and says which files it knows (only those can be changed)."""
+
+    def test_signing_matches_cloudinarys_sdk(self):
+        # Cloudinary's Python SDK test (test_search.py, test_should_build_search_url): secret "secret", ttl 300.
+        url = cloud_api.signed_search({"expression": "resource_type:image AND tags=kitten AND uploaded_at>1d AND bytes>1m",
+                                       "sort_by": [{"public_id": "desc"}], "max_results": 30}, 300, "secret", "test123")
+        self.assertEqual(url, "https://res.cloudinary.com/test123/search/"
+                              "431454b74cefa342e2f03e2d589b2e901babb8db6e6b149abf25bc0dd7ab20b7/300/"
+                              "eyJleHByZXNzaW9uIjoicmVzb3VyY2VfdHlwZTppbWFnZSBBTkQgdGFncz1raXR0ZW4gQU5EIHVwbG9hZGVkX2F0"
+                              "PjFkIEFORCBieXRlcz4xbSIsIm1heF9yZXN1bHRzIjozMCwic29ydF9ieSI6W3sicHVibGljX2lkIjoiZGVzYyJ9XX0=")
+
+    def test_the_link_looks_only_in_their_own_folder(self):
+        import base64
+        asha = self.person("Asha")
+        self.listed(asha, f"syncup/accounts/{asha.id}/Trips/beach_1", name="Beach.jpg")
+        self.listed(self.person("Bala"), "syncup/accounts/999/x_1")
+        d = self.get(asha, "cloud/look").json()
+        root = f"syncup/accounts/{asha.id}"
+        self.assertEqual(d["root"], root)
+        self.assertEqual(d["listed"], {f"{root}/Trips/beach_1": "Beach.jpg"})
+        sig, ttl, b64 = d["url"].removeprefix("https://res.cloudinary.com/demo-cloud/search/").split("/")
+        self.assertEqual(json.loads(base64.urlsafe_b64decode(b64)),
+                         {"expression": f"asset_folder={root} OR asset_folder:{root}/*", "max_results": 500})
+        self.assertEqual(sig, hashlib.sha256(f"{ttl}{b64}{SECRET}".encode()).hexdigest())
+        self.assertTrue(300 <= int(ttl) < 600)
+
+    def test_a_new_link_every_second(self):
+        a, b = cloud_api.search_url("syncup/accounts/1", now=1000), cloud_api.search_url("syncup/accounts/1", now=1001)
+        self.assertNotEqual(a, b)
+        self.assertEqual(a, cloud_api.search_url("syncup/accounts/1", now=1300))  # back only 300 s later
+
+    def test_special_characters_in_the_folder_are_escaped(self):
+        import base64
+        b64 = cloud_api.search_url("my files/a:b", now=0).rsplit("/", 1)[1]
+        self.assertEqual(json.loads(base64.urlsafe_b64decode(b64))["expression"],
+                         r"asset_folder=my\ files/a\:b OR asset_folder:my\ files/a\:b/*")
+
+    def test_off_gets_no_link(self):
+        self.assertEqual(self.get(self.person("Off", "off"), "cloud/look").status_code, 403)

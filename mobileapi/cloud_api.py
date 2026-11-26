@@ -13,8 +13,10 @@ itself (upload, delete, rename, view); this server only:
 
 An "Own folder" phone only ever gets signatures for files in its own folder, so it can't reach anyone else's.
 """
+import base64
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -333,6 +335,31 @@ def signed_upload(owner_id, folder_abs, name, mime):
     }
 
 
+_SEARCH_RESERVED = set('!(){}[]*^~?:\\=&><" ')
+
+
+def search_url(root, now=None):
+    """A signed Cloudinary "cacheable search URL" for every file in `root` and its subfolders. The phone reads it
+    from Cloudinary itself, so files put there outside SyncUp (Cloudinary's own website) show too. The signature is
+    plain maths — SHA-256 of ttl + query + API secret, as Cloudinary's SDKs make it — so this server still never
+    calls Cloudinary, and the link can't be changed to look in another folder.
+    Cloudinary keeps a link's answer for its ttl (seconds); the ttl here changes every second, so each look is
+    fresh (the same link comes back only 300 s later, to the second)."""
+    ttl = 300 + int(now if now is not None else time.time()) % 300
+    field = "folder" if folder_mode() == "fixed" else "asset_folder"
+    term = "".join("\\" + c if c in _SEARCH_RESERVED else c for c in root)
+    query = {"expression": f"{field}={term} OR {field}:{term}/*", "max_results": 500}
+    return signed_search(query, ttl, keys()[1], cloud_name())
+
+
+def signed_search(query, ttl, secret, cloud):
+    """Cloudinary's search URL for this query: url-safe base64 of the compact, key-sorted JSON, signed as hex
+    SHA-256 of ttl + that base64 + the secret (Cloudinary's Python SDK, Search.to_url)."""
+    b64 = base64.urlsafe_b64encode(json.dumps(query, separators=(",", ":"), sort_keys=True).encode()).decode()
+    sig = hashlib.sha256(f"{ttl}{b64}{secret}".encode()).hexdigest()
+    return f"https://res.cloudinary.com/{cloud}/search/{sig}/{ttl}/{b64}"
+
+
 def signed_destroy(f):
     """The signed Cloudinary delete of one listed file."""
     key, secret = keys()
@@ -451,6 +478,23 @@ def files(request):
         "used_bytes": used_bytes(owner),
         "cloud": cloud_plan(),
     })
+
+
+@require_http_methods(["GET"])
+@app_token_required
+def look(request):
+    """The person's own folder, straight from Cloudinary (user, 27 Nov 2026: everything in the folder shows, however
+    it got there): a signed search link the phone reads itself, and "listed" — the files on this server's list
+    (public id → name). Only those can be renamed or deleted from the phone; for a file only Cloudinary knows, this
+    server can't check that it really is in this person's folder, so it signs nothing for it."""
+    refused = _gate(request)
+    if refused:
+        return refused
+    root = account_root(request.account.id)
+    listed = dict(CloudFile.objects.filter(owner_id=request.account.id).values_list("public_id", "name"))
+    resp = JsonResponse({"root": root, "url": search_url(root), "listed": listed})
+    resp["Cache-Control"] = "no-store"
+    return resp
 
 
 @csrf_exempt

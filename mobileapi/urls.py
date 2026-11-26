@@ -57,6 +57,7 @@ urlpatterns = [
     path("cloud/access", cloud_api.access, name="app_cloud_access"),
     path("cloud/credentials", cloud_api.credentials, name="app_cloud_credentials"),
     path("cloud/files", cloud_api.files, name="app_cloud_files"),
+    path("cloud/look", cloud_api.look, name="app_cloud_look"),
     path("cloud/sign", cloud_api.sign_request, name="app_cloud_sign"),
     path("cloud/uploaded", cloud_api.uploaded, name="app_cloud_uploaded"),
     path("cloud/deleted", cloud_api.deleted, name="app_cloud_deleted"),
