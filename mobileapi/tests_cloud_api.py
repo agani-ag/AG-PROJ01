@@ -6,7 +6,7 @@ import json
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 
 from . import cloud_api
 from .models import AppAccount, AppAuthToken, CloudFile, CloudFolder
@@ -308,3 +308,65 @@ class PlanTests(CloudTestCase):
     def test_only_everything_reports_and_only_real_reports(self):
         self.assertEqual(self.post(self.person("Asha"), "cloud/usage", {"usage": {"credits": {"usage": 1, "limit": 2}}}).status_code, 403)
         self.assertEqual(self.post(self.person("Root", "all"), "cloud/usage", {"usage": {"plan": "x"}}).status_code, 400)
+
+
+class ConsoleTests(CloudTestCase):
+    """The account page's Cloud files card: the admin uploads any file into a person's folder, or deletes one."""
+
+    def setUp(self):
+        super().setUp()
+        self.asha = self.person("Asha", "off")
+        self.root = f"syncup/accounts/{self.asha.id}"
+        self.client.force_login(get_user_model().objects.create_superuser("root", password="x"))
+
+    def url(self, what):
+        return f"/mobile/accounts/{self.asha.id}/cloud/{what}"
+
+    def send(self, what, body, client=None):
+        return (client or self.client).post(self.url(what), json.dumps(body), content_type="application/json")
+
+    def test_upload_any_file_into_their_folder_with_tags(self):
+        d = self.send("sign", {"action": "upload", "folder": "Docs", "name": "Report.docx", "mime": "application/msword"}).json()
+        p = d["params"]
+        self.assertEqual(d["resource_type"], "raw")
+        self.assertRegex(p["public_id"], rf"^{self.root}/Docs/Report_[0-9a-f]{{6}}\.docx$")
+        self.assertEqual(p["tags"], f"syncup_cloud,acct_{self.asha.id}")
+        signed = {k: v for k, v in p.items() if k not in ("signature", "api_key")}
+        self.assertEqual(p["signature"], expected_signature(signed))
+        r = self.send("uploaded", {"result": cloudinary_result(p["public_id"], resource_type="raw"), "name": "Report.docx"})
+        self.assertEqual(r.status_code, 200)
+        f = CloudFile.objects.get()
+        self.assertEqual((f.owner_id, f.name, f.uploaded_by), (self.asha.id, "Report.docx", None))
+
+    def test_the_page_shows_their_files_and_folders(self):
+        self.listed(self.asha, self.root + "/Docs/plan_1a2b3c.pdf", name="Plan.pdf", rtype="raw")
+        page = self.client.get(f"/mobile/accounts/{self.asha.id}")
+        self.assertContains(page, "Cloud files")
+        self.assertContains(page, "Plan.pdf")
+        self.assertContains(page, '<option value="Docs">Docs</option>', html=True)
+        self.assertContains(page, "Cloud is off for Asha")
+
+    def test_delete_and_only_their_files(self):
+        f = self.listed(self.asha, self.root + "/a_1")
+        other = self.person("Bala")
+        g = self.listed(other, f"syncup/accounts/{other.id}/b_1")
+        self.assertEqual(self.send("sign", {"action": "destroy", "public_id": g.public_id, "resource_type": "image"}).status_code, 404)
+        d = self.send("sign", {"action": "destroy", "public_id": f.public_id, "resource_type": "image"}).json()
+        self.assertTrue(d["url"].endswith("/image/destroy"))
+        self.send("deleted", {"public_id": f.public_id, "resource_type": "image"})
+        self.assertEqual(list(CloudFile.objects.values_list("public_id", flat=True)), [g.public_id])
+        r = self.send("uploaded", {"result": cloudinary_result(g.public_id)})
+        self.assertEqual(r.status_code, 403)  # not this person's folder
+
+    def test_admins_only(self):
+        app_user = Client()
+        r = self.send("sign", {"action": "upload", "name": "x.jpg", "mime": "image/jpeg"}, client=app_user)
+        self.assertEqual(r.status_code, 403)
+
+    def test_app_uploads_are_tagged_too(self):
+        p = self.post(self.asha, "cloud/sign", {"action": "upload", "name": "x.jpg", "mime": "image/jpeg"})
+        self.assertEqual(p.status_code, 403)  # Asha is off
+        self.asha.cloudinary_access = "own"
+        self.asha.save()
+        p = self.post(self.asha, "cloud/sign", {"action": "upload", "name": "x.jpg", "mime": "image/jpeg"}).json()["params"]
+        self.assertEqual(p["tags"], f"syncup_cloud,acct_{self.asha.id}")

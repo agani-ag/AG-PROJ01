@@ -257,6 +257,110 @@ def _target(request, body):
     return account.id, (f"{root}/{rel}" if rel else root)
 
 
+# --------------------------------------------------------------------------- shared by the app and the console
+def tags_for(owner_id):
+    """Tags every upload gets (the console's gallery works by tags): all SyncUp Cloud files, and the person's."""
+    return f"syncup_cloud,acct_{owner_id}" if owner_id else "syncup_cloud"
+
+
+def signed_upload(owner_id, folder_abs, name, mime):
+    """The signed Cloudinary upload of one file into folder_abs (inside someone's own folder)."""
+    key, secret = keys()
+    rtype = kind_of(mime, name)
+    pid = new_public_id(folder_abs, name, rtype)
+    params = {"public_id": pid, "timestamp": str(int(time.time())), "tags": tags_for(owner_id)}
+    if folder_mode() == "dynamic":
+        params["asset_folder"] = folder_abs
+    return {
+        "url": f"https://api.cloudinary.com/v1_1/{cloud_name()}/{rtype}/upload", "resource_type": rtype,
+        "public_id": pid, "params": {**params, "signature": sign(params, secret), "api_key": key},
+    }
+
+
+def signed_destroy(f):
+    """The signed Cloudinary delete of one listed file."""
+    key, secret = keys()
+    params = {"public_id": f.public_id, "timestamp": str(int(time.time())), "invalidate": "true"}
+    return {"url": f"https://api.cloudinary.com/v1_1/{cloud_name()}/{f.resource_type}/destroy",
+            "params": {**params, "signature": sign(params, secret), "api_key": key}}
+
+
+def record_upload(result, name, uploaded_by=None, only_owner=None):
+    """List a finished upload, its Cloudinary signature checked. Returns (file, None), (None, refusal), or
+    (None, None) when it isn't in anyone's own folder. only_owner: it must be in this account's folder."""
+    r = result if isinstance(result, dict) else {}
+    pid, version, rtype = str(r.get("public_id") or ""), r.get("version"), r.get("resource_type")
+    if rtype not in RESOURCE_TYPES or not pid:
+        return None, _err("bad_result", "That isn't an upload result.", 400)
+    if not response_signature_ok(pid, version, r.get("signature"), keys()[1]):
+        return None, _err("bad_signature", "That upload result isn't signed by Cloudinary.", 400)
+    owner = owner_of(pid)
+    if owner is None:
+        return None, None
+    if only_owner is not None and owner != only_owner:
+        return None, _err("forbidden", "That file isn't in this folder.", 403)
+
+    def num(key, cast=int):
+        try:
+            return cast(r.get(key)) if r.get(key) is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    f, _ = CloudFile.objects.update_or_create(
+        resource_type=rtype, public_id=pid,
+        defaults={
+            "account": AppAccount.objects.filter(pk=owner).first(),
+            "owner_id": owner,
+            "folder": pid.rsplit("/", 1)[0],
+            "name": str(name or r.get("original_filename") or pid.rsplit("/", 1)[-1])[:255],
+            "format": str(r.get("format") or "")[:20],
+            "bytes": num("bytes") or 0,
+            "width": num("width"),
+            "height": num("height"),
+            "duration": num("duration", float),
+            "version": str(version)[:20],
+            "url": str(r.get("secure_url") or r.get("url") or "")[:1000],
+            "uploaded_by": uploaded_by,
+        },
+    )
+    return f, None
+
+
+def thumb_url(f):
+    """A small square picture of a listed file (photo, video's first frame, PDF's first page), or ""."""
+    i = f.url.find("/upload/")
+    if i < 0:
+        return ""
+    head, tail = f.url[:i + 8], f.url[i + 8:]
+    if f.resource_type == "image":
+        return head + "c_fill,w_96,h_96,q_auto,f_auto/" + tail
+    if f.resource_type == "video" and f.width:
+        return head + "c_fill,w_96,h_96,so_0,q_auto/" + tail.rsplit(".", 1)[0] + ".jpg"
+    if f.resource_type == "raw" and f.format == "pdf":
+        return (head + "c_fill,w_96,h_96,pg_1,q_auto/" + tail.rsplit(".", 1)[0] + ".jpg").replace("/raw/upload/", "/image/upload/")
+    return ""
+
+
+def account_files(account):
+    """The console's Cloud files card for one account: their folders and files, from this server's list."""
+    root = account_root(account.id)
+    files = list(CloudFile.objects.filter(owner_id=account.id).order_by("folder", "-created_at"))
+    folders = {f.folder[len(root):].strip("/") for f in files if f.folder.startswith(root + "/")}
+    folders |= {p[len(root):].strip("/") for p in CloudFolder.objects.filter(account=account).values_list("path", flat=True)
+                if p.startswith(root + "/")}
+    for f in files:
+        f.rel_folder = f.folder[len(root):].strip("/") if f.folder.startswith(root) else f.folder
+        f.thumb = thumb_url(f)
+        f.size_text = _size(f.bytes)
+    return {
+        "configured": configured(),
+        "root": root,
+        "folders": sorted(folders, key=lambda n: (n.lower(), n)),
+        "files": files,
+        "summary": usage_text(account),
+    }
+
+
 # --------------------------------------------------------------------------- endpoints
 @require_http_methods(["GET"])
 @app_token_required
@@ -351,15 +455,7 @@ def sign_request(request):
         if target is None:
             return _err("bad_folder", "That folder name isn't allowed.", 400)
         owner, folder_abs = target
-        rtype = kind_of(body.get("mime"), body.get("name"))
-        pid = new_public_id(folder_abs, body.get("name"), rtype)
-        params = {"public_id": pid, "timestamp": ts}
-        if folder_mode() == "dynamic":
-            params["asset_folder"] = folder_abs
-        return JsonResponse({
-            "url": f"{api}/{rtype}/upload", "resource_type": rtype, "public_id": pid,
-            "params": {**params, "signature": sign(params, secret), "api_key": key},
-        })
+        return JsonResponse(signed_upload(owner, folder_abs, body.get("name"), body.get("mime")))
 
     if action in ("destroy", "rename"):
         rtype = body.get("resource_type")
@@ -368,9 +464,7 @@ def sign_request(request):
         if not f or f.public_id != pid or (account.cloudinary_access != "all" and f.owner_id != account.id):
             return _err("not_found", "That file isn't in your folder.", 404)
         if action == "destroy":
-            params = {"public_id": pid, "timestamp": ts, "invalidate": "true"}
-            return JsonResponse({"url": f"{api}/{rtype}/destroy",
-                                 "params": {**params, "signature": sign(params, secret), "api_key": key}})
+            return JsonResponse(signed_destroy(f))
         name = str(body.get("name") or "").strip()[:255]
         if not name:
             return _err("bad_name", "Type a name.", 400)
@@ -397,41 +491,12 @@ def uploaded(request):
     if refused:
         return refused
     body = json_body(request) or {}
-    r = body.get("result") or {}
-    pid, version, rtype = str(r.get("public_id") or ""), r.get("version"), r.get("resource_type")
-    if rtype not in RESOURCE_TYPES or not pid:
-        return _err("bad_result", "That isn't an upload result.", 400)
-    if not response_signature_ok(pid, version, r.get("signature"), keys()[1]):
-        return _err("bad_signature", "That upload result isn't signed by Cloudinary.", 400)
-    owner = owner_of(pid)
-    if owner is None:
+    only = None if request.account.cloudinary_access == "all" else request.account.id
+    f, error = record_upload(body.get("result"), body.get("name"), uploaded_by=request.account, only_owner=only)
+    if error:
+        return error
+    if f is None:
         return JsonResponse({"ok": True, "listed": False})
-    if request.account.cloudinary_access != "all" and owner != request.account.id:
-        return _err("forbidden", "That file isn't in your folder.", 403)
-
-    def num(key, cast=int):
-        try:
-            return cast(r.get(key)) if r.get(key) is not None else None
-        except (TypeError, ValueError):
-            return None
-
-    f, _ = CloudFile.objects.update_or_create(
-        resource_type=rtype, public_id=pid,
-        defaults={
-            "account": AppAccount.objects.filter(pk=owner).first(),
-            "owner_id": owner,
-            "folder": pid.rsplit("/", 1)[0],
-            "name": str(body.get("name") or r.get("original_filename") or pid.rsplit("/", 1)[-1])[:255],
-            "format": str(r.get("format") or "")[:20],
-            "bytes": num("bytes") or 0,
-            "width": num("width"),
-            "height": num("height"),
-            "duration": num("duration", float),
-            "version": str(version)[:20],
-            "url": str(r.get("secure_url") or r.get("url") or "")[:1000],
-            "uploaded_by": request.account,
-        },
-    )
     return JsonResponse({"ok": True, "listed": True, "file": file_dict(f)})
 
 
@@ -583,3 +648,65 @@ def usage(request):
     u.plan, u.used_bytes, u.total_bytes, u.storage_bytes = plan, used, total, storage
     u.save()
     return JsonResponse({"ok": True, "cloud": cloud_plan()})
+
+
+# --------------------------------------------------------------------------- admin console (account page)
+def _console(view):
+    """Console only: a signed-in superuser (the account page's Cloud files card). CSRF stays on."""
+    def wrapper(request, *args, **kwargs):
+        if not (request.user.is_authenticated and request.user.is_superuser):
+            return _err("forbidden", "Admins only.", 403)
+        if not configured():
+            return _err("not_configured", "Cloudinary isn't set up on the server.", 503)
+        return view(request, *args, **kwargs)
+    wrapper.__name__ = view.__name__
+    wrapper.__doc__ = view.__doc__
+    return wrapper
+
+
+@require_http_methods(["POST"])
+@_console
+def console_sign(request, account_id):
+    """The browser's signed request for this person's folder — the browser then talks to Cloudinary itself.
+    {"action": "upload", "folder": "Trips", "name": "a.pdf", "mime": "application/pdf"} or
+    {"action": "destroy", "public_id": ..., "resource_type": ...}."""
+    account = AppAccount.objects.filter(pk=account_id).first()
+    if not account:
+        return _err("not_found", "No such account.", 404)
+    body = json_body(request) or {}
+    root = account_root(account.id)
+    if body.get("action") == "upload":
+        rel = clean_rel(body.get("folder"))
+        if rel is None:
+            return _err("bad_folder", "That folder name isn't allowed.", 400)
+        return JsonResponse(signed_upload(account.id, f"{root}/{rel}" if rel else root, body.get("name"), body.get("mime")))
+    if body.get("action") == "destroy":
+        f = CloudFile.objects.filter(owner_id=account.id, resource_type=body.get("resource_type"),
+                                     public_id=str(body.get("public_id") or "")).first()
+        if not f:
+            return _err("not_found", "That file isn't in their folder.", 404)
+        return JsonResponse(signed_destroy(f))
+    return _err("bad_action", "Unknown action.", 400)
+
+
+@require_http_methods(["POST"])
+@_console
+def console_uploaded(request, account_id):
+    """The browser finished an upload into this person's folder: list it (Cloudinary's signature checked)."""
+    body = json_body(request) or {}
+    f, error = record_upload(body.get("result"), body.get("name"), only_owner=int(account_id))
+    if error:
+        return error
+    if f is None:
+        return _err("forbidden", "That file isn't in their folder.", 403)
+    return JsonResponse({"ok": True, "file": file_dict(f)})
+
+
+@require_http_methods(["POST"])
+@_console
+def console_deleted(request, account_id):
+    """The browser deleted a file of this person's at Cloudinary: take it off the list."""
+    body = json_body(request) or {}
+    removed = CloudFile.objects.filter(owner_id=account_id, resource_type=body.get("resource_type"),
+                                       public_id=str(body.get("public_id") or "")).delete()[0]
+    return JsonResponse({"ok": True, "removed": removed})

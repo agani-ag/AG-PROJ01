@@ -5,6 +5,7 @@ from . import admin_insights as insights
 from . import admin_dns as dns
 from . import admin_shortcuts as sc
 from . import admin_views as v
+from . import cloud_api
 from . import channels_admin as channels
 
 urlpatterns = [
@@ -14,6 +15,10 @@ urlpatterns = [
     path("accounts", v.accounts, name="mobile_accounts"),
     path("accounts/add", v.account_add, name="mobile_account_add"),
     path("accounts/<int:account_id>", v.account_edit, name="mobile_account_edit"),
+    # The account page's Cloud files card: the browser uploads / deletes at Cloudinary itself, the server signs.
+    path("accounts/<int:account_id>/cloud/sign", cloud_api.console_sign, name="mobile_account_cloud_sign"),
+    path("accounts/<int:account_id>/cloud/uploaded", cloud_api.console_uploaded, name="mobile_account_cloud_uploaded"),
+    path("accounts/<int:account_id>/cloud/deleted", cloud_api.console_deleted, name="mobile_account_cloud_deleted"),
     path("accounts/<int:account_id>/delete", v.account_delete, name="mobile_account_delete"),
     path("accounts/<int:account_id>/signout", v.account_signout, name="mobile_account_signout"),
     path("accounts/<int:account_id>/reset", v.account_reset, name="mobile_account_reset"),

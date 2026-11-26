@@ -12,6 +12,10 @@
   .ln-go { position: relative; z-index: 1; display: flex; flex: none; gap: 12px; border-radius: 999px; }
   .ln-go:hover { text-decoration: none; }
   .ln-go:hover .badge { box-shadow: 0 0 0 1px currentColor; }
+  /* Cloud files: a small picture of each file, or its kind's icon. */
+  .cl-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; display: inline-grid; place-items: center;
+              background: var(--surface-2); color: var(--muted); vertical-align: middle; }
+  .cl-thumb .icon { width: 18px; height: 18px; }
 </style>
 {% endblock %}
 
@@ -136,6 +140,53 @@
             <li class="empty small">Nothing yet.</li>
             {% endfor %}
         </ul>
+    </div>
+
+    {# Their own Cloudinary folder (app → Tools → Cloud). The browser uploads and deletes at Cloudinary itself; #}
+    {# the server only signs (PythonAnywhere can't reach Cloudinary) and keeps the list. #}
+    <div class="card" id="cloudCard"
+         data-sign="{% url 'mobile_account_cloud_sign' account.id %}"
+         data-uploaded="{% url 'mobile_account_cloud_uploaded' account.id %}"
+         data-deleted="{% url 'mobile_account_cloud_deleted' account.id %}">
+        <div class="card-head">{% icon "cloud" %}<h2>Cloud files</h2><span class="small muted ml-auto">{{ cloud.summary|default:"Nothing yet" }}</span></div>
+        <div class="card-body stack" style="gap:10px">
+            {% if not cloud.configured %}
+            <p class="help">Cloudinary isn't set up on the server.</p>
+            {% else %}
+            {% if account.cloudinary_access == "off" %}<p class="help">Cloud is off for {{ account.name }} — they see these files in the app once you choose Own folder or Everything under Access.</p>{% endif %}
+            <div class="row gap-sm" style="flex-wrap:wrap;align-items:center">
+                <select class="input input-sm" id="cloudFolder" style="width:auto" aria-label="Folder">
+                    <option value="">Their folder (top)</option>
+                    {% for f in cloud.folders %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+                </select>
+                <input class="input input-sm" id="cloudNewFolder" placeholder="or a new folder" maxlength="80" style="width:170px" aria-label="New folder">
+                <button class="btn btn-sm btn-primary" type="button" id="cloudUploadBtn">{% icon "upload" %}Upload files</button>
+                <input type="file" id="cloudFile" multiple hidden>
+                <span class="small muted" id="cloudStatus" role="status"></span>
+            </div>
+            <p class="help">Any kind of file. It goes into <span class="mono">{{ cloud.root }}</span>, tagged <span class="mono">syncup_cloud</span> and <span class="mono">acct_{{ account.id }}</span>, and they see it in the app under Tools → Cloud.</p>
+            {% endif %}
+        </div>
+        {% if cloud.files %}
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th></th><th>File</th><th>Folder</th><th>Size</th><th>Added</th><th></th></tr></thead>
+                <tbody>
+                {% for f in cloud.files %}
+                <tr>
+                    <td style="width:56px">{% if f.thumb %}<img class="cl-thumb" src="{{ f.thumb }}" alt="" loading="lazy">{% else %}<span class="cl-thumb">{% if f.resource_type == "video" %}{% icon "music" %}{% elif f.resource_type == "image" %}{% icon "image" %}{% else %}{% icon "file" %}{% endif %}</span>{% endif %}</td>
+                    <td style="max-width:280px"><a class="truncate" style="display:block" href="{{ f.url }}" target="_blank" rel="noopener noreferrer" title="Open in a new tab">{{ f.name }}</a><span class="small muted">{{ f.format|upper|default:f.resource_type }}</span></td>
+                    <td class="small">{{ f.rel_folder|default:"—" }}</td>
+                    <td class="num small">{{ f.size_text }}</td>
+                    <td class="small muted">{{ f.created_at|date:"d M Y" }}</td>
+                    <td style="text-align:right"><button class="btn btn-sm btn-ghost" type="button" title="Delete" aria-label="Delete {{ f.name }}"
+                        data-cloud-delete data-id="{{ f.public_id }}" data-type="{{ f.resource_type }}" data-name="{{ f.name }}">{% icon "trash" %}</button></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
     </div>
     {% endif %}
     </div>
@@ -299,4 +350,67 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block script %}
+<script>
+/* Cloud files card: the browser talks to Cloudinary itself; the server signs each upload / delete for this
+   person's folder and keeps the list. */
+(function () {
+    var card = document.getElementById("cloudCard");
+    var input = document.getElementById("cloudFile");
+    if (!card || !input) return;
+    var status = document.getElementById("cloudStatus");
+    function message(e) { return (e && e.data && e.data.message) || (e && e.message) || "Something went wrong."; }
+    function form(params, file) {
+        var f = new FormData();
+        Object.keys(params).forEach(function (k) { f.append(k, params[k]); });
+        if (file) f.append("file", file);
+        return f;
+    }
+    function cloudinary(url, body) {
+        return fetch(url, { method: "POST", body: body }).then(function (r) {
+            return r.json().catch(function () { return {}; }).then(function (data) {
+                if (!r.ok) throw new Error("Cloudinary: " + ((data.error && data.error.message) || ("error " + r.status)));
+                return data;
+            });
+        });
+    }
+    document.getElementById("cloudUploadBtn").addEventListener("click", function () { input.click(); });
+    input.addEventListener("change", async function () {
+        var files = Array.prototype.slice.call(input.files || []);
+        if (!files.length) return;
+        var folder = (document.getElementById("cloudNewFolder").value || "").trim() || document.getElementById("cloudFolder").value;
+        var done = 0, failed = 0, last = "";
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            status.textContent = "Uploading " + (i + 1) + " of " + files.length + " — " + file.name + "…";
+            try {
+                var s = await App.fetchJSON(card.dataset.sign, { method: "POST", body: { action: "upload", folder: folder, name: file.name, mime: file.type } });
+                var result = await cloudinary(s.url, form(s.params, file));
+                await App.fetchJSON(card.dataset.uploaded, { method: "POST", body: { result: result, name: file.name } });
+                done++;
+            } catch (e) { failed++; last = message(e); }
+        }
+        input.value = "";
+        status.textContent = "";
+        if (failed) App.toast(failed + " couldn't upload. " + last, "error");
+        if (done) { App.toast(done + " uploaded.", "success"); setTimeout(function () { location.reload(); }, 600); }
+    });
+    card.addEventListener("click", async function (e) {
+        var b = e.target.closest("[data-cloud-delete]");
+        if (!b) return;
+        var ok = await App.confirm({ title: "Delete “" + b.dataset.name + "”?", text: "It's deleted from Cloudinary straight away, from their app too. This can't be undone.", danger: true, confirmText: "Delete" });
+        if (!ok) return;
+        b.disabled = true;
+        try {
+            var s = await App.fetchJSON(card.dataset.sign, { method: "POST", body: { action: "destroy", public_id: b.dataset.id, resource_type: b.dataset.type } });
+            await cloudinary(s.url, form(s.params));  // "ok", or "not found" when it was already gone
+            await App.fetchJSON(card.dataset.deleted, { method: "POST", body: { public_id: b.dataset.id, resource_type: b.dataset.type } });
+            b.closest("tr").remove();
+            App.toast("Deleted.", "success");
+        } catch (err) { b.disabled = false; App.toast(message(err), "error"); }
+    });
+})();
+</script>
 {% endblock %}
