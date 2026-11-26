@@ -19,6 +19,7 @@ urlpatterns = [
     path("accounts/<int:account_id>/cloud/sign", cloud_api.console_sign, name="mobile_account_cloud_sign"),
     path("accounts/<int:account_id>/cloud/uploaded", cloud_api.console_uploaded, name="mobile_account_cloud_uploaded"),
     path("accounts/<int:account_id>/cloud/deleted", cloud_api.console_deleted, name="mobile_account_cloud_deleted"),
+    path("cloud/files.json", cloud_api.console_files, name="mobile_cloud_files_json"),
     path("accounts/<int:account_id>/delete", v.account_delete, name="mobile_account_delete"),
     path("accounts/<int:account_id>/signout", v.account_signout, name="mobile_account_signout"),
     path("accounts/<int:account_id>/reset", v.account_reset, name="mobile_account_reset"),

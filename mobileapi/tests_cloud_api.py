@@ -374,3 +374,12 @@ class ConsoleTests(CloudTestCase):
         self.asha.save()
         p = self.post(self.asha, "cloud/sign", {"action": "upload", "name": "x.jpg", "mime": "image/jpeg"}).json()["params"]
         self.assertEqual(p["tags"], f"syncup_cloud,acct_{self.asha.id}")
+
+    def test_the_gallery_reads_the_servers_list_at_once(self):
+        self.listed(self.asha, self.root + "/a_1", name="Beach.jpg")
+        other = self.person("Bala")
+        self.listed(other, f"syncup/accounts/{other.id}/doc_1.pdf", name="Doc.pdf", rtype="raw")
+        d = self.client.get("/mobile/cloud/files.json", {"rtype": "image"}).json()
+        self.assertEqual([(f["name"], f["tags"]) for f in d["files"]], [("Beach.jpg", ["syncup_cloud", f"acct_{self.asha.id}"])])
+        self.assertEqual(len(self.client.get("/mobile/cloud/files.json").json()["files"]), 2)
+        self.assertEqual(Client().get("/mobile/cloud/files.json").status_code, 403)

@@ -352,7 +352,15 @@ const config = JSON.parse(
       // Notification images live under a separate tag/folder.
       const notif = await fetchTagList(rtype, NOTIF_TAG);
 
-      // People's Cloud files: the base tag, plus one list per account tag (acct_<id>).
+      // People's Cloud files: this server's list first (current at once — Cloudinary caches tag lists for a
+      // minute), then the base tag and one list per account tag (acct_<id>) for anything else at Cloudinary.
+      let serverFiles = [];
+      if (config.account_files_url) {
+        try {
+          const d = await App.fetchJSON(config.account_files_url + "?rtype=" + encodeURIComponent(rtype));
+          serverFiles = d.files || [];
+        } catch (e) { /* the tag lists still show them */ }
+      }
       const cloudBase = await fetchTagList(rtype, CLOUD_TAG);
       const cloudShards = await mapLimit(CLOUD_ACCOUNTS.map(a => a.tag), LIST_CONCURRENCY, tag => fetchTagList(rtype, tag));
 
@@ -365,6 +373,7 @@ const config = JSON.parse(
       addAll(base.resources, "device");
       shards.forEach(s => addAll(s.resources, "device"));
       addAll(notif.resources, "notification");
+      addAll(serverFiles, "account");
       addAll(cloudBase.resources, "account");
       cloudShards.forEach(sh => addAll(sh.resources, "account"));
 
@@ -486,7 +495,7 @@ const config = JSON.parse(
     const rtype = r.resource_type || "image";
     const full = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "");
     const thumb = deliveryUrl(cloud, rtype, r.public_id, r.version, r.format, "c_fill,w_400,h_300,q_auto,f_auto");
-    const fname = (r.public_id || "").split("/").pop() + (r.format ? ("." + r.format) : "");
+    const fname = r.name || ((r.public_id || "").split("/").pop() + (r.format ? ("." + r.format) : ""));
     const sub = (r.width && r.height) ? (r.width + "×" + r.height) : "";
 
     const tile = document.createElement("div");

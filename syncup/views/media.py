@@ -63,6 +63,7 @@ def _cloud_accounts_config():
         "account_sign_url": reverse("mobile_account_cloud_sign", args=[0]),
         "account_uploaded_url": reverse("mobile_account_cloud_uploaded", args=[0]),
         "account_deleted_url": reverse("mobile_account_cloud_deleted", args=[0]),
+        "account_files_url": reverse("mobile_cloud_files_json"),
     }
 
 

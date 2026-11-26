@@ -675,3 +675,20 @@ def console_deleted(request, account_id):
     removed = CloudFile.objects.filter(owner_id=account_id, resource_type=body.get("resource_type"),
                                        public_id=str(body.get("public_id") or "")).delete()[0]
     return JsonResponse({"ok": True, "removed": removed})
+
+
+@require_http_methods(["GET"])
+@_console
+def console_files(request):
+    """The Cloud gallery's Accounts scope: everyone's Cloud files from this server's list (?rtype=image|video|raw).
+    Cloudinary's tag lists are cached for a minute; this list has an upload the moment it's done."""
+    rtype = request.GET.get("rtype")
+    qs = CloudFile.objects.all().order_by("-created_at")
+    if rtype in RESOURCE_TYPES:
+        qs = qs.filter(resource_type=rtype)
+    return JsonResponse({"files": [{
+        "public_id": f.public_id, "resource_type": f.resource_type, "format": f.format, "version": f.version,
+        "width": f.width, "height": f.height, "bytes": f.bytes, "name": f.name,
+        "created_at": f.created_at.isoformat() if f.created_at else "",
+        "tags": ["syncup_cloud", f"acct_{f.owner_id}"],
+    } for f in qs[:5000]]})
