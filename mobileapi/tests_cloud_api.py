@@ -114,6 +114,12 @@ class SignUploadTests(CloudTestCase):
         for bad in ("..", "../7", "a/../../b", "x?y", "a#b"):
             self.assertEqual(self.sign(folder=bad).status_code, 400, bad)
 
+    def test_folder_names_in_any_language(self):
+        # Tamil's vowel signs are combining marks: allowed, like letters (copying a station's "பாடல்கள்" folder).
+        for good in ("பாடல்கள்", "Música/Live (1)", "日本語", "Rock 'n' Roll"):
+            self.assertEqual(self.sign(folder=good).status_code, 200, good)
+        self.assertEqual(self.sign(folder="ா").status_code, 400)  # a vowel sign alone isn't a name
+
     def test_other_files_keep_their_extension(self):
         d = self.sign(name="Notes.PDF", mime="application/pdf").json()
         self.assertEqual(d["resource_type"], "raw")

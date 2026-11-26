@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import time
+import unicodedata
 
 from django.conf import settings
 from django.db.models import Count, Q, Sum
@@ -36,6 +37,17 @@ logger = logging.getLogger(__name__)
 RESOURCE_TYPES = ("image", "video", "raw")
 # One folder name: letters (any language), digits, spaces and a few safe marks. Cloudinary refuses ? & # \ % < > +.
 _FOLDER_PART = re.compile(r"^[\w .()'-]{1,80}$")
+
+
+def _folder_part_ok(p):
+    """Letters, digits, spaces and _ . ( ) ' - — and the vowel signs of scripts such as Tamil ("பாடல்கள்"),
+    which are combining marks that the plain word pattern leaves out."""
+    if not 1 <= len(p) <= 80:
+        return False
+    plain = "".join(c for c in p if not unicodedata.category(c).startswith("M"))
+    return bool(plain) and bool(_FOLDER_PART.match(plain))
+
+
 _IMAGE_EXT = {"jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "avif", "svg", "ico"}
 _VIDEO_EXT = {"mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp", "mp3", "m4a", "aac", "wav", "ogg", "opus", "flac", "amr"}
 MB = 1024 * 1024
@@ -137,7 +149,7 @@ def clean_rel(path):
     if len(parts) > 10:
         return None
     for p in parts:
-        if p in (".", "..") or not _FOLDER_PART.match(p):
+        if p in (".", "..") or not _folder_part_ok(p):
             return None
     return "/".join(parts)
 
