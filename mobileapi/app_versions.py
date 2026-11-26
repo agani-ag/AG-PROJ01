@@ -18,6 +18,7 @@ RELEASES = [
     ("9", 12),  # code 11 was uploaded but replaced before release (Play photo/video permission)
     ("9.1", 13),
     ("10", 14),  # Android TV, Cloud (Cloudinary), copies between Cloud and stations' Shared folders
+    ("10.1", 15),  # Cloud: own folder read straight from Cloudinary, file counts, type filter
 ]
 
 
