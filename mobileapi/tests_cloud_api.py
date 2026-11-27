@@ -34,6 +34,19 @@ def cloudinary_result(public_id, version="1700000000", resource_type="image", se
 
 @override_settings(**CLOUD)
 class CloudTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Never the real Cloudinary: the server's folder check (cloud_sync.py) finds it unreachable unless a test
+        # gives it answers.
+        cls._no_cloudinary = mock.patch("mobileapi.cloud_sync.cloudinary_post", side_effect=OSError("no network in tests"))
+        cls._no_cloudinary.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._no_cloudinary.stop()
+        super().tearDownClass()
+
     def person(self, name, access="own"):
         a = AppAccount.objects.create(name=name, email=f"{name.lower()}@example.org", cloudinary_access=access)
         a.token = AppAuthToken.issue(a).key

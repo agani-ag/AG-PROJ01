@@ -1,7 +1,8 @@
 """App → Tools → Cloud (Cloudinary, 2026-11-26).
 
-PythonAnywhere can't reach Cloudinary, so this server never calls it. The phone does every Cloudinary call
-itself (upload, delete, rename, view); this server only:
+The phone does every Cloudinary call itself (upload, delete, rename, view). This server calls Cloudinary for one
+thing only: checking each person's folder with its Search API (cloud_sync.py), so files put there outside SyncUp
+join their list (PythonAnywhere's allowlist has ".cloudinary.com"). Otherwise this server only:
 
 - says who may use it — AppAccount.cloudinary_access: "off", "own" (their own folder) or "all" (everything);
 - signs what an "Own folder" phone sends to Cloudinary. A signature is plain maths with the API secret (no
@@ -461,6 +462,9 @@ def files(request):
     if target is None:
         return _err("bad_folder", "That folder name isn't allowed.", 400)
     owner, base = target
+    if owner == request.account.id:
+        from .cloud_sync import sync_own_folder
+        sync_own_folder(owner)  # their whole folder, checked with Cloudinary at most once a minute (cloud_sync.py)
     prefix = base + "/"
     children = set()
     for path in CloudFolder.objects.filter(account_id=owner, path__startswith=prefix).values_list("path", flat=True):
@@ -490,9 +494,11 @@ def look(request):
     refused = _gate(request)
     if refused:
         return refused
+    from .cloud_sync import sync_own_folder
+    checked = sync_own_folder(request.account.id)  # files put in outside SyncUp join the list (cloud_sync.py)
     root = account_root(request.account.id)
     listed = dict(CloudFile.objects.filter(owner_id=request.account.id).values_list("public_id", "name"))
-    resp = JsonResponse({"root": root, "url": search_url(root), "listed": listed})
+    resp = JsonResponse({"root": root, "url": search_url(root), "listed": listed, "checked": checked})
     resp["Cache-Control"] = "no-store"
     return resp
 
